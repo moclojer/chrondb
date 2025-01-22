@@ -1,4 +1,4 @@
-# ChronDB
+# chrondb
 
 _Chronological **key/value** Database storing based on database-shaped `git` (core) architecture and Lucene for indexing._
 
