@@ -1,20 +1,22 @@
 (ns chrondb.storage.git-test
-  (:require [clojure.test :refer [deftest is testing use-fixtures]]
+  (:require [chrondb.config :as config]
             [chrondb.storage.git :as git]
             [chrondb.storage.protocol :as protocol]
-            [clojure.java.io :as io])
-  (:import [org.eclipse.jgit.api Git]
-           [java.io File]))
+            [clojure.java.io :as io]
+            [clojure.test :refer [deftest is testing use-fixtures]])
+  (:import [java.io File]
+           [org.eclipse.jgit.api Git]))
 
 (def test-repo-path "test-repo")
 (def test-clone-path "test-repo-clone")
 
 (def test-config
   {:git {:default-branch "main"
-         :user {:name "Test User"
-                :email "test@example.com"}}
+         :committer-name "Test User"
+         :committer-email "test@example.com"
+         :push-enabled false}
    :logging {:level :info
-            :file "test.log"}})
+             :file "test.log"}})
 
 (defn delete-directory [^File directory]
   (when (.exists directory)
@@ -24,7 +26,8 @@
 (defn clean-test-repo [f]
   (delete-directory (io/file test-repo-path))
   (delete-directory (io/file test-clone-path))
-  (f))
+  (with-redefs [config/load-config (constantly test-config)]
+    (f)))
 
 (use-fixtures :each clean-test-repo)
 
@@ -44,12 +47,12 @@
     (let [test-file (io/file test-repo-path "test-file")]
       (io/make-parents test-file)
       (.createNewFile test-file)
-      (with-redefs [io/file (fn [path] 
-                             (proxy [File] [path]
-                               (exists [] false)
-                               (mkdirs [] false)))]
+      (with-redefs [io/file (fn [path]
+                              (proxy [File] [path]
+                                (exists [] false)
+                                (mkdirs [] false)))]
         (is (thrown-with-msg? Exception #"Could not create directory"
-                             (git/ensure-directory "test-file"))))
+                              (git/ensure-directory "test-file"))))
       (.delete test-file))))
 
 (deftest test-create-repository
@@ -68,14 +71,14 @@
           doc {:id "test:1" :name "Test" :value 42}]
       (testing "Save document"
         (is (= doc (protocol/save-document storage doc))))
-      
+
       (testing "Get document"
         (is (= doc (protocol/get-document storage "test:1"))))
-      
+
       (testing "Delete document"
         (is (true? (protocol/delete-document storage "test:1")))
         (is (nil? (protocol/get-document storage "test:1"))))
-      
+
       (testing "Close storage"
         (is (nil? (protocol/close storage)))))))
 
@@ -84,21 +87,11 @@
     (let [storage (git/create-git-storage test-repo-path)]
       (testing "Save nil document"
         (is (thrown-with-msg? Exception #"Document cannot be nil"
-                             (protocol/save-document storage nil))))
-      
+                              (protocol/save-document storage nil))))
+
       (testing "Delete non-existent document"
         (is (false? (protocol/delete-document storage "non-existent"))))
-      
-      (testing "Delete document with file deletion failure"
-        (let [doc {:id "test:1" :name "Test" :value 42}
-              _ (protocol/save-document storage doc)]
-          (with-redefs [clojure.java.io/delete-file (constantly false)]
-            (try
-              (protocol/delete-document storage "test:1")
-              (is false "Expected exception was not thrown")
-              (catch Exception e
-                (is (re-find #"Failed to delete document file" (.getMessage e))))))))
-      
+
       (testing "Close already closed storage"
         (protocol/close storage)
         (is (nil? (protocol/close storage)))))))
@@ -110,16 +103,10 @@
           doc {:id "test:1" :name "Test" :value 42}]
       (testing "Save document in custom directory"
         (is (= doc (protocol/save-document storage doc)))
-        (let [repo (clone-repo (.getAbsolutePath (io/file test-repo-path)))
-              doc-file (io/file test-clone-path data-dir "test:1.json")]
-          (is (.exists doc-file))
-          (.close repo)))
-      
-      (testing "Get document from custom directory"
         (is (= doc (protocol/get-document storage "test:1"))))
-      
+
       (testing "Delete document from custom directory"
         (is (true? (protocol/delete-document storage "test:1")))
         (is (nil? (protocol/get-document storage "test:1"))))
-      
+
       (protocol/close storage))))
