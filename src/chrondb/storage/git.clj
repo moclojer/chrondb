@@ -217,27 +217,6 @@
       (str/replace "@" "_AT_")
       (str/replace " " "_SPACE_")))
 
-(defn- decode-path
-  "Decode a file path back to a document ID."
-  [path]
-  (-> path
-      (str/replace "_COLON_" ":")
-      (str/replace "_SLASH_" "/")
-      (str/replace "_QMARK_" "?")
-      (str/replace "_STAR_" "*")
-      (str/replace "_BSLASH_" "\\")
-      (str/replace "_LT_" "<")
-      (str/replace "_GT_" ">")
-      (str/replace "_PIPE_" "|")
-      (str/replace "_QUOTE_" "\"")
-      (str/replace "_PERCENT_" "%")
-      (str/replace "_HASH_" "#")
-      (str/replace "_AMP_" "&")
-      (str/replace "_EQ_" "=")
-      (str/replace "_PLUS_" "+")
-      (str/replace "_AT_" "@")
-      (str/replace "_SPACE_" " ")))
-
 (defn- get-file-path
   "Get the file path for a document ID, with proper encoding.
    Ensures the path is valid for JGit by not starting with a slash."
@@ -246,18 +225,6 @@
     (if (str/blank? data-dir)
       (str encoded-id ".json")
       (str data-dir (if (str/ends-with? data-dir "/") "" "/") encoded-id ".json"))))
-
-(defn- extract-id-from-path
-  "Extract document ID from a file path."
-  [data-dir path]
-  (let [prefix (str data-dir "/")
-        suffix ".json"]
-    (when (and (str/starts-with? path prefix)
-               (str/ends-with? path suffix))
-      (let [encoded-id (-> path
-                           (subs (count prefix))
-                           (subs 0 (- (count path) (count prefix) (count suffix))))]
-        (decode-path encoded-id)))))
 
 (defrecord GitStorage [repository data-dir]
   protocol/Storage
@@ -291,7 +258,6 @@
 
     (let [config-map (config/load-config)
           doc-path (get-file-path data-dir id)
-          git (Git/wrap repository)
           branch-name (get-in config-map [:git :default-branch])
           head-id (.resolve repository (str branch-name "^{commit}"))]
 
