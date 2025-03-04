@@ -25,7 +25,17 @@ jobs:
           git config --global user.email "actions@github.com"
           git config --global init.defaultBranch "main"
       - name: Run tests
-        run: clojure -M:test
+        run: |
+          # Run tests one namespace at a time to avoid port conflicts
+          clojure -M:test --namespace-regex "chrondb.core-test"
+          clojure -M:test --namespace-regex "chrondb.storage.*"
+          clojure -M:test --namespace-regex "chrondb.index.*"
+          clojure -M:test --namespace-regex "chrondb.util.*"
+          clojure -M:test --namespace-regex "chrondb.gzip.*"
+          clojure -M:test --namespace-regex "chrondb.api.v1.*"
+          clojure -M:test --namespace-regex "chrondb.api.server-test"
+          # Run Redis tests individually to avoid port conflicts
+          clojure -M:test --namespace-regex "chrondb.api.redis.*"
 
   coverage:
     runs-on: ubuntu-latest

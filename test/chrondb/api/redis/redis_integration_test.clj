@@ -55,7 +55,7 @@
   (testing "Redis client integration"
     #_{:clj-kondo/ignore [:unresolved-symbol]}
     (with-test-data [storage index]
-      (let [port 16379  ; Use a non-standard port for testing
+      (let [port 16399  ; Alterado de 16379 para 16399 para evitar conflitos
             server (redis/start-redis-server storage index port)]
         (try
           ;; Connect to the Redis server

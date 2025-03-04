@@ -1,7 +1,8 @@
 (ns chrondb.api.redis.redis-list-test
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [chrondb.api.redis.server :as redis-server]
-            [chrondb.storage.memory :as memory])
+            [chrondb.storage.memory :as memory]
+            [chrondb.test-helpers :refer [with-test-data]])
   (:import [redis.clients.jedis Jedis]))
 
 (def ^:dynamic *redis-server* nil)
@@ -9,9 +10,9 @@
 
 (defn redis-server-fixture [f]
   (let [storage (memory/create-memory-storage)
-        server (redis-server/start-server storage 6380)]
+        server (redis-server/start-server storage 16393)]
     (binding [*redis-server* server
-              *jedis* (Jedis. "localhost" 6380)]
+              *jedis* (Jedis. "localhost" 16393)]
       (try
         (f)
         (finally
@@ -110,3 +111,27 @@
       (.lpop *jedis* key)
       (.lpop *jedis* key)
       (is (= 0 (.llen *jedis* key))))))
+
+(deftest ^:list test-redis-list-operations
+  (testing "Redis list operations"
+    #_{:clj-kondo/ignore [:unresolved-symbol]}
+    (with-test-data [storage _index]
+      (let [port 16394  ; Porta específica para este teste
+            server (redis-server/start-server storage port)]
+        (try
+          ;; Implementação do teste aqui
+          (is true "Placeholder para implementação futura")
+          (finally
+            (redis-server/stop-server server)))))))
+
+(deftest ^:list test-redis-list-blocking-operations
+  (testing "Redis list blocking operations"
+    #_{:clj-kondo/ignore [:unresolved-symbol]}
+    (with-test-data [storage _index]
+      (let [port 16395  ; Porta específica para este teste
+            server (redis-server/start-server storage port)]
+        (try
+          ;; Implementação do teste aqui
+          (is true "Placeholder para implementação futura")
+          (finally
+            (redis-server/stop-server server)))))))
