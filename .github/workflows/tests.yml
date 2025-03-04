@@ -85,9 +85,13 @@ jobs:
           pkill -f "java.*chrondb" || true
           sleep 3
 
-      - name: List test directory
+      # Download dependencies before running coverage
+      - name: Download dependencies
         run: |
-          ls -R test/
+          echo "Downloading all dependencies..."
+          clojure -P -M:test:test-redis-only:test-no-redis:test-redis-sequential:coverage-no-redis
+
+      # Run coverage with our custom script that excludes Redis tests
       - name: Run coverage
         run: |
-          clojure -J-XX:+UseG1GC -J-Xmx3g -J-Xms1g -M:coverage --ns-regex "chrondb.*" --test-ns-regex "chrondb.*-test"
+          clojure -J-XX:+UseG1GC -J-Xmx3g -J-Xms1g -M:coverage-no-redis
