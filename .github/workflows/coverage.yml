@@ -1,12 +1,14 @@
-name: Tests
+name: Coverage
 
 on:
   push:
   pull_request:
 
 jobs:
-  test:
+  coverage:
     runs-on: ubuntu-latest
+    env:
+      JAVA_OPTS: "-XX:+UseG1GC -Xmx3g -Xms1g"
     steps:
       - uses: actions/checkout@v4
       - name: Setup GraalVM
@@ -39,9 +41,7 @@ jobs:
           pkill -f "java.*chrondb" || true
           sleep 3
 
-      - name: Run non-Redis tests
-        run: clojure -M:test-no-redis
-
-      # Run all Redis tests sequentially with proper cleanup between them
-      - name: Run Redis tests sequentially
-        run: clojure -M:test-redis-sequential
+      # Run coverage excluding Redis tests
+      - name: Run coverage
+        run: |
+          clojure -M:coverage-no-redis
