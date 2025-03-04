@@ -60,7 +60,7 @@
   (println "All Redis tests completed!")
   (println "=======================================================\n"))
 
-(defn -main [& args]
+(defn -main [& _]
   (run-all-redis-tests)
   (System/exit 0))
 
