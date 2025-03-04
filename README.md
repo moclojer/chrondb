@@ -16,7 +16,7 @@ We are:
 
 Understand how and when changes were made. **chrondb** stores all history, and lets you query against any point in time.
 
-Git structure is a powerful solution for storing **"data"** (files) in chronological order, _chrondb_ uses git core as a data structure to structure the data timeline, making it possible to return to any necessary point and bringing all git functions for a database:
+[Git structure](https://git-scm.com/book/en/v2/Git-Internals-Git-Objects) is a powerful solution for storing **"data"** (files) in chronological order, _chrondb_ uses git core as a data structure to structure the data timeline, making it possible to return to any necessary point and bringing all git functions for a database:
 
 - diff
 - notes
@@ -35,10 +35,65 @@ Git structure is a powerful solution for storing **"data"** (files) in chronolog
 
 > The goal is to speak the same language as the database world
 
-- database: _git_ repository (local or remotely)
-- scheme: _git_ branch
-- table: directory added on _git_ repository
-- field struct: json (document) - will be persisted in a file and indexed in _lucene_
+- **database:** _git_ repository (local or remotely)
+- **scheme:** _git_ branch
+- **table:** directory added on _git_ repository
+- **field struct:** json (document) - will be persisted in a file and indexed in _lucene_
+
+## Running
+
+ChronDB can be run using the Clojure CLI with various options to customize its behavior.
+
+### Basic Usage
+
+```bash
+# Run with default settings (HTTP on port 3000, Redis on port 6379)
+clojure -M:run
+
+# Run with custom ports
+clojure -M:run 8080 6380
+```
+
+### Command Line Options
+
+ChronDB supports the following command line options:
+
+- First non-flag argument: HTTP port (default: 3000)
+- Second non-flag argument: Redis port (default: 6379)
+- `--disable-redis`: Disable the Redis protocol server
+- `--disable-rest`: Disable the REST API server
+
+### Examples
+
+```bash
+# Run only the REST API server (no Redis)
+clojure -M:run --disable-redis
+# or use the dedicated alias
+clojure -M:run-rest
+
+# Run only the Redis protocol server (no REST API)
+clojure -M:run --disable-rest
+# or use the dedicated alias
+clojure -M:run-redis
+
+# Run with custom HTTP port and disabled Redis
+clojure -M:run 8080 --disable-redis
+
+# Run with both custom ports
+clojure -M:run 8080 6380
+```
+
+### Using the Functional Interface
+
+You can also run ChronDB using the `-X` option:
+
+```bash
+# Run with default settings
+clojure -X:run
+
+# Run with custom arguments
+clojure -X:run :args '["8080", "--disable-redis"]'
+```
 
 ## Configuration
 
