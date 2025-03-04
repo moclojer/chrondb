@@ -184,7 +184,7 @@
   (testing "Redis server benchmark"
     #_{:clj-kondo/ignore [:unresolved-symbol]}
     (with-test-data [storage index]
-      (let [port 16381  ; Use a non-standard port for testing
+      (let [port 16391  ; Alterado de 16381 para 16391 para evitar conflitos
             server (redis/start-redis-server storage index port)]
         (try
           ;; Simple operations benchmark

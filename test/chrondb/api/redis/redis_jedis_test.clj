@@ -29,7 +29,7 @@
   (testing "Redis server compatibility with Jedis client"
     #_{:clj-kondo/ignore [:unresolved-symbol]}
     (with-test-data [storage index]
-      (let [port 16382  ; Use a non-standard port for testing
+      (let [port 16392  ; Alterado de 16382 para 16392 para evitar conflitos
             server (redis/start-redis-server storage index port)
             pool (create-jedis-pool "localhost" port)]
         (try
