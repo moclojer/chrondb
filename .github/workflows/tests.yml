@@ -40,58 +40,8 @@ jobs:
           sleep 3
 
       - name: Run non-Redis tests
-        run: |
-          # Run non-Redis tests first
-          clojure -M:test-no-redis
+        run: clojure -M:test-no-redis
 
       # Run all Redis tests sequentially with proper cleanup between them
       - name: Run Redis tests sequentially
-        run: |
-          clojure -M:test-redis-sequential
-
-  coverage:
-    runs-on: ubuntu-latest
-    env:
-      JAVA_OPTS: "-XX:+UseG1GC -Xmx3g -Xms1g"
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup GraalVM
-        uses: graalvm/setup-graalvm@v1
-        with:
-          java-version: '17'
-          distribution: 'graalvm'
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Install Clojure tools
-        uses: DeLaGuardo/setup-clojure@12.1
-        with:
-          cli: latest
-      - name: Configure Git
-        run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
-          git config --global init.defaultBranch "main"
-
-      # Ensure no Redis processes are running
-      - name: Check for running processes
-        run: |
-          echo "Checking for any running Redis processes..."
-          ps aux | grep redis || true
-          echo "Checking for any Java processes..."
-          ps aux | grep java || true
-          echo "Checking for port 6380 usage..."
-          netstat -tulpn | grep 6380 || true
-          echo "Killing any potential conflicting processes..."
-          pkill -f "redis" || true
-          pkill -f "java.*chrondb" || true
-          sleep 3
-
-      # Download dependencies before running coverage
-      - name: Download dependencies
-        run: |
-          echo "Downloading all dependencies..."
-          clojure -P -M:test:test-redis-only:test-no-redis:test-redis-sequential:coverage-no-redis
-
-      # Run coverage with our custom script that excludes Redis tests
-      - name: Run coverage
-        run: |
-          clojure -J-XX:+UseG1GC -J-Xmx3g -J-Xms1g -M:coverage-no-redis
+        run: clojure -M:test-redis-sequential
