@@ -60,10 +60,35 @@
   "Kill any lingering Java processes that might be holding ports."
   []
   (try
+    ;; Primeiro tenta um kill normal
+    (println "Attempting to kill Redis server processes...")
     (.exec (Runtime/getRuntime) "pkill -f \"java.*chrondb\"")
-    (Thread/sleep 2000) ;; Sleep for 2 seconds
+
+    ;; Espera um pouco
+    (Thread/sleep 1000)
+
+    ;; Verifica se ainda há processos e usa kill -9 se necessário
+    (let [check-process (.exec (Runtime/getRuntime) "pgrep -f \"java.*chrondb\"")
+          exit-code (-> check-process .waitFor)]
+      (when (= exit-code 0)
+        (println "Some processes still running, using force kill...")
+        (.exec (Runtime/getRuntime) "pkill -9 -f \"java.*chrondb\"")))
+
+    ;; Espera mais um pouco para garantir que as portas sejam liberadas
+    (Thread/sleep 2000)
+
     (catch Exception e
-      (println "Warning: Failed to kill processes:" (.getMessage e)))))
+      (println "Warning: Failed to kill processes:" (.getMessage e))))
+
+  ;; Tenta liberar a porta 6380 especificamente
+  (try
+    (let [check-port (.exec (Runtime/getRuntime) "lsof -i :6380")
+          exit-code (-> check-port .waitFor)]
+      (when (= exit-code 0)
+        (println "Port 6380 still in use, attempting to free it...")
+        (.exec (Runtime/getRuntime) "fuser -k 6380/tcp")))
+    (catch Exception e
+      (println "Warning: Failed to free port 6380:" (.getMessage e)))))
 
 (defn run-tests-with-filter
   "Run tests with namespace filtering.

@@ -24,31 +24,30 @@ jobs:
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           git config --global init.defaultBranch "main"
+
+      # Ensure no Redis processes are running
+      - name: Check for running processes
+        run: |
+          echo "Checking for any running Redis processes..."
+          ps aux | grep redis || true
+          echo "Checking for any Java processes..."
+          ps aux | grep java || true
+          echo "Checking for port 6380 usage..."
+          netstat -tulpn | grep 6380 || true
+          echo "Killing any potential conflicting processes..."
+          pkill -f "redis" || true
+          pkill -f "java.*chrondb" || true
+          sleep 3
+
       - name: Run non-Redis tests
         run: |
           # Run non-Redis tests first
           clojure -M:test-no-redis
 
-      # Run Redis tests with proper cleanup between them
-      - name: Run Redis test
+      # Run all Redis tests sequentially with proper cleanup between them
+      - name: Run Redis tests sequentially
         run: |
-          clojure -M:test-redis-only --namespace-regex "chrondb.api.redis.redis-test"
-
-      - name: Run Redis integration test
-        run: |
-          clojure -M:test-redis-only --namespace-regex "chrondb.api.redis.redis-integration-test"
-
-      - name: Run Redis Jedis test
-        run: |
-          clojure -M:test-redis-only --namespace-regex "chrondb.api.redis.redis-jedis-test"
-
-      - name: Run Redis list test
-        run: |
-          clojure -M:test-redis-only --namespace-regex "chrondb.api.redis.redis-list-test"
-
-      - name: Run Redis benchmark test
-        run: |
-          clojure -M:test-redis-only --namespace-regex "chrondb.api.redis.redis-benchmark-test"
+          clojure -M:test-redis-sequential
 
   coverage:
     runs-on: ubuntu-latest
@@ -71,6 +70,21 @@ jobs:
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           git config --global init.defaultBranch "main"
+
+      # Ensure no Redis processes are running
+      - name: Check for running processes
+        run: |
+          echo "Checking for any running Redis processes..."
+          ps aux | grep redis || true
+          echo "Checking for any Java processes..."
+          ps aux | grep java || true
+          echo "Checking for port 6380 usage..."
+          netstat -tulpn | grep 6380 || true
+          echo "Killing any potential conflicting processes..."
+          pkill -f "redis" || true
+          pkill -f "java.*chrondb" || true
+          sleep 3
+
       - name: List test directory
         run: |
           ls -R test/
