@@ -1,5 +1,5 @@
 (ns chrondb.api.redis.redis-list-test
-  (:require [clojure.test :refer :all]
+  (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [chrondb.api.redis.server :as redis-server]
             [chrondb.storage.memory :as memory])
   (:import [redis.clients.jedis Jedis]))

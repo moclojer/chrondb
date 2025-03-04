@@ -1,0 +1,4 @@
+{:lint-as {chrondb.test-helpers/with-test-data clojure.core/let}
+ :linters {:unresolved-symbol {:exclude [(chrondb.test-helpers/with-test-data [storage index])]}
+           :unused-namespace {:exclude [clojure.string]}
+           :missing-else-branch {:level :off}}}

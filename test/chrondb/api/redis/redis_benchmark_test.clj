@@ -1,11 +1,7 @@
 (ns chrondb.api.redis.redis-benchmark-test
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [chrondb.api.redis.core :as redis]
-            [chrondb.storage.memory :as memory]
-            [chrondb.index.lucene :as lucene]
-            [chrondb.test-helpers :refer [with-test-data delete-directory]]
-            [clojure.java.io :as io]
-            [clojure.string :as str])
+            [chrondb.test-helpers :refer [with-test-data]])
   (:import [java.net Socket]
            [java.io BufferedReader BufferedWriter InputStreamReader OutputStreamWriter]
            [java.nio.charset StandardCharsets]
@@ -138,14 +134,16 @@
 
     ;; Wait for all operations to complete with a timeout
     (if-not (.await latch 60 TimeUnit/SECONDS) ; Add 60 second timeout
-      (println "WARNING: Benchmark timed out after 60 seconds, results may be incomplete"))
+      (println "WARNING: Benchmark timed out after 60 seconds, results may be incomplete")
+      nil)
 
     ;; Shutdown the executor
     (.shutdown executor)
     (if-not (.awaitTermination executor 30 TimeUnit/SECONDS) ; Reduce from 5 minutes to 30 seconds
       (do
         (.shutdownNow executor)
-        (println "WARNING: Executor shutdown timed out, forcing termination")))
+        (println "WARNING: Executor shutdown timed out, forcing termination"))
+      nil)
 
     ;; Calculate and return benchmark results
     (let [end-time (Instant/now)

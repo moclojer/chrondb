@@ -1,10 +1,7 @@
 (ns chrondb.api.redis.redis-integration-test
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [chrondb.api.redis.core :as redis]
-            [chrondb.storage.memory :as memory]
-            [chrondb.index.lucene :as lucene]
-            [chrondb.test-helpers :refer [with-test-data delete-directory]]
-            [clojure.java.io :as io])
+            [chrondb.test-helpers :refer [with-test-data]])
   (:import [java.net Socket]
            [java.io BufferedReader BufferedWriter InputStreamReader OutputStreamWriter]
            [java.nio.charset StandardCharsets]))

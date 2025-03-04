@@ -44,27 +44,27 @@ run_test_with_timeout() {
 
 # Run unit tests
 echo "Running Redis Unit Tests..."
-run_test_with_timeout chrondb.api.redis-test
+run_test_with_timeout chrondb.api.redis.redis-test
 echo
 
 # Run integration tests
 echo "Running Redis Integration Tests..."
-run_test_with_timeout chrondb.api.redis-integration-test
+run_test_with_timeout chrondb.api.redis.redis-integration-test
 echo
 
 # Run Jedis compatibility tests
 echo "Running Redis Jedis Compatibility Tests..."
-run_test_with_timeout chrondb.api.redis-jedis-test
+run_test_with_timeout chrondb.api.redis.redis-jedis-test
 echo
 
 # Run performance tests
 echo "Running Redis Performance Tests..."
-run_test_with_timeout chrondb.api.redis-performance-test
+run_test_with_timeout chrondb.api.redis.redis-performance-test
 echo
 
 # Run benchmark tests
 echo "Running Redis Benchmark Tests..."
-run_test_with_timeout chrondb.api.redis-benchmark-test
+run_test_with_timeout chrondb.api.redis.redis-benchmark-test
 echo
 
 echo "All Redis tests completed!"
