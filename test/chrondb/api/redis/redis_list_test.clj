@@ -14,9 +14,21 @@
               *jedis* (Jedis. "localhost" 6380)]
       (try
         (f)
+        (catch Exception e
+          (println "Error in test:" (.getMessage e))
+          (throw e))
         (finally
-          (.close *jedis*)
-          (redis-server/stop-server server))))))
+          (println "Closing Jedis connection and stopping Redis server...")
+          (try
+            (.close *jedis*)
+            (catch Exception e
+              (println "Warning: Failed to close Jedis connection:" (.getMessage e))))
+          (try
+            (redis-server/stop-server server)
+            (catch Exception e
+              (println "Warning: Failed to stop Redis server:" (.getMessage e))))
+          ;; Espera adicional para garantir que a porta seja liberada
+          (Thread/sleep 1000))))))
 
 (use-fixtures :each redis-server-fixture)
 
