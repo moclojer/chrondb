@@ -25,6 +25,13 @@
     (.remove data id)
     true))
 
+(defn get-documents-by-prefix-memory
+  "Retrieves all documents from the in-memory store whose IDs start with the given prefix."
+  [^ConcurrentHashMap data prefix]
+  (let [keys (.keySet data)
+        matching-keys (filter #(.startsWith % prefix) keys)]
+    (map #(.get data %) matching-keys)))
+
 (defn close-memory-storage
   "Clears all documents from memory and releases resources."
   [^ConcurrentHashMap data]
@@ -35,6 +42,7 @@
   (save-document [_ doc] (save-document-memory data doc))
   (get-document [_ id] (get-document-memory data id))
   (delete-document [_ id] (delete-document-memory data id))
+  (get-documents-by-prefix [_ prefix] (get-documents-by-prefix-memory data prefix))
   (close [_]
     (close-memory-storage data)
     nil))
@@ -43,4 +51,4 @@
   "Creates a new instance of MemoryStorage.
    Returns: A new MemoryStorage instance backed by a ConcurrentHashMap."
   []
-  (->MemoryStorage (ConcurrentHashMap.))) 
+  (->MemoryStorage (ConcurrentHashMap.)))

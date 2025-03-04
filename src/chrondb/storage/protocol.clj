@@ -25,7 +25,13 @@
      - id: The unique identifier of the document to delete
      Returns: true if document was deleted, false if document was not found.")
 
+  (get-documents-by-prefix [this prefix]
+    "Retrieves all documents whose IDs start with the given prefix.
+     Parameters:
+     - prefix: The prefix to match against document IDs
+     Returns: A sequence of documents whose IDs start with the prefix.")
+
   (close [this]
     "Closes the storage system and releases any resources.
      Should be called when the storage system is no longer needed.
-     Returns: nil on success.")) 
+     Returns: nil on success."))
