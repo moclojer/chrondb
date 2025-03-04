@@ -1,25 +1,49 @@
 {:paths     ["src" "resources"]
- :deps      {org.clojure/clojure                       {:mvn/version "1.11.1"}
-             org.apache.lucene/lucene-core             {:mvn/version "9.8.0"}
-             org.apache.lucene/lucene-queryparser      {:mvn/version "9.8.0"}
-             org.apache.lucene/lucene-analyzers-common {:mvn/version "8.11.2"}
+ :deps      {compojure/compojure                       {:mvn/version "1.7.0"}
              ring/ring-core                            {:mvn/version "1.10.0"}
              ring/ring-jetty-adapter                   {:mvn/version "1.10.0"}
              ring/ring-json                            {:mvn/version "0.5.1"}
              ring/ring-mock                            {:mvn/version "0.4.0"}
-             compojure/compojure                       {:mvn/version "1.7.0"}
-             org.clojure/data.json                     {:mvn/version "2.4.0"}
              ring/ring-devel                           {:mvn/version "1.10.0"}
+             org.clojure/clojure                       {:mvn/version "1.11.1"}
+             org.clojure/data.json                     {:mvn/version "2.4.0"}
+             org.apache.lucene/lucene-core             {:mvn/version "9.8.0"}
+             org.apache.lucene/lucene-queryparser      {:mvn/version "9.8.0"}
+             org.apache.lucene/lucene-analyzers-common {:mvn/version "8.11.2"}
              org.eclipse.jgit/org.eclipse.jgit         {:mvn/version "6.7.0.202309050840-r"}
-             talltale/talltale                         {:mvn/version "0.4.3"}
              org.slf4j/slf4j-api                       {:mvn/version "2.0.9"}
              org.slf4j/slf4j-simple                    {:mvn/version "2.0.9"}
+             talltale/talltale                         {:mvn/version "0.4.3"}
              environ/environ                           {:mvn/version "1.2.0"}}
  :aliases   {:test    {:extra-paths ["test"]
                        :extra-deps  {io.github.cognitect-labs/test-runner {:git/tag "v0.5.1" :git/sha "dfb30dd"}
                                      redis.clients/jedis                  {:mvn/version "5.1.0"}}
                        :exec-fn cognitect.test-runner.api/test
                        :main-opts ["-m" "cognitect.test-runner"]}
+             :run     {:main-opts ["-m" "chrondb.core"]
+                       :exec-fn chrondb.core/-main
+                       :exec-args {}
+                       :doc "Run ChronDB with optional arguments:
+                             - First non-flag arg: HTTP port (default: 3000)
+                             - Second non-flag arg: Redis port (default: 6379)
+                             - --disable-redis: Disable Redis server
+                             - --disable-rest: Disable REST API server
+
+                             Examples:
+                             clojure -M:run                    # Run with default settings
+                             clojure -M:run 8080 6380          # Run with custom ports
+                             clojure -M:run --disable-redis    # Run only REST API
+                             clojure -M:run --disable-rest     # Run only Redis server
+                             clojure -X:run                    # Run with default settings
+                             clojure -X:run :args '[\"8080\" \"--disable-redis\"]' # Custom port, no Redis"}
+             :run-rest {:main-opts ["-m" "chrondb.core" "--disable-redis"]
+                        :exec-fn chrondb.core/-main
+                        :exec-args {:args ["--disable-redis"]}
+                        :doc "Run only the REST API server (no Redis)"}
+             :run-redis {:main-opts ["-m" "chrondb.core" "--disable-rest"]
+                         :exec-fn chrondb.core/-main
+                         :exec-args {:args ["--disable-rest"]}
+                         :doc "Run only the Redis protocol server (no REST API)"}
              :example {:main-opts ["-m" "chrondb.example"]
                        :exec-fn chrondb.example/-main}
              :build {:deps {io.github.clojure/tools.build {:git/tag "v0.9.4" :git/sha "76b78fe"}}
