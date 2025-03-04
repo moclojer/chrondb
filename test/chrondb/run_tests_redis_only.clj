@@ -1,21 +1,43 @@
 (ns chrondb.run-tests-redis-only
   (:require [clojure.test :as test]
             [clojure.tools.namespace.find :as find]
-            [clojure.java.io :as io]))
+            [clojure.java.io :as io]
+            [clojure.string :as str]))
 
-(defn run-tests-redis-only []
+(defn parse-args [args]
+  (loop [args args
+         result {}]
+    (if (empty? args)
+      result
+      (let [arg (first args)]
+        (cond
+          (= arg "--namespace-regex")
+          (if (second args)
+            (recur (drop 2 args) (assoc result :namespace-regex (second args)))
+            (recur (rest args) result))
+
+          :else
+          (recur (rest args) result))))))
+
+(defn run-tests-redis-only [& {:keys [namespace-regex]}]
   (println "Running only Redis tests...")
+  (when namespace-regex
+    (println "Using namespace regex filter:" namespace-regex))
 
   ;; Find all Redis test namespaces
   (let [all-namespaces (find/find-namespaces-in-dir (io/file "test"))
         ;; Filter to include only Redis namespaces
         redis-namespaces (filter #(.contains (str %) "chrondb.api.redis") all-namespaces)
+        ;; Apply additional namespace regex filter if provided
+        filtered-namespaces (if namespace-regex
+                              (filter #(re-find (re-pattern namespace-regex) (str %)) redis-namespaces)
+                              redis-namespaces)
         results (atom {:test 0 :pass 0 :fail 0 :error 0})]
 
-    (println "Found" (count redis-namespaces) "Redis test namespaces to run")
+    (println "Found" (count filtered-namespaces) "Redis test namespaces to run")
 
     ;; Require and run each namespace
-    (doseq [ns-sym redis-namespaces]
+    (doseq [ns-sym filtered-namespaces]
       (println "Testing" ns-sym)
       (require ns-sym)
       (let [ns-result (test/run-tests ns-sym)]
@@ -35,7 +57,8 @@
     @results))
 
 (defn -main [& args]
-  (let [result (run-tests-redis-only)
+  (let [opts (parse-args args)
+        result (run-tests-redis-only :namespace-regex (:namespace-regex opts))
         exit-code (if (= 0 (+ (:fail result 0) (:error result 0))) 0 1)]
     (println "\nSummary:")
     (println "Tests:" (:test result 0))

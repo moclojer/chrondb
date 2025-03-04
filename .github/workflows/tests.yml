@@ -30,35 +30,25 @@ jobs:
           clojure -M:test-no-redis
 
       # Run Redis tests with proper cleanup between them
-      - name: Run Redis tests
+      - name: Run Redis test
         run: |
           clojure -M:test-redis-only --namespace-regex "chrondb.api.redis.redis-test"
-          # Kill any lingering Java processes that might be holding ports
-          pkill -f "java.*chrondb" || true
-          sleep 2
 
       - name: Run Redis integration test
         run: |
           clojure -M:test-redis-only --namespace-regex "chrondb.api.redis.redis-integration-test"
-          pkill -f "java.*chrondb" || true
-          sleep 2
 
       - name: Run Redis Jedis test
         run: |
           clojure -M:test-redis-only --namespace-regex "chrondb.api.redis.redis-jedis-test"
-          pkill -f "java.*chrondb" || true
-          sleep 2
 
       - name: Run Redis list test
         run: |
           clojure -M:test-redis-only --namespace-regex "chrondb.api.redis.redis-list-test"
-          pkill -f "java.*chrondb" || true
-          sleep 2
 
       - name: Run Redis benchmark test
         run: |
           clojure -M:test-redis-only --namespace-regex "chrondb.api.redis.redis-benchmark-test"
-          pkill -f "java.*chrondb" || true
 
   coverage:
     runs-on: ubuntu-latest
