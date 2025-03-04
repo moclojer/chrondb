@@ -281,6 +281,59 @@
               (.close tree-walk)
               (.close rev-walk)))))))
 
+  (get-documents-by-prefix [_ prefix]
+    (when-not repository
+      (throw (Exception. "Repository is closed")))
+
+    (let [config-map (config/load-config)
+          encoded-prefix (encode-path prefix)
+          branch-name (get-in config-map [:git :default-branch])
+          head-id (.resolve repository (str branch-name "^{commit}"))]
+
+      (when head-id
+        (let [tree-walk (TreeWalk. repository)
+              rev-walk (RevWalk. repository)]
+          (try
+            (.addTree tree-walk (.parseTree rev-walk head-id))
+            (.setRecursive tree-walk true)
+
+            (let [results (atom [])]
+              (while (.next tree-walk)
+                (let [path (.getPathString tree-walk)]
+                  (when (and (.endsWith path ".json")
+                             (let [decoded-path (-> path
+                                                    (str/replace #"\.json$" "")
+                                                    (str/replace "_COLON_" ":")
+                                                    (str/replace "_SLASH_" "/")
+                                                    (str/replace "_QMARK_" "?")
+                                                    (str/replace "_STAR_" "*")
+                                                    (str/replace "_BSLASH_" "\\")
+                                                    (str/replace "_LT_" "<")
+                                                    (str/replace "_GT_" ">")
+                                                    (str/replace "_PIPE_" "|")
+                                                    (str/replace "_QUOTE_" "\"")
+                                                    (str/replace "_PERCENT_" "%")
+                                                    (str/replace "_HASH_" "#")
+                                                    (str/replace "_AMP_" "&")
+                                                    (str/replace "_EQ_" "=")
+                                                    (str/replace "_PLUS_" "+")
+                                                    (str/replace "_AT_" "@")
+                                                    (str/replace "_SPACE_" " "))]
+                               (.startsWith decoded-path prefix)))
+                    (let [object-id (.getObjectId tree-walk 0)
+                          object-loader (.open repository object-id)
+                          content (String. (.getBytes object-loader) "UTF-8")]
+                      (try
+                        (let [doc (json/read-str content :key-fn keyword)]
+                          (swap! results conj doc))
+                        (catch Exception e
+                          (log/log-warn "Failed to read document:" path (.getMessage e))))))))
+
+              @results)
+            (finally
+              (.close tree-walk)
+              (.close rev-walk)))))))
+
   (delete-document [_ id]
     (when-not repository
       (throw (Exception. "Repository is closed")))

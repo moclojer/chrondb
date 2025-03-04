@@ -5,11 +5,14 @@ _Chronological **key/value** Database storing based on database-shaped `git` (co
 ## Features
 
 We are:
+
 - Immutable and atomic data
 - ACID transactions
 - Schemaless
 - Chronological
-- SQL compliance - in query within document
+- **RESTfull server:** communication via HTTP protocol
+- **Redis protocol:** use the Redis driver to communicate with chrondb
+- **SQL compliance:** in query within document
 
 Understand how and when changes were made. **chrondb** stores all history, and lets you query against any point in time.
 
@@ -31,6 +34,7 @@ Git structure is a powerful solution for storing **"data"** (files) in chronolog
 ## Term alignment, from database to git
 
 > The goal is to speak the same language as the database world
+
 - database: _git_ repository (local or remotely)
 - scheme: _git_ branch
 - table: directory added on _git_ repository
@@ -115,7 +119,7 @@ clj -X:test
 Add the following dependency to your `deps.edn`:
 
 ```clojure
-{:deps {com.github.chrondb/chrondb {:git/tag "v0.1.0" 
+{:deps {com.github.chrondb/chrondb {:git/tag "v0.1.0"
                                    :git/sha "..."}}}
 ```
 
@@ -151,11 +155,13 @@ Add the following dependency to your `deps.edn`:
 ## Documentation
 
 For more detailed documentation, see:
+
 - [Configuration Guide](docs/configuration.md)
 - [API Reference](docs/api.md)
 - [Example Usage](src/chrondb/example.clj)
 
 For generated API documentation, run:
+
 ```bash
 clj -X:codox
 ```
