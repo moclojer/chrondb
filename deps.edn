@@ -28,6 +28,10 @@
                                :extra-deps {org.clojure/tools.namespace {:mvn/version "1.4.4"}
                                             redis.clients/jedis         {:mvn/version "5.1.0"}}
                                :main-opts ["-m" "chrondb.run-tests-redis-only"]}
+             :test-redis-sequential {:extra-paths ["test"]
+                                     :extra-deps {org.clojure/tools.namespace {:mvn/version "1.4.4"}
+                                                  redis.clients/jedis         {:mvn/version "5.1.0"}}
+                                     :main-opts ["-m" "chrondb.run-redis-tests-sequential"]}
              :run     {:main-opts ["-m" "chrondb.core"]
                        :exec-fn chrondb.core/-main
                        :exec-args {}
