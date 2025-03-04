@@ -1,12 +1,8 @@
 (ns chrondb.api.redis.redis-jedis-test
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [chrondb.api.redis.core :as redis]
-            [chrondb.storage.memory :as memory]
-            [chrondb.index.lucene :as lucene]
-            [chrondb.test-helpers :refer [with-test-data delete-directory]]
-            [clojure.java.io :as io])
-  (:import [redis.clients.jedis Jedis JedisPool JedisPoolConfig]
-           [java.util HashSet ArrayList]
+            [chrondb.test-helpers :refer [with-test-data]])
+  (:import [redis.clients.jedis JedisPool JedisPoolConfig]
            [java.time Duration]))
 
 ;; Helper functions for Jedis client

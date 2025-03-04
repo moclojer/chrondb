@@ -4,10 +4,9 @@
   (:require [chrondb.storage.protocol :as storage]
             [chrondb.index.protocol :as index]
             [chrondb.util.logging :as log]
-            [clojure.data.json :as json]
             [clojure.string :as str]
             [clojure.core.async :as async])
-  (:import [java.net ServerSocket Socket]
+  (:import [java.net ServerSocket]
            [java.io BufferedReader BufferedWriter InputStreamReader OutputStreamWriter]
            [java.nio.charset StandardCharsets]))
 
@@ -52,7 +51,7 @@
           :else (write-bulk-string writer (str el)))))))
 
 ;; RESP Protocol Parsing Functions
-(defn read-line [reader]
+(defn read-line-resp [reader]
   (let [line (.readLine reader)]
     (when line
       line)))
@@ -66,7 +65,7 @@
 (declare read-resp)
 
 (defn read-bulk-string [reader]
-  (let [line (read-line reader)
+  (let [line (read-line-resp reader)
         len (parse-integer (subs line 1))]
     (if (neg? len)
       nil
@@ -76,7 +75,7 @@
         (String. data)))))
 
 (defn read-array [reader]
-  (let [line (read-line reader)
+  (let [line (read-line-resp reader)
         count (parse-integer (subs line 1))]
     (if (neg? count)
       nil
@@ -143,11 +142,11 @@
           result (storage/delete-document storage key)]
       (write-integer writer (if result 1 0)))))
 
-(defn handle-command [storage index writer args]
+(defn handle-command [_storage _index writer _args]
   (.write writer RESP_OK))
 
-(defn handle-info [writer args]
-  (let [info-str (str "# Server\r\nredis_version:6.0.0\r\nchrondb_version:1.0.0\r\n")]
+(defn handle-info [writer _args]
+  (let [info-str "# Server\r\nredis_version:6.0.0\r\nchrondb_version:1.0.0\r\n"]
     (write-bulk-string writer info-str)))
 
 (defn handle-setex [storage index writer args]
@@ -155,7 +154,7 @@
     (write-error writer "ERR wrong number of arguments for 'setex' command")
     (let [key (first args)
           seconds (try (Integer/parseInt (second args))
-                       (catch Exception e
+                       (catch Exception _
                          (write-error writer "ERR value is not an integer or out of range")
                          nil))
           value (nth args 2)
@@ -282,11 +281,11 @@
     (write-error writer "ERR wrong number of arguments for 'lrange' command")
     (let [key (first args)
           start (try (Integer/parseInt (second args))
-                     (catch Exception e
+                     (catch Exception _
                        (write-error writer "ERR value is not an integer or out of range")
                        nil))
           stop (try (Integer/parseInt (nth args 2))
-                    (catch Exception e
+                    (catch Exception _
                       (write-error writer "ERR value is not an integer or out of range")
                       nil))
           list-doc (storage/get-document storage key)
@@ -412,11 +411,11 @@
     (write-error writer "ERR wrong number of arguments for 'zrange' command")
     (let [key (first args)
           start (try (Integer/parseInt (second args))
-                     (catch Exception e
+                     (catch Exception _
                        (write-error writer "ERR value is not an integer or out of range")
                        nil))
           stop (try (Integer/parseInt (nth args 2))
-                    (catch Exception e
+                    (catch Exception _
                       (write-error writer "ERR value is not an integer or out of range")
                       nil))
           zset-doc (storage/get-document storage key)]

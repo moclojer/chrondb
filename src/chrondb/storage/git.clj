@@ -286,7 +286,6 @@
       (throw (Exception. "Repository is closed")))
 
     (let [config-map (config/load-config)
-          encoded-prefix (encode-path prefix)
           branch-name (get-in config-map [:git :default-branch])
           head-id (.resolve repository (str branch-name "^{commit}"))]
 

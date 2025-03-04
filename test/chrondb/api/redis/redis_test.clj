@@ -1,13 +1,10 @@
 (ns chrondb.api.redis.redis-test
-  (:require [clojure.test :refer [deftest is testing use-fixtures]]
+  (:require [clojure.test :refer [deftest is testing]]
             [chrondb.api.redis.core :as redis]
             [chrondb.storage.memory :as memory]
-            [chrondb.index.lucene :as lucene]
-            [chrondb.test-helpers :refer [with-test-data delete-directory]]
-            [clojure.java.io :as io])
+            [chrondb.test-helpers :refer [with-test-data]])
   (:import [java.io StringReader StringWriter BufferedReader BufferedWriter]
-           [java.net Socket ServerSocket]
-           [java.nio.charset StandardCharsets]))
+           [java.net ServerSocket]))
 
 ;; Helper functions for testing
 (defn create-string-reader [s]
@@ -127,7 +124,7 @@
 
 (deftest test-handle-get
   (testing "GET with storage"
-    #_{:clj-kondo/ignore [:unresolved-symbol]}
+    #_:clj-kondo/ignore
     (with-test-data [storage index]
       (let [doc {:id "test:key" :value "test-value"}
             _ (memory/save-document-memory (.data storage) doc)
@@ -149,7 +146,6 @@
 
 (deftest test-handle-set
   (testing "SET with storage and index"
-    #_{:clj-kondo/ignore [:unresolved-symbol]}
     (with-test-data [storage index]
       (let [writer (create-string-writer)]
 
@@ -165,7 +161,6 @@
 
 (deftest test-handle-del
   (testing "DEL with storage"
-    #_{:clj-kondo/ignore [:unresolved-symbol]}
     (with-test-data [storage index]
       (let [doc {:id "test:key" :value "test-value"}
             _ (memory/save-document-memory (.data storage) doc)
@@ -188,7 +183,6 @@
 
 (deftest test-process-command
   (testing "Process commands with storage and index"
-    #_{:clj-kondo/ignore [:unresolved-symbol]}
     (with-test-data [storage index]
       (testing "Process PING command"
         (let [writer (create-string-writer)]
@@ -203,7 +197,6 @@
 ;; Test Server Functions
 (deftest test-redis-server
   (testing "Start and stop Redis server"
-    #_{:clj-kondo/ignore [:unresolved-symbol]}
     (with-test-data [storage index]
       (let [server (redis/start-redis-server storage index 0)]
         (is (not (nil? server)))
