@@ -184,7 +184,7 @@
   (testing "Redis server benchmark"
     #_{:clj-kondo/ignore [:unresolved-symbol]}
     (with-test-data [storage index]
-      (let [port 16391  ; Alterado de 16381 para 16391 para evitar conflitos
+      (let [port 16391  ; Porta específica para este teste
             server (redis/start-redis-server storage index port)]
         (try
           ;; Simple operations benchmark
@@ -219,7 +219,12 @@
               (is (> (:operations-per-second multi-client-results) 0))))
 
           (finally
-            (redis/stop-redis-server server)))))))
+            (try
+              (redis/stop-redis-server server)
+              ;; Aguardar um momento para garantir que a porta seja liberada
+              (Thread/sleep 1000)
+              (catch Exception e
+                (println "Error stopping Redis server:" (.getMessage e))))))))))
 
 ;; Define a fixture that can be used to run only benchmark tests
 (defn benchmark-fixture [f]
