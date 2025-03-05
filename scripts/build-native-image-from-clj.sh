@@ -21,11 +21,15 @@ fi
 export JAVA_HOME
 export PATH=$JAVA_HOME/bin:$PATH
 
-# Adicionar flags para evitar inicialização prematura de classes
-# Primeiro, definir --initialize-at-build-time como vazio para desativar a inicialização padrão
-EXTRA_FLAGS+=("--initialize-at-build-time=")
-# Em seguida, especificar explicitamente as classes que devem ser inicializadas em tempo de execução
-EXTRA_FLAGS+=("--initialize-at-run-time=org.eclipse.jetty.server.Server,org.eclipse.jetty.util.thread.QueuedThreadPool,org.eclipse.jgit.lib.internal.WorkQueue,java.security.SecureRandom,org.eclipse.jgit.transport.HttpAuthMethod,org.eclipse.jgit.internal.storage.file.WindowCache,org.eclipse.jgit.util.FileUtils,org.eclipse.jgit.util.sha1.SHA1,org.eclipse.jgit.lib.RepositoryCache")
+# Simplificando as flags para seguir a abordagem do clj-easy/graalvm-clojure
+# Inicializar Clojure em tempo de compilação, mas deixar classes problemáticas para tempo de execução
+EXTRA_FLAGS+=("--initialize-at-build-time=clojure")
+EXTRA_FLAGS+=("--initialize-at-build-time=org.slf4j")
+EXTRA_FLAGS+=("--initialize-at-build-time=ch.qos.logback")
+EXTRA_FLAGS+=("--initialize-at-run-time=java.lang.Thread")
+EXTRA_FLAGS+=("--initialize-at-run-time=org.eclipse.jetty.server.Server")
+EXTRA_FLAGS+=("--initialize-at-run-time=org.eclipse.jetty.util.thread.QueuedThreadPool")
+EXTRA_FLAGS+=("--initialize-at-run-time=java.security.SecureRandom")
 EXTRA_FLAGS+=("--no-fallback")
 EXTRA_FLAGS+=("--allow-incomplete-classpath")
 
