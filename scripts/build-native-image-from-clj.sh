@@ -25,6 +25,7 @@ EXTRA_FLAGS+=("--no-fallback")
 EXTRA_FLAGS+=("--allow-incomplete-classpath")
 EXTRA_FLAGS+=("-Dlucene.tests.security.manager=false")
 EXTRA_FLAGS+=("-Dlucene.tests.fail.on.unsupported.codec=false")
+EXTRA_FLAGS+=("--initialize-at-run-time=org.apache.lucene.internal.tests.TestSecrets")
 
 while [[ $# -gt 0 ]]; do
     case $1 in
