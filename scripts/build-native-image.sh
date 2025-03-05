@@ -55,6 +55,7 @@ fi
 
 # Create necessary directories
 mkdir -p reports
+mkdir -p graalvm-config
 
 # Build the uberjar
 echo "Building uberjar..."
@@ -63,19 +64,18 @@ clojure -T:build uber
 # Build the native image directly
 echo "Building native image with comprehensive configuration..."
 
-# Construct the native-image command
+# Construct the native-image command with careful ordering of initialization options
 NATIVE_IMAGE_CMD="native-image \
     --no-fallback \
     --report-unsupported-elements-at-runtime \
     --initialize-at-build-time \
+    --initialize-at-run-time=java.security.SecureRandom \
     --initialize-at-run-time=org.eclipse.jetty.server.Server \
     --initialize-at-run-time=org.eclipse.jetty.util.thread.QueuedThreadPool \
     --initialize-at-run-time=org.eclipse.jgit.lib.internal.WorkQueue \
     --initialize-at-run-time=org.eclipse.jgit.transport.HttpAuthMethod \
     --initialize-at-run-time=org.eclipse.jgit.internal.storage.file.WindowCache \
     --initialize-at-run-time=org.eclipse.jgit.util.FileUtils \
-    --initialize-at-run-time=java.util.Random \
-    --initialize-at-run-time=java.security.SecureRandom \
     -H:+ReportExceptionStackTraces \
     -H:-CheckToolchain \
     -H:ConfigurationFileDirectories=graalvm-config \
