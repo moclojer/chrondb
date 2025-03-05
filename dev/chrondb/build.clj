@@ -33,34 +33,52 @@
    - :output - String specifying the output file name (default: 'chrondb')
    - :extra_flags - Vector of additional flags to pass to native-image
    - :initialize_at_run_time - Vector of classes to initialize at runtime
-   - :enable_url_protocols - String of comma-separated URL protocols to enable"
-  [{:keys [verbose static output extra_flags initialize_at_run_time enable_url_protocols]
+   - :enable_url_protocols - String of comma-separated URL protocols to enable
+   - :clj_easy - Boolean flag to use clj-easy/graalvm-clojure approach (default: true)"
+  [{:keys [verbose static output extra_flags initialize_at_run_time enable_url_protocols clj_easy]
     :or {verbose false
          static false
          output native-image-name
          extra_flags []
          initialize_at_run_time ["org.eclipse.jetty.server.Server"
-                                 "org.eclipse.jetty.util.thread.QueuedThreadPool"]
-         enable_url_protocols "http,https"}}]
+                                 "org.eclipse.jetty.util.thread.QueuedThreadPool"
+                                 "org.eclipse.jgit.lib.internal.WorkQueue"
+                                 "java.security.SecureRandom"
+                                 "org.eclipse.jgit.transport.HttpAuthMethod"
+                                 "org.eclipse.jgit.internal.storage.file.WindowCache"
+                                 "org.eclipse.jgit.util.FileUtils"]
+         enable_url_protocols "http,https"
+         clj_easy true}}]
   (println "Building native image...")
   (let [base-command ["native-image"
                       "--no-fallback"
                       "--report-unsupported-elements-at-runtime"
-                      "--initialize-at-build-time"
-                      "-H:+ReportExceptionStackTraces"
-                      "-H:-CheckToolchain"
-                      "-H:ConfigurationFileDirectories=graalvm-config"
-                      "-H:+PrintClassInitialization"
-                      "-H:+AllowIncompleteClasspath"
-                      "-H:+AddAllCharsets"]
-        init-at-runtime (mapcat #(vector "--initialize-at-run-time=" %) initialize_at_run_time)
+                      "--initialize-at-build-time"]
+        init-at-runtime (if clj_easy
+                          [(str "--initialize-at-run-time=" (clojure.string/join "," initialize_at_run_time))]
+                          (mapcat #(vector "--initialize-at-run-time=" %) initialize_at_run_time))
+        init-at-buildtime (if clj_easy
+                            ["--initialize-at-build-time=clojure"
+                             "--initialize-at-build-time=org.slf4j"
+                             "--initialize-at-build-time=ch.qos.logback"]
+                            [])
         url-protocols (str "-H:EnableURLProtocols=" enable_url_protocols)
-        reflection-config "-H:ReflectionConfigurationFiles=graalvm-config/reflect-config/reflect-config.json"
-        resource-config "-H:ResourceConfigurationFiles=graalvm-config/resource-config/resource-config.json"
-        command (cond-> (vec (concat base-command init-at-runtime [url-protocols reflection-config resource-config] extra_flags))
+        reflection-config "-H:ReflectionConfigurationFiles=graalvm-config/reflect-config.json"
+        resource-config "-H:ResourceConfigurationFiles=graalvm-config/resource-config.json"
+        clj-easy-flags (if clj_easy
+                         ["-H:+RemoveSaturatedTypeFlows"]
+                         [])
+        command (cond-> (vec (concat base-command init-at-buildtime init-at-runtime [url-protocols reflection-config resource-config] clj-easy-flags extra_flags))
                   verbose (conj "--verbose")
                   static (conj "--static")
-                  true (concat ["-jar" uber-file output]))]
+                  true (concat ["-H:+ReportExceptionStackTraces"
+                                "-H:-CheckToolchain"
+                                "-H:ConfigurationFileDirectories=graalvm-config"
+                                "-H:+PrintClassInitialization"
+                                "-H:+AllowIncompleteClasspath"
+                                "-H:+AddAllCharsets"
+                                "-H:+UnlockExperimentalVMOptions"
+                                "-jar" uber-file output]))]
     (println "Running command:" (clojure.string/join " " command))
     (b/process {:command-args command}))
   (println "Native image built successfully:" (str "./" output)))

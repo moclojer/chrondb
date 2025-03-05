@@ -1,20 +1,42 @@
 {
-    "resources": [
-        {
-            "pattern": ".*\\.properties$"
-        },
-        {
-            "pattern": "META-INF/services/.*"
-        },
-        {
-            "pattern": "org/apache/lucene/.*"
-        },
-        {
-            "pattern": "org/eclipse/jgit/.*"
-        },
-        {
-            "pattern": "org/slf4j/.*"
-        }
-    ],
-    "bundles": []
+    "resources": {
+        "includes": [
+            {
+                "pattern": "\\\\QMETA-INF/services/.*\\\\E"
+            },
+            {
+                "pattern": "\\\\Qclojure/core.clj\\\\E"
+            },
+            {
+                "pattern": "\\\\Qclojure/core_deftype.clj\\\\E"
+            },
+            {
+                "pattern": "\\\\Qclojure/core_print.clj\\\\E"
+            },
+            {
+                "pattern": "\\\\Qclojure/core_proxy.clj\\\\E"
+            },
+            {
+                "pattern": "\\\\Qclojure/genclass.clj\\\\E"
+            },
+            {
+                "pattern": "\\\\Qclojure/main.clj\\\\E"
+            },
+            {
+                "pattern": ".*\\.properties$"
+            },
+            {
+                "pattern": "META-INF/services/.*"
+            },
+            {
+                "pattern": "org/apache/lucene/.*"
+            },
+            {
+                "pattern": "org/eclipse/jgit/.*"
+            },
+            {
+                "pattern": "org/slf4j/.*"
+            }
+        ]
+    }
 }

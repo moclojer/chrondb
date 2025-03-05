@@ -74,48 +74,12 @@ jobs:
           key: ${{ runner.os }}-m2-${{ hashFiles('**/deps.edn') }}
           restore-keys: ${{ runner.os }}-m2
 
-      - name: Build native image
-        id: build-native
-        continue-on-error: true
-        env:
-          OUTPUT_NAME: ${{ matrix.artifact-name }}
-        run: ./scripts/build-native-image.sh
-
-      - name: Run diagnostic if build fails
-        if: steps.build-native.outcome == 'failure'
-        run: |
-          chmod +x ./scripts/diagnose-native-image.sh
-          ./scripts/diagnose-native-image.sh
-
-      - name: Retry build with fixed parameters
-        if: steps.build-native.outcome == 'failure'
+      - name: Build using build.clj
         env:
           OUTPUT_NAME: ${{ matrix.artifact-name }}
         run: |
-          # Retry with explicit initialization settings
-          native-image \
-            --no-fallback \
-            --report-unsupported-elements-at-runtime \
-            --initialize-at-build-time \
-            --initialize-at-run-time=java.security.SecureRandom \
-            --initialize-at-run-time=org.eclipse.jetty.server.Server \
-            --initialize-at-run-time=org.eclipse.jetty.util.thread.QueuedThreadPool \
-            --initialize-at-run-time=org.eclipse.jgit.lib.internal.WorkQueue \
-            --initialize-at-run-time=org.eclipse.jgit.transport.HttpAuthMethod \
-            --initialize-at-run-time=org.eclipse.jgit.internal.storage.file.WindowCache \
-            --initialize-at-run-time=org.eclipse.jgit.util.FileUtils \
-            -H:+ReportExceptionStackTraces \
-            -H:-CheckToolchain \
-            -H:ConfigurationFileDirectories=graalvm-config \
-            -H:+PrintClassInitialization \
-            -H:+AllowIncompleteClasspath \
-            -H:+AddAllCharsets \
-            -H:EnableURLProtocols=http,https \
-            -H:ReflectionConfigurationFiles=graalvm-config/reflect-config.json \
-            -H:ResourceConfigurationFiles=graalvm-config/resource-config.json \
-            -H:+UnlockExperimentalVMOptions \
-            -jar target/chrondb-*-standalone.jar \
-            $OUTPUT_NAME
+          chmod +x ./scripts/build-native-image-from-clj.sh
+          ./scripts/build-native-image-from-clj.sh
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
