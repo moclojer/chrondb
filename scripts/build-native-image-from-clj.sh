@@ -28,6 +28,7 @@ EXTRA_FLAGS+=("-Dlucene.tests.fail.on.unsupported.codec=false")
 EXTRA_FLAGS+=("--initialize-at-run-time=org.apache.lucene.internal.tests.TestSecrets")
 EXTRA_FLAGS+=("--trace-class-initialization=org.apache.lucene.internal.tests.TestSecrets")
 EXTRA_FLAGS+=("--initialize-at-run-time=org.apache.lucene.index.IndexWriter")
+EXTRA_FLAGS+=("--initialize-at-run-time=org.apache.lucene.index.ConcurrentMergeScheduler")
 
 while [[ $# -gt 0 ]]; do
     case $1 in
