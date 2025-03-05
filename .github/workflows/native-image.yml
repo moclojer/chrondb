@@ -2,15 +2,27 @@ name: Build Native Image
 
 on:
   push:
-    branches: [ main ]
     tags: [ 'v*' ]
   pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 jobs:
+  # Wait for tests to complete successfully
+  wait-for-tests:
+    name: Wait for Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for tests to succeed
+        uses: lewagon/wait-on-check-action@v1.3.1
+        with:
+          ref: ${{ github.ref }}
+          check-name: 'test'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+
   build-native-image:
     name: Build Native Image
+    needs: wait-for-tests
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
