@@ -1,5 +1,6 @@
 (ns chrondb.core
   "Core namespace for ChronDB - A chronological database with Git-like versioning"
+  (:gen-class)
   (:require [chrondb.api.server :as server]
             [chrondb.api.redis.core :as redis-core]
             [chrondb.storage.memory :as memory]

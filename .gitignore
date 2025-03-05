@@ -24,3 +24,8 @@ Thumbs.db
 
 # doc codox
 docs/api/
+
+# GraalVM
+svm_err_*
+reports/
+/chrondb

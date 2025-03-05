@@ -1,0 +1,20 @@
+{
+    "resources": [
+        {
+            "pattern": ".*\\.properties$"
+        },
+        {
+            "pattern": "META-INF/services/.*"
+        },
+        {
+            "pattern": "org/apache/lucene/.*"
+        },
+        {
+            "pattern": "org/eclipse/jgit/.*"
+        },
+        {
+            "pattern": "org/slf4j/.*"
+        }
+    ],
+    "bundles": []
+}

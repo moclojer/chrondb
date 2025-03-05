@@ -59,7 +59,7 @@
              :example {:main-opts ["-m" "chrondb.example"]
                        :exec-fn chrondb.example/-main}
              :build {:deps {io.github.clojure/tools.build {:git/tag "v0.9.4" :git/sha "76b78fe"}}
-                     :ns-default build}
+                     :ns-default dev.chrondb.build}
              :dev {:extra-paths ["dev"]
                    :extra-deps {ring/ring-devel {:mvn/version "1.10.0"}}}
              :uberjar {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.303"}}
