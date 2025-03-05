@@ -29,6 +29,7 @@ EXTRA_FLAGS+=("--initialize-at-run-time=org.apache.lucene.internal.tests.TestSec
 EXTRA_FLAGS+=("--trace-class-initialization=org.apache.lucene.internal.tests.TestSecrets")
 EXTRA_FLAGS+=("--initialize-at-run-time=org.apache.lucene.index.IndexWriter")
 EXTRA_FLAGS+=("--initialize-at-run-time=org.apache.lucene.index.ConcurrentMergeScheduler")
+EXTRA_FLAGS+=("--initialize-at-run-time=org.apache.lucene.index.SegmentReader")
 
 while [[ $# -gt 0 ]]; do
     case $1 in
