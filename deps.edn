@@ -14,7 +14,8 @@
              org.slf4j/slf4j-api                       {:mvn/version "2.0.9"}
              org.slf4j/slf4j-simple                    {:mvn/version "2.0.9"}
              talltale/talltale                         {:mvn/version "0.4.3"}
-             environ/environ                           {:mvn/version "1.2.0"}}
+             environ/environ                           {:mvn/version "1.2.0"}
+             com.github.clj-easy/graal-build-time      {:mvn/version "1.0.5"}}
  :aliases   {:test    {:extra-paths ["test"]
                        :extra-deps  {io.github.cognitect-labs/test-runner {:git/tag "v0.5.1" :git/sha "dfb30dd"}
                                      redis.clients/jedis                  {:mvn/version "5.1.0"}}
@@ -58,7 +59,8 @@
                          :doc "Run only the Redis protocol server (no REST API)"}
              :example {:main-opts ["-m" "chrondb.example"]
                        :exec-fn chrondb.example/-main}
-             :build {:deps {io.github.clojure/tools.build {:git/tag "v0.9.4" :git/sha "76b78fe"}}
+             :build {:deps {io.github.clojure/tools.build        {:git/tag "v0.9.4" :git/sha "76b78fe"}
+                            com.github.clj-easy/graal-build-time {:mvn/version "1.0.5"}}
                      :ns-default dev.chrondb.build}
              :dev {:extra-paths ["dev"]
                    :extra-deps {ring/ring-devel {:mvn/version "1.10.0"}}}

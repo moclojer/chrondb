@@ -75,10 +75,8 @@ jobs:
           restore-keys: ${{ runner.os }}-m2
 
       # Problema resolvido: Inicialização prematura de classes durante a construção da imagem nativa
-      # Solução: Adicionamos flags específicas para controlar a inicialização de classes
-      # 1. --initialize-at-build-time=clojure para inicializar Clojure em tempo de compilação
-      # 2. --initialize-at-run-time=... para especificar explicitamente as classes problemáticas
-      # Simplificamos a abordagem seguindo as práticas recomendadas do clj-easy/graalvm-clojure
+      # Solução: Usando clj-easy/graal-build-time para gerenciar automaticamente a inicialização de classes
+      # Isso simplifica o processo de build e evita problemas com classes específicas
       - name: Build using build.clj
         env:
           OUTPUT_NAME: ${{ matrix.artifact-name }}

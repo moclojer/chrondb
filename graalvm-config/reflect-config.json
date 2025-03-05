@@ -35,6 +35,24 @@
         "allPublicMethods": true
     },
     {
+        "name": "org.apache.lucene.index.ConcurrentMergeScheduler",
+        "allDeclaredConstructors": true,
+        "allPublicConstructors": true,
+        "allDeclaredMethods": true,
+        "allPublicMethods": true,
+        "allDeclaredFields": true,
+        "allPublicFields": true
+    },
+    {
+        "name": "org.apache.lucene.internal.tests.TestSecrets",
+        "allDeclaredConstructors": true,
+        "allPublicConstructors": true,
+        "allDeclaredMethods": true,
+        "allPublicMethods": true,
+        "allDeclaredFields": true,
+        "allPublicFields": true
+    },
+    {
         "name": "org.apache.lucene.store.FSDirectory",
         "allDeclaredConstructors": true,
         "allPublicConstructors": true,

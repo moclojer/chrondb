@@ -32,49 +32,38 @@
    - :static - Boolean flag to build a statically linked executable (default: false)
    - :output - String specifying the output file name (default: 'chrondb')
    - :extra_flags - Vector of additional flags to pass to native-image
-   - :enable_url_protocols - String of comma-separated URL protocols to enable
-   - :clj_easy - Boolean flag to use clj-easy/graalvm-clojure approach (default: true)"
-  [{:keys [verbose static output extra_flags enable_url_protocols clj_easy]
+   - :enable_url_protocols - String of comma-separated URL protocols to enable"
+  [{:keys [verbose static output extra_flags enable_url_protocols]
     :or {verbose false
          static false
          output native-image-name
          extra_flags []
-         enable_url_protocols "http,https"
-         clj_easy true}}]
+         enable_url_protocols "http,https"}}]
   (println "Building native image...")
-  (let [base-command ["native-image"
-                      "--no-fallback"
-                      "--report-unsupported-elements-at-runtime"]
-        init-flags (if clj_easy
-                     ["--initialize-at-build-time=clojure"
-                      "--initialize-at-build-time=org.slf4j"
-                      "--initialize-at-build-time=ch.qos.logback"
-                      "--initialize-at-run-time=java.lang.Thread"
-                      "--initialize-at-run-time=org.eclipse.jetty.server.Server"
-                      "--initialize-at-run-time=org.eclipse.jetty.util.thread.QueuedThreadPool"
-                      "--initialize-at-run-time=java.security.SecureRandom"]
-                     [])
-        url-protocols (str "-H:EnableURLProtocols=" enable_url_protocols)
-        reflection-config "-H:ReflectionConfigurationFiles=graalvm-config/reflect-config.json"
-        resource-config "-H:ResourceConfigurationFiles=graalvm-config/resource-config.json"
-        clj-easy-flags (if clj_easy
-                         ["-H:+RemoveSaturatedTypeFlows"]
-                         [])
-        command (cond-> (vec (concat base-command
-                                     extra_flags
-                                     init-flags
-                                     [url-protocols reflection-config resource-config]
-                                     clj-easy-flags))
+
+  ;; Configurações básicas para o GraalVM
+  (let [graal-configs ["--no-fallback"
+                       "--report-unsupported-elements-at-runtime"
+                       "-H:-CheckToolchain"
+                       "-Dlucene.tests.security.manager=false"
+                       "-Dlucene.tests.fail.on.unsupported.codec=false"
+                       "--features=clj_easy.graal_build_time.InitClojureClasses"
+                       "--allow-incomplete-classpath"
+                       (str "-H:EnableURLProtocols=" enable_url_protocols)
+                       "-H:ReflectionConfigurationFiles=graalvm-config/reflect-config.json"
+                       "-H:ResourceConfigurationFiles=graalvm-config/resource-config.json"
+                       "-H:+ReportExceptionStackTraces"
+                       "-H:+RemoveSaturatedTypeFlows"
+                       "-H:+AddAllCharsets"]
+
+        ;; Adicionar flags condicionais
+        command (cond-> (vec (concat graal-configs
+                                     extra_flags))
                   verbose (conj "--verbose")
                   static (conj "--static")
-                  true (concat ["-H:+ReportExceptionStackTraces"
-                                "-H:-CheckToolchain"
-                                "-H:ConfigurationFileDirectories=graalvm-config"
-                                "-H:+PrintClassInitialization"
-                                "-H:+AllowIncompleteClasspath"
-                                "-H:+AddAllCharsets"
-                                "-H:+UnlockExperimentalVMOptions"
-                                "-jar" uber-file output]))]
+                  true (concat ["-jar" uber-file output]))]
+
     (println "Running command:" (clojure.string/join " " command))
-    (b/process {:command-args command}))
+    (b/process {:command-args (into ["native-image"] command)}))
+
   (println "Native image built successfully:" (str "./" output)))

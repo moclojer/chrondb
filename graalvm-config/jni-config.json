@@ -1,0 +1,20 @@
+ [
+  {
+    "name": "org.apache.lucene.internal.tests.TestSecrets",
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": []
+      }
+    ]
+  },
+  {
+    "name": "org.apache.lucene.index.ConcurrentMergeScheduler",
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": []
+      }
+    ]
+  }
+]

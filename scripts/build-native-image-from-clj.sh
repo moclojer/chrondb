@@ -9,7 +9,6 @@ VERBOSE=true
 STATIC=false
 OUTPUT_NAME=${OUTPUT_NAME:-"chrondb"}
 EXTRA_FLAGS=()
-CLJ_EASY=true
 
 # Use o JAVA_HOME definido ou mantenha o valor atual
 # No GitHub Actions, o JAVA_HOME já estará configurado corretamente
@@ -21,17 +20,11 @@ fi
 export JAVA_HOME
 export PATH=$JAVA_HOME/bin:$PATH
 
-# Simplificando as flags para seguir a abordagem do clj-easy/graalvm-clojure
-# Inicializar Clojure em tempo de compilação, mas deixar classes problemáticas para tempo de execução
-EXTRA_FLAGS+=("--initialize-at-build-time=clojure")
-EXTRA_FLAGS+=("--initialize-at-build-time=org.slf4j")
-EXTRA_FLAGS+=("--initialize-at-build-time=ch.qos.logback")
-EXTRA_FLAGS+=("--initialize-at-run-time=java.lang.Thread")
-EXTRA_FLAGS+=("--initialize-at-run-time=org.eclipse.jetty.server.Server")
-EXTRA_FLAGS+=("--initialize-at-run-time=org.eclipse.jetty.util.thread.QueuedThreadPool")
-EXTRA_FLAGS+=("--initialize-at-run-time=java.security.SecureRandom")
+# Simplificando as flags - o graal-build-time vai cuidar da inicialização das classes
 EXTRA_FLAGS+=("--no-fallback")
 EXTRA_FLAGS+=("--allow-incomplete-classpath")
+EXTRA_FLAGS+=("-Dlucene.tests.security.manager=false")
+EXTRA_FLAGS+=("-Dlucene.tests.fail.on.unsupported.codec=false")
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -58,13 +51,9 @@ while [[ $# -gt 0 ]]; do
             shift 2
         fi
         ;;
-    --no-clj-easy)
-        CLJ_EASY=false
-        shift
-        ;;
     *)
         echo "Unknown option: $1"
-        echo "Usage: $0 [--static] [--output NAME] [--extra-flags '[flag1,flag2,...]'] [--no-clj-easy]"
+        echo "Usage: $0 [--static] [--output NAME] [--extra-flags '[flag1,flag2,...]']"
         exit 1
         ;;
     esac
@@ -121,18 +110,6 @@ fi
 
 # Create necessary directories
 mkdir -p reports
-mkdir -p graalvm-config
-
-# Ensure graalvm-config directory has necessary files
-if [ ! -f "graalvm-config/reflect-config.json" ]; then
-    echo "Creating empty reflect-config.json"
-    echo '[]' > graalvm-config/reflect-config.json
-fi
-
-if [ ! -f "graalvm-config/resource-config.json" ]; then
-    echo "Creating default resource-config.json"
-    echo '{"resources":{"includes":[{"pattern":"\\QMETA-INF/services/.*\\E"}],"excludes":[]}}' > graalvm-config/resource-config.json
-fi
 
 # Primeiro, construir o JAR usando a tarefa 'uber'
 echo "Building uber JAR using build.clj..."
@@ -157,7 +134,6 @@ echo "Building native image using build.clj..."
 PARAMS="{:verbose $VERBOSE"
 PARAMS="$PARAMS :static $STATIC"
 PARAMS="$PARAMS :output \"$OUTPUT_NAME\""
-PARAMS="$PARAMS :clj_easy $CLJ_EASY"
 
 # Adicionar extra_flags se houver
 if [ ${#EXTRA_FLAGS[@]} -gt 0 ]; then
@@ -180,6 +156,6 @@ echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
 
 # Execute the command
 echo "Executing clojure with params: $PARAMS"
-clojure -T:build native-image "$PARAMS"
+clojure -A:build -T:build native-image "$PARAMS"
 
 echo "Native image build completed. You can run it with: ./$OUTPUT_NAME"
