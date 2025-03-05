@@ -109,37 +109,42 @@ if [ ! -f "graalvm-config/resource-config.json" ]; then
     exit 1
 fi
 
-# Build using the native-image function from build.clj
+# Primeiro, construir o JAR usando a tarefa 'uber'
+echo "Building uber JAR using build.clj..."
+clojure -T:build uber
+
+# Verificar se o JAR foi criado com sucesso
+if [ ! -f "target/chrondb-chrondb-*.jar" ]; then
+    # Tentar encontrar o JAR gerado
+    JAR_FILE=$(find target -name "*.jar" | head -n 1)
+    if [ -z "$JAR_FILE" ]; then
+        echo "Failed to build JAR file. Exiting."
+        exit 1
+    else
+        echo "Found JAR file: $JAR_FILE"
+    fi
+fi
+
+# Em seguida, construir a imagem nativa
 echo "Building native image using build.clj..."
 
-# Construct the Clojure command
-CLOJURE_PARAMS=""
+# Construir os parâmetros como uma string EDN válida para Clojure
+PARAMS="{:verbose $VERBOSE"
+PARAMS="$PARAMS :static $STATIC"
+PARAMS="$PARAMS :output \"$OUTPUT_NAME\""
+PARAMS="$PARAMS :clj_easy $CLJ_EASY"
 
-# Add options
-if [ "$VERBOSE" = true ]; then
-    CLOJURE_PARAMS="$CLOJURE_PARAMS :verbose true"
-fi
-
-if [ "$STATIC" = true ]; then
-    CLOJURE_PARAMS="$CLOJURE_PARAMS :static true"
-fi
-
-if [ -n "$OUTPUT_NAME" ]; then
-    CLOJURE_PARAMS="$CLOJURE_PARAMS :output '\"$OUTPUT_NAME\"'"
-fi
-
-if [ "$CLJ_EASY" = true ]; then
-    CLOJURE_PARAMS="$CLOJURE_PARAMS :clj_easy true"
-else
-    CLOJURE_PARAMS="$CLOJURE_PARAMS :clj_easy false"
-fi
-
-# Add extra flags if any
+# Adicionar extra_flags se houver
 if [ ${#EXTRA_FLAGS[@]} -gt 0 ]; then
-    EXTRA_FLAGS_STR=$(printf "%s," "${EXTRA_FLAGS[@]}")
-    EXTRA_FLAGS_STR=${EXTRA_FLAGS_STR%,} # Remove trailing comma
-    CLOJURE_PARAMS="$CLOJURE_PARAMS :extra_flags '[\"$EXTRA_FLAGS_STR\"]'"
+    PARAMS="$PARAMS :extra_flags ["
+    for flag in "${EXTRA_FLAGS[@]}"; do
+        PARAMS="$PARAMS \"$flag\" "
+    done
+    PARAMS="$PARAMS]"
 fi
+
+# Fechar o mapa de parâmetros
+PARAMS="$PARAMS}"
 
 # Print environment variables for debugging
 echo "Environment variables:"
@@ -149,7 +154,7 @@ echo "DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH"
 echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
 
 # Execute the command
-echo "Executing clojure params: $CLOJURE_PARAMS"
-clojure -T:build native-image $CLOJURE_PARAMS
+echo "Executing clojure with params: $PARAMS"
+clojure -T:build native-image "$PARAMS"
 
 echo "Native image build completed. You can run it with: ./$OUTPUT_NAME"
