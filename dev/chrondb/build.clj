@@ -46,7 +46,10 @@
                                  "java.security.SecureRandom"
                                  "org.eclipse.jgit.transport.HttpAuthMethod"
                                  "org.eclipse.jgit.internal.storage.file.WindowCache"
-                                 "org.eclipse.jgit.util.FileUtils"]
+                                 "org.eclipse.jgit.util.FileUtils"
+                                 "sun.security.jca.JCAUtil$CachedSecureRandomHolder"
+                                 "org.eclipse.jgit.util.sha1.SHA1"
+                                 "org.eclipse.jgit.lib.RepositoryCache"]
          enable_url_protocols "http,https"
          clj_easy true}}]
   (println "Building native image...")

@@ -25,7 +25,7 @@ export PATH=$JAVA_HOME/bin:$PATH
 # Primeiro, definir --initialize-at-build-time como vazio para desativar a inicialização padrão
 EXTRA_FLAGS+=("--initialize-at-build-time=")
 # Em seguida, especificar explicitamente as classes que devem ser inicializadas em tempo de execução
-EXTRA_FLAGS+=("--initialize-at-run-time=org.eclipse.jetty.server.Server,org.eclipse.jetty.util.thread.QueuedThreadPool,org.eclipse.jgit.lib.internal.WorkQueue,java.security.SecureRandom,org.eclipse.jgit.transport.HttpAuthMethod,org.eclipse.jgit.internal.storage.file.WindowCache,org.eclipse.jgit.util.FileUtils,com.sun.jndi.dns.DnsClient,sun.security.jca.JCAUtil$CachedSecureRandomHolder,org.eclipse.jgit.util.sha1.SHA1,org.eclipse.jgit.lib.RepositoryCache")
+EXTRA_FLAGS+=("--initialize-at-run-time=org.eclipse.jetty.server.Server,org.eclipse.jetty.util.thread.QueuedThreadPool,org.eclipse.jgit.lib.internal.WorkQueue,java.security.SecureRandom,org.eclipse.jgit.transport.HttpAuthMethod,org.eclipse.jgit.internal.storage.file.WindowCache,org.eclipse.jgit.util.FileUtils,sun.security.jca.JCAUtil$CachedSecureRandomHolder,org.eclipse.jgit.util.sha1.SHA1,org.eclipse.jgit.lib.RepositoryCache")
 EXTRA_FLAGS+=("--no-fallback")
 EXTRA_FLAGS+=("--allow-incomplete-classpath")
 

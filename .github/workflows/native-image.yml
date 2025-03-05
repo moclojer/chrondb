@@ -86,7 +86,7 @@ jobs:
           JAVA_OPTS: "-Xmx6g"
         run: |
           chmod +x ./scripts/build-native-image-from-clj.sh
-          ./scripts/build-native-image-from-clj.sh --extra-flags "--trace-class-initialization=org.eclipse.jetty.server.Server,org.eclipse.jgit.lib.internal.WorkQueue,org.eclipse.jgit.util.FileUtils,java.security.SecureRandom,com.sun.jndi.dns.DnsClient,sun.security.jca.JCAUtil$CachedSecureRandomHolder,org.eclipse.jgit.util.sha1.SHA1,org.eclipse.jgit.lib.RepositoryCache"
+          ./scripts/build-native-image-from-clj.sh --extra-flags "--trace-class-initialization=org.eclipse.jetty.server.Server,org.eclipse.jgit.lib.internal.WorkQueue,org.eclipse.jgit.util.FileUtils,java.security.SecureRandom,sun.security.jca.JCAUtil$CachedSecureRandomHolder,org.eclipse.jgit.util.sha1.SHA1,org.eclipse.jgit.lib.RepositoryCache"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
