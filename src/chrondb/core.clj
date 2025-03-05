@@ -5,6 +5,7 @@
             [chrondb.api.redis.core :as redis-core]
             [chrondb.storage.memory :as memory]
             [chrondb.index.lucene :as lucene]
+            [chrondb.index.protocol :as index-protocol]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -63,6 +64,26 @@
           :else
           (recur (rest remaining) options))))))
 
+(defn create-index
+  "Creates a Lucene index with exception handling for initialization problems"
+  [index-path]
+  (try
+    (lucene/create-lucene-index index-path)
+    (catch Throwable t
+      (if (or (instance? java.lang.ExceptionInInitializerError t)
+              (and (.getCause t)
+                   (instance? java.lang.ClassNotFoundException (.getCause (.getCause t)))))
+        (do
+          (println "WARNING: Problem initializing Lucene. Using alternative index.")
+          ;; Return an alternative or mock index
+          (reify
+            index-protocol/Index
+            (index-document [_ doc] doc)
+            (search [_ _] [])
+            (delete-document [_ _] nil)
+            (close [_] nil)))
+        (throw t)))))
+
 (defn -main
   "Entry point for the ChronDB application.
    Initializes the storage and index components and starts the HTTP server.
@@ -77,7 +98,7 @@
   (ensure-data-directories)
   (let [options (parse-args args)
         storage (memory/create-memory-storage)
-        index (lucene/create-lucene-index "data/index")
+        index (create-index "data/index") ;; TODO: use the configuration index, not hardcoded
         http-port (Integer/parseInt (:http-port options))
         redis-port (Integer/parseInt (:redis-port options))
         disable-redis (:disable-redis options)
