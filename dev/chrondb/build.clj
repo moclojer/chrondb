@@ -67,7 +67,12 @@
         clj-easy-flags (if clj_easy
                          ["-H:+RemoveSaturatedTypeFlows"]
                          [])
-        command (cond-> (vec (concat base-command extra_flags init-at-buildtime init-at-runtime [url-protocols reflection-config resource-config] clj-easy-flags))
+        command (cond-> (vec (concat base-command
+                                     extra_flags
+                                     init-at-buildtime
+                                     init-at-runtime
+                                     [url-protocols reflection-config resource-config]
+                                     clj-easy-flags))
                   verbose (conj "--verbose")
                   static (conj "--static")
                   true (concat ["-H:+ReportExceptionStackTraces"

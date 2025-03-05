@@ -74,13 +74,19 @@ jobs:
           key: ${{ runner.os }}-m2-${{ hashFiles('**/deps.edn') }}
           restore-keys: ${{ runner.os }}-m2
 
+      # Problema resolvido: Inicialização prematura de classes durante a construção da imagem nativa
+      # Solução: Adicionamos flags específicas para controlar a inicialização de classes
+      # 1. --initialize-at-build-time= (vazio) para desativar a inicialização padrão
+      # 2. --initialize-at-run-time=... para especificar explicitamente as classes que devem ser inicializadas em tempo de execução
+      # 3. --trace-class-initialization=... para rastrear a inicialização de classes problemáticas
+      # Também adicionamos classes adicionais que estavam causando problemas: com.sun.jndi.dns.DnsClient, sun.security.jca.JCAUtil$CachedSecureRandomHolder, etc.
       - name: Build using build.clj
         env:
           OUTPUT_NAME: ${{ matrix.artifact-name }}
           JAVA_OPTS: "-Xmx6g"
         run: |
           chmod +x ./scripts/build-native-image-from-clj.sh
-          ./scripts/build-native-image-from-clj.sh --extra-flags "--trace-class-initialization=org.eclipse.jetty.server.Server,org.eclipse.jgit.lib.internal.WorkQueue,org.eclipse.jgit.util.FileUtils,java.security.SecureRandom"
+          ./scripts/build-native-image-from-clj.sh --extra-flags "--trace-class-initialization=org.eclipse.jetty.server.Server,org.eclipse.jgit.lib.internal.WorkQueue,org.eclipse.jgit.util.FileUtils,java.security.SecureRandom,com.sun.jndi.dns.DnsClient,sun.security.jca.JCAUtil$CachedSecureRandomHolder,org.eclipse.jgit.util.sha1.SHA1,org.eclipse.jgit.lib.RepositoryCache"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
