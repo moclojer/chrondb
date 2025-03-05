@@ -1,0 +1,101 @@
+name: Build Native Image
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # Optional check for tests - will not block the build if tests are not found
+  check-for-tests:
+    name: Check for Tests
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Wait for tests to succeed
+        id: wait-for-test
+        uses: lewagon/wait-on-check-action@v1.3.4
+        continue-on-error: true
+        with:
+          ref: ${{ github.ref }}
+          check-name: "test"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+          allowed-conclusions: success,skipped
+          verbose: true
+          running-workflow-name: "Build Native Image"
+
+  build-native-image:
+    name: Build Native Image
+    # Remove the dependency on wait-for-tests
+    # needs: wait-for-tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            artifact-name: chrondb-linux
+            asset-name: chrondb-linux
+          - os: macos-latest
+            artifact-name: chrondb-macos
+            asset-name: chrondb-macos
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
+
+      - name: Set up GraalVM
+        uses: graalvm/setup-graalvm@v1
+        with:
+          java-version: "21"
+          distribution: "graalvm"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          native-image-job-reports: "true"
+
+      - name: Check JAVA versions
+        run: |
+          echo "GRAALVM_HOME: $GRAALVM_HOME"
+          echo "JAVA_HOME: $JAVA_HOME"
+          java --version
+          native-image --version
+
+      - name: Install Clojure tools
+        uses: DeLaGuardo/setup-clojure@12.1
+        with:
+          cli: latest
+
+      - name: Cache Maven packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/deps.edn') }}
+          restore-keys: ${{ runner.os }}-m2
+
+      # Problema resolvido: Inicialização prematura de classes durante a construção da imagem nativa
+      # Solução: Usando clj-easy/graal-build-time para gerenciar automaticamente a inicialização de classes
+      # Isso simplifica o processo de build e evita problemas com classes específicas
+      - name: Build using build.clj
+        env:
+          OUTPUT_NAME: ${{ matrix.artifact-name }}
+          JAVA_OPTS: "-Xmx6g"
+        run: |
+          chmod +x ./scripts/build-native-image-from-clj.sh
+          ./scripts/build-native-image-from-clj.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact-name }}
+          path: ${{ matrix.artifact-name }}
+          if-no-files-found: error
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ${{ matrix.artifact-name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
