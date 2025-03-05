@@ -2,7 +2,7 @@ name: Build Native Image
 
 on:
   push:
-    tags: [ 'v*' ]
+    tags: ["v*"]
   pull_request:
   workflow_dispatch:
 
@@ -19,12 +19,12 @@ jobs:
         continue-on-error: true
         with:
           ref: ${{ github.ref }}
-          check-name: 'test'
+          check-name: "test"
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           wait-interval: 10
           allowed-conclusions: success,skipped
           verbose: true
-          running-workflow-name: 'Build Native Image'
+          running-workflow-name: "Build Native Image"
 
   build-native-image:
     name: Build Native Image
@@ -50,10 +50,10 @@ jobs:
       - name: Set up GraalVM
         uses: graalvm/setup-graalvm@v1
         with:
-          java-version: '17'
-          distribution: 'graalvm'
+          java-version: "21"
+          distribution: "graalvm"
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          native-image-job-reports: 'true'
+          native-image-job-reports: "true"
 
       - name: Check JAVA versions
         run: |
@@ -77,9 +77,10 @@ jobs:
       - name: Build using build.clj
         env:
           OUTPUT_NAME: ${{ matrix.artifact-name }}
+          JAVA_OPTS: "-Xmx6g"
         run: |
           chmod +x ./scripts/build-native-image-from-clj.sh
-          ./scripts/build-native-image-from-clj.sh
+          ./scripts/build-native-image-from-clj.sh --extra-flags "--trace-class-initialization=org.eclipse.jetty.server.Server,org.eclipse.jgit.lib.internal.WorkQueue,org.eclipse.jgit.util.FileUtils,java.security.SecureRandom"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

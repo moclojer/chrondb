@@ -52,8 +52,7 @@
   (println "Building native image...")
   (let [base-command ["native-image"
                       "--no-fallback"
-                      "--report-unsupported-elements-at-runtime"
-                      "--initialize-at-build-time"]
+                      "--report-unsupported-elements-at-runtime"]
         init-at-runtime (if clj_easy
                           [(str "--initialize-at-run-time=" (clojure.string/join "," initialize_at_run_time))]
                           (mapcat #(vector "--initialize-at-run-time=" %) initialize_at_run_time))
@@ -68,7 +67,7 @@
         clj-easy-flags (if clj_easy
                          ["-H:+RemoveSaturatedTypeFlows"]
                          [])
-        command (cond-> (vec (concat base-command init-at-buildtime init-at-runtime [url-protocols reflection-config resource-config] clj-easy-flags extra_flags))
+        command (cond-> (vec (concat base-command extra_flags init-at-buildtime init-at-runtime [url-protocols reflection-config resource-config] clj-easy-flags))
                   verbose (conj "--verbose")
                   static (conj "--static")
                   true (concat ["-H:+ReportExceptionStackTraces"

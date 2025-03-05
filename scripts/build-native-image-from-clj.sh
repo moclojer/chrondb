@@ -17,8 +17,15 @@ if [ -z "$JAVA_HOME" ]; then
     echo "JAVA_HOME is not set, using default GraalVM path"
     JAVA_HOME=/nix/store/44rl2mxaqh7i0qbmlc1zjgfcw9dkr65a-graalvm-oracle-22
 fi
+
 export JAVA_HOME
 export PATH=$JAVA_HOME/bin:$PATH
+
+# Adicionar flags para evitar inicialização prematura de classes
+EXTRA_FLAGS+=("--initialize-at-build-time=")
+EXTRA_FLAGS+=("--initialize-at-run-time=org.eclipse.jetty.server.Server,org.eclipse.jetty.util.thread.QueuedThreadPool,org.eclipse.jgit.lib.internal.WorkQueue,java.security.SecureRandom,org.eclipse.jgit.transport.HttpAuthMethod,org.eclipse.jgit.internal.storage.file.WindowCache,org.eclipse.jgit.util.FileUtils")
+EXTRA_FLAGS+=("--no-fallback")
+EXTRA_FLAGS+=("--allow-incomplete-classpath")
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -31,7 +38,17 @@ while [[ $# -gt 0 ]]; do
         shift 2
         ;;
     --extra-flags)
-        EXTRA_FLAGS+=("$2")
+        # Tratar as flags extras como uma string única ou como múltiplos argumentos
+        if [[ "$2" == "--"* ]]; then
+            # Se começa com --, é uma única flag
+            EXTRA_FLAGS+=("$2")
+        else
+            # Caso contrário, dividir a string em múltiplas flags
+            IFS=',' read -ra FLAGS <<< "$2"
+            for flag in "${FLAGS[@]}"; do
+                EXTRA_FLAGS+=("$flag")
+            done
+        fi
         shift 2
         ;;
     --no-clj-easy)
@@ -97,16 +114,17 @@ fi
 
 # Create necessary directories
 mkdir -p reports
+mkdir -p graalvm-config
 
 # Ensure graalvm-config directory has necessary files
 if [ ! -f "graalvm-config/reflect-config.json" ]; then
-    echo "not found graalvm-config/reflect-config.json"
-    exit 1
+    echo "Creating empty reflect-config.json"
+    echo '[]' > graalvm-config/reflect-config.json
 fi
 
 if [ ! -f "graalvm-config/resource-config.json" ]; then
-    echo "not found graalvm-config/resource-config.json"
-    exit 1
+    echo "Creating default resource-config.json"
+    echo '{"resources":{"includes":[{"pattern":"\\QMETA-INF/services/.*\\E"}],"excludes":[]}}' > graalvm-config/resource-config.json
 fi
 
 # Primeiro, construir o JAR usando a tarefa 'uber'
