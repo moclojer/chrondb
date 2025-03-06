@@ -8,23 +8,23 @@ on:
 
 jobs:
   # Optional check for tests - will not block the build if tests are not found
-  check-for-tests:
-    name: Check for Tests
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - name: Wait for tests to succeed
-        id: wait-for-test
-        uses: lewagon/wait-on-check-action@v1.3.4
-        continue-on-error: true
-        with:
-          ref: ${{ github.ref }}
-          check-name: "test"
-          repo-token: ${{ secrets.GITHUB_TOKEN }}
-          wait-interval: 10
-          allowed-conclusions: success,skipped
-          verbose: true
-          running-workflow-name: "Build Native Image"
+  # check-for-tests:
+  #   name: Check for Tests
+  #   runs-on: ubuntu-latest
+  #   continue-on-error: true
+  #   steps:
+  #     - name: Wait for tests to succeed
+  #       id: wait-for-test
+  #       uses: lewagon/wait-on-check-action@v1.3.4
+  #       continue-on-error: true
+  #       with:
+  #         ref: ${{ github.ref }}
+  #         check-name: "test"
+  #         repo-token: ${{ secrets.GITHUB_TOKEN }}
+  #         wait-interval: 10
+  #         allowed-conclusions: success,skipped
+  #         verbose: true
+  #         running-workflow-name: "Build Native Image"
 
   build-native-image:
     name: Build Native Image

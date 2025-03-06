@@ -42,8 +42,33 @@ fi
 if [[ "$(uname)" == "Linux" ]]; then
     export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:/usr/lib:/lib:$LD_LIBRARY_PATH"
     export LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:/usr/lib:/lib:$LIBRARY_PATH"
-    # Adicionando esse flag apenas para garantir que o linker encontre as bibliotecas
-    EXTRA_FLAGS+=("-H:CLibraryPath=/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:/usr/lib:/lib")
+
+    # Adicionar cada diretório de biblioteca como uma flag separada
+    EXTRA_FLAGS+=("-H:CLibraryPath=/usr/lib/x86_64-linux-gnu")
+    EXTRA_FLAGS+=("-H:CLibraryPath=/lib/x86_64-linux-gnu")
+    EXTRA_FLAGS+=("-H:CLibraryPath=/usr/lib")
+    EXTRA_FLAGS+=("-H:CLibraryPath=/lib")
+fi
+
+# Find libdl on Linux for dynamic linking support
+if [[ "$(uname)" == "Linux" ]]; then
+    echo "Detected Linux, searching for libdl..."
+    LIBDL_PATH=$(find /usr/lib* /lib* -name "libdl.so*" 2>/dev/null | head -n 1)
+
+    if [[ -n "$LIBDL_PATH" ]]; then
+        echo "Found libdl at: $LIBDL_PATH"
+        LIBDL_DIR=$(dirname "$LIBDL_PATH")
+        echo "Setting LD_LIBRARY_PATH to include: $LIBDL_DIR"
+        export LD_LIBRARY_PATH="$LIBDL_DIR:$LD_LIBRARY_PATH"
+        # Add extra flag to ensure the linker can find libdl
+        EXTRA_FLAGS+=("-H:CLibraryPath=$LIBDL_DIR")
+    fi
+
+    # Add specific flags to handle JDK internal class initialization issues
+    EXTRA_FLAGS+=("--enable-monitoring")
+    EXTRA_FLAGS+=("-H:+AddAllCharsets")
+    EXTRA_FLAGS+=("-H:+JNI")
+    EXTRA_FLAGS+=("--no-fallback")
 fi
 
 while [[ $# -gt 0 ]]; do
@@ -105,7 +130,7 @@ if [[ "$(uname)" == "Darwin" ]]; then
         export DYLD_LIBRARY_PATH="$LIBZ_DIR:$DYLD_LIBRARY_PATH"
         # Set LD_LIBRARY_PATH as well for good measure
         export LD_LIBRARY_PATH="$LIBZ_DIR:$LD_LIBRARY_PATH"
-        # Add extra flags to ensure the linker can find libz
+        # Add extra flag to ensure the linker can find libz
         EXTRA_FLAGS+=("-H:CLibraryPath=$LIBZ_DIR")
     else
         echo "Could not find libz.dylib, will rely on system defaults"
@@ -121,7 +146,7 @@ elif [[ "$(uname)" == "Linux" ]]; then
         LIBZ_DIR=$(dirname "$LIBZ_PATH")
         echo "Setting LD_LIBRARY_PATH to include: $LIBZ_DIR"
         export LD_LIBRARY_PATH="$LIBZ_DIR:$LD_LIBRARY_PATH"
-        # Add extra flags to ensure the linker can find libz
+        # Add extra flag to ensure the linker can find libz
         EXTRA_FLAGS+=("-H:CLibraryPath=$LIBZ_DIR")
     else
         echo "Could not find libz.so, will rely on system defaults"
@@ -188,6 +213,13 @@ echo "DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH"
 echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
 echo "LIBZ_PATH=$LIBZ_PATH"
 
+# Set Memory Configuration for GraalVM
+export JAVA_OPTS="-Xmx8g -Xms2g"
+# Configurações para evitar problemas com ScopedMemoryAccess
+export JAVA_TOOL_OPTIONS="-Djdk.internal.foreign.DisableNativeAccess=true -Dsun.misc.Unsafe.disableUnsafe=true"
+# Adicionar flag para não inicializar classes problemáticas no Java 21
+EXTRA_FLAGS+=("--initialize-at-build-time=jdk.internal")
+
 # Execute the command
 echo "Executing clojure with params: $PARAMS"
 clojure -A:build -T:build native-image "$PARAMS" || {
@@ -201,6 +233,6 @@ if [ -f "./$OUTPUT_NAME" ]; then
     echo "Native image built successfully. You can run it with: ./$OUTPUT_NAME"
     exit 0
 else
-    echo "Failed to build native image."
+    echo "Failed to build native image. Image file './$OUTPUT_NAME' not found."
     exit 1
 fi
