@@ -60,7 +60,8 @@
                        "-H:ResourceConfigurationFiles=graalvm-config/resource-config.json"
                        "-H:+ReportExceptionStackTraces"
                        "-H:+RemoveSaturatedTypeFlows"
-                       "-H:+AddAllCharsets"]
+                       "-H:+AddAllCharsets"
+                       "-H:+UnlockExperimentalVMOptions"]
 
         ;; Adicionar flags condicionais
         command (cond-> (vec (concat graal-configs

@@ -74,6 +74,37 @@ jobs:
           key: ${{ runner.os }}-m2-${{ hashFiles('**/deps.edn') }}
           restore-keys: ${{ runner.os }}-m2
 
+      - name: Install required libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zlib1g-dev libpthread-stubs0-dev libc6-dev
+          echo "Verificando bibliotecas instaladas:"
+          ldconfig -p | grep libz
+          ldconfig -p | grep libpthread
+          ldconfig -p | grep libdl
+
+      - name: Install required libraries (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install zlib
+          echo "Verificando bibliotecas instaladas:"
+          ls -la /usr/lib/libz*
+          ls -la /usr/lib/libpthread*
+          ls -la /usr/lib/libdl*
+
+      - name: Check build environment
+        run: |
+          echo "Verificando ambiente de compilação:"
+          echo "JAVA_HOME: $JAVA_HOME"
+          echo "GRAALVM_HOME: $GRAALVM_HOME"
+          echo "PATH: $PATH"
+          echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
+          echo "DYLD_LIBRARY_PATH: $DYLD_LIBRARY_PATH"
+          echo "LIBRARY_PATH: $LIBRARY_PATH"
+          echo "Verificando GCC:"
+          gcc --version
+
       # Problema resolvido: Inicialização prematura de classes durante a construção da imagem nativa
       # Solução: Usando clj-easy/graal-build-time para gerenciar automaticamente a inicialização de classes
       # Isso simplifica o processo de build e evita problemas com classes específicas

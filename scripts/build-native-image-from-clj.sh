@@ -3,6 +3,7 @@
 # This script leverages the Clojure build tooling directly
 
 set -e
+set -x  # Imprimir comandos para facilitar o debug
 
 # Default options
 VERBOSE=true
@@ -20,16 +21,30 @@ fi
 export JAVA_HOME
 export PATH=$JAVA_HOME/bin:$PATH
 
-# Simplificando as flags - o graal-build-time vai cuidar da inicialização das classes
-EXTRA_FLAGS+=("--no-fallback")
-EXTRA_FLAGS+=("--allow-incomplete-classpath")
-EXTRA_FLAGS+=("-Dlucene.tests.security.manager=false")
-EXTRA_FLAGS+=("-Dlucene.tests.fail.on.unsupported.codec=false")
-EXTRA_FLAGS+=("--initialize-at-run-time=org.apache.lucene.internal.tests.TestSecrets")
-EXTRA_FLAGS+=("--trace-class-initialization=org.apache.lucene.internal.tests.TestSecrets")
-EXTRA_FLAGS+=("--initialize-at-run-time=org.apache.lucene.index.IndexWriter")
-EXTRA_FLAGS+=("--initialize-at-run-time=org.apache.lucene.index.ConcurrentMergeScheduler")
-EXTRA_FLAGS+=("--initialize-at-run-time=org.apache.lucene.index.SegmentReader")
+echo "======== ENVIRONMENT INFO ========"
+echo "Running as user: $(whoami)"
+echo "Java version: $(java -version 2>&1)"
+echo "GraalVM version: $(native-image --version 2>&1 || echo 'GraalVM native-image not available')"
+echo "Working directory: $(pwd)"
+echo "=================================="
+
+# Verificar se a biblioteca libz está instalada
+if [[ "$(uname)" == "Linux" ]]; then
+    echo "Verificando bibliotecas instaladas no Linux:"
+    ldconfig -p | grep libz || echo "libz não encontrado via ldconfig"
+    ls -la /usr/lib*/libz* /lib*/libz* 2>/dev/null || echo "libz não encontrado nos diretórios padrão"
+elif [[ "$(uname)" == "Darwin" ]]; then
+    echo "Verificando bibliotecas instaladas no macOS:"
+    ls -la /usr/lib/libz* 2>/dev/null || echo "libz não encontrado em /usr/lib"
+fi
+
+# Adicionar diretórios de bibliotecas para o processo de linkagem
+if [[ "$(uname)" == "Linux" ]]; then
+    export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:/usr/lib:/lib:$LD_LIBRARY_PATH"
+    export LIBRARY_PATH="/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:/usr/lib:/lib:$LIBRARY_PATH"
+    # Adicionando esse flag apenas para garantir que o linker encontre as bibliotecas
+    EXTRA_FLAGS+=("-H:CLibraryPath=/usr/lib/x86_64-linux-gnu:/lib/x86_64-linux-gnu:/usr/lib:/lib")
+fi
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -110,15 +125,28 @@ elif [[ "$(uname)" == "Linux" ]]; then
         EXTRA_FLAGS+=("-H:CLibraryPath=$LIBZ_DIR")
     else
         echo "Could not find libz.so, will rely on system defaults"
+
+        # Em ambientes Docker/CI, podemos precisar instalar libz
+        if [ -f "/etc/apt/sources.list" ]; then
+            echo "Tentando instalar zlib1g-dev via apt-get..."
+            apt-get update || sudo apt-get update
+            apt-get install -y zlib1g-dev || sudo apt-get install -y zlib1g-dev
+        fi
     fi
 fi
 
 # Create necessary directories
 mkdir -p reports
+mkdir -p target
 
 # Primeiro, construir o JAR usando a tarefa 'uber'
 echo "Building uber JAR using build.clj..."
-clojure -T:build uber
+clojure -T:build uber || {
+    echo "Falha ao construir o JAR. Verificando ambiente..."
+    clojure -Spath
+    ls -la target/
+    exit 1
+}
 
 # Verificar se o JAR foi criado com sucesso
 if [ ! -f "target/chrondb-chrondb-*.jar" ]; then
@@ -158,9 +186,21 @@ echo "JAVA_HOME=$JAVA_HOME"
 echo "LIBRARY_PATH=$LIBRARY_PATH"
 echo "DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH"
 echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
+echo "LIBZ_PATH=$LIBZ_PATH"
 
 # Execute the command
 echo "Executing clojure with params: $PARAMS"
-clojure -A:build -T:build native-image "$PARAMS"
+clojure -A:build -T:build native-image "$PARAMS" || {
+    echo "Falha ao construir a imagem nativa. Tentando com um conjunto simplificado de flags..."
+    SIMPLE_PARAMS="{:verbose true :output \"$OUTPUT_NAME\"}"
+    clojure -A:build -T:build native-image "$SIMPLE_PARAMS"
+}
 
-echo "Native image build completed. You can run it with: ./$OUTPUT_NAME"
+# Verificar se a imagem nativa foi gerada
+if [ -f "./$OUTPUT_NAME" ]; then
+    echo "Native image built successfully. You can run it with: ./$OUTPUT_NAME"
+    exit 0
+else
+    echo "Failed to build native image."
+    exit 1
+fi
