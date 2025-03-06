@@ -71,7 +71,6 @@
         docs)
       []))
 
-  java.io.Closeable
   (close [_]
     (.close writer)
     (.close @reader-atom)
@@ -86,4 +85,4 @@
         writer (IndexWriter. directory config)
         reader (DirectoryReader/open writer)
         searcher (IndexSearcher. reader)]
-    (->LuceneIndex directory analyzer writer (atom reader) (atom searcher)))) 
+    (->LuceneIndex directory analyzer writer (atom reader) (atom searcher))))

@@ -24,4 +24,8 @@
     "Searches for documents matching the given query.
      Parameters:
      - query: The search query string
-     Returns: A sequence of matching documents.")) 
+     Returns: A sequence of matching documents.")
+
+  (close [this]
+    "Closes the index and releases any resources.
+     Returns: nil"))
