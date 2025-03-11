@@ -212,5 +212,42 @@
         "allPublicMethods": true,
         "allDeclaredFields": true,
         "allPublicFields": true
+    },
+    {
+        "name": "org.apache.lucene.search.BooleanClause$Occur",
+        "allDeclaredConstructors": true,
+        "allPublicConstructors": true,
+        "allDeclaredMethods": true,
+        "allPublicMethods": true,
+        "allDeclaredFields": true,
+        "allPublicFields": true
+    },
+    {
+        "name": "[Lorg.apache.lucene.search.BooleanClause$Occur;",
+        "allPublicConstructors": true,
+        "allPublicMethods": true
+    },
+    {
+        "name": "org.apache.lucene.search.BooleanClause",
+        "allDeclaredConstructors": true,
+        "allPublicConstructors": true,
+        "allDeclaredMethods": true,
+        "allPublicMethods": true,
+        "allDeclaredFields": true,
+        "allPublicFields": true
+    },
+    {
+        "name": "org.apache.lucene.search.BooleanQuery",
+        "allDeclaredConstructors": true,
+        "allPublicConstructors": true,
+        "allDeclaredMethods": true,
+        "allPublicMethods": true
+    },
+    {
+        "name": "org.apache.lucene.search.BooleanQuery$Builder",
+        "allDeclaredConstructors": true,
+        "allPublicConstructors": true,
+        "allDeclaredMethods": true,
+        "allPublicMethods": true
     }
 ]

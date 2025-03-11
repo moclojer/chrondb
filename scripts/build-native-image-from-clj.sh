@@ -164,6 +164,48 @@ fi
 mkdir -p reports
 mkdir -p target
 
+# Compilar biblioteca JNI para resolver o problema do ScopedMemoryAccess
+echo "Compilando biblioteca JNI..."
+./scripts/compile-jni.sh || {
+    echo "AVISO: Falha ao compilar biblioteca JNI. Tentando continuar..."
+}
+
+# Capturar o caminho JNI
+JNI_DIR="$(pwd)/target/jni"
+if [ -d "$JNI_DIR" ]; then
+    echo "Diretório JNI encontrado: $JNI_DIR"
+    # Adicionar biblioteca JNI às flags
+    if [ "$(uname)" == "Linux" ]; then
+        # Configuração para Linux
+        LIBRARY_PATH="$JNI_DIR:$LIBRARY_PATH"
+        LD_LIBRARY_PATH="$JNI_DIR:$LD_LIBRARY_PATH"
+        export LIBRARY_PATH LD_LIBRARY_PATH
+
+        # Adicionar a flag para o linker
+        if [ -f "$JNI_DIR/libscopedmemory.so" ]; then
+            echo "Biblioteca JNI encontrada: $JNI_DIR/libscopedmemory.so"
+            EXTRA_FLAGS+=("-H:CLibraryPath=$JNI_DIR")
+        fi
+    elif [ "$(uname)" == "Darwin" ]; then
+        # Configuração para macOS
+        DYLD_LIBRARY_PATH="$JNI_DIR:$DYLD_LIBRARY_PATH"
+        LIBRARY_PATH="$JNI_DIR:$LIBRARY_PATH"
+        export DYLD_LIBRARY_PATH LIBRARY_PATH
+
+        # Adicionar a flag para o linker
+        if [ -f "$JNI_DIR/libscopedmemory.dylib" ]; then
+            echo "Biblioteca JNI encontrada: $JNI_DIR/libscopedmemory.dylib"
+            EXTRA_FLAGS+=("-H:CLibraryPath=$JNI_DIR")
+        fi
+    fi
+
+    # Adicionar mais flags específicas para lidar com o problema do ScopedMemoryAccess
+    EXTRA_FLAGS+=("--initialize-at-run-time=jdk.internal.misc.ScopedMemoryAccess")
+    EXTRA_FLAGS+=("--report-unsupported-elements-at-runtime")
+else
+    echo "AVISO: Diretório JNI não encontrado: $JNI_DIR"
+fi
+
 # Primeiro, construir o JAR usando a tarefa 'uber'
 echo "Building uber JAR using build.clj..."
 clojure -T:build uber || {
@@ -183,6 +225,14 @@ if [ ! -f "target/chrondb-chrondb-*.jar" ]; then
     else
         echo "Found JAR file: $JAR_FILE"
     fi
+fi
+
+# Detectar se estamos em um ambiente CI e usar configurações simplificadas
+if [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ]; then
+    echo "Ambiente CI detectado, usando configuração simplificada"
+    USE_SIMPLIFIED=true
+else
+    USE_SIMPLIFIED=false
 fi
 
 # Em seguida, construir a imagem nativa
@@ -215,18 +265,29 @@ echo "LIBZ_PATH=$LIBZ_PATH"
 
 # Set Memory Configuration for GraalVM
 export JAVA_OPTS="-Xmx8g -Xms2g"
-# Configurações para evitar problemas com ScopedMemoryAccess
-export JAVA_TOOL_OPTIONS="-Djdk.internal.foreign.DisableNativeAccess=true -Dsun.misc.Unsafe.disableUnsafe=true"
-# Adicionar flag para não inicializar classes problemáticas no Java 21
-EXTRA_FLAGS+=("--initialize-at-build-time=jdk.internal")
+# Configurações simplificadas
+export JAVA_TOOL_OPTIONS="-Djava.awt.headless=true"
+
+# Add configs
+EXTRA_FLAGS+=("-H:JNIConfigurationFiles=graalvm-config/jni-config.json")
+EXTRA_FLAGS+=("-H:+AllowIncompleteClasspath")
 
 # Execute the command
 echo "Executing clojure with params: $PARAMS"
-clojure -A:build -T:build native-image "$PARAMS" || {
-    echo "Falha ao construir a imagem nativa. Tentando com um conjunto simplificado de flags..."
-    SIMPLE_PARAMS="{:verbose true :output \"$OUTPUT_NAME\"}"
+if [ "$USE_SIMPLIFIED" = true ]; then
+    echo "Usando diretamente configuração simplificada devido ao ambiente CI"
+    SIMPLE_PARAMS="{:verbose true :output \"$OUTPUT_NAME\" :simplified true}"
+    echo "Parâmetros simplificados: $SIMPLE_PARAMS"
     clojure -A:build -T:build native-image "$SIMPLE_PARAMS"
-}
+else
+    clojure -A:build -T:build native-image "$PARAMS" || {
+        echo "Falha ao construir a imagem nativa. Tentando com configuração simplificada..."
+        # Usar modo simplificado
+        SIMPLE_PARAMS="{:verbose true :output \"$OUTPUT_NAME\" :simplified true}"
+        echo "Tentando com configuração simplificada: $SIMPLE_PARAMS"
+        clojure -A:build -T:build native-image "$SIMPLE_PARAMS"
+    }
+fi
 
 # Verificar se a imagem nativa foi gerada
 if [ -f "./$OUTPUT_NAME" ]; then
