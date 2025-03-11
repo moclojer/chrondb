@@ -13,6 +13,7 @@ We are:
 - **RESTfull server:** communication via HTTP protocol
 - **Redis protocol:** use the Redis driver to communicate with chrondb
 - **SQL compliance:** in query within document
+- **Native executable:** GraalVM native-image support for faster startup and lower memory footprint
 
 Understand how and when changes were made. **chrondb** stores all history, and lets you query against any point in time.
 
@@ -52,6 +53,9 @@ clojure -M:run
 
 # Run with custom ports
 clojure -M:run 8080 6380
+
+# Run as native executable (if built)
+./chrondb
 ```
 
 ### Command Line Options
@@ -230,3 +234,54 @@ Please make sure to update tests as appropriate.
 ## License
 
 This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+
+## Native Image Support
+
+ChronDB now includes support for GraalVM's native-image feature, allowing you to build a standalone executable with no JVM required.
+
+### Building the Native Image
+
+For detailed instructions on building and using the native image, see [NATIVE_IMAGE.md](NATIVE_IMAGE.md).
+
+Quick start:
+
+```bash
+# Basic build
+./scripts/build-native-image.sh
+
+# For macOS with Nix environment
+./scripts/build-native-image-macos-nix.sh
+
+# For macOS with Nix environment and libz issues
+./scripts/build-native-image-macos-nix-with-libz.sh
+```
+
+### Handling Reflection in Native Image
+
+GraalVM native-image requires explicit configuration for classes that use reflection. If you encounter errors like:
+
+```
+Exception in thread "main" java.lang.IllegalArgumentException: No matching ctor found for class org.eclipse.jetty.server.Server
+```
+
+You can use our script to generate reflection configuration automatically:
+
+```bash
+# Build the uberjar first
+clojure -T:build uber
+
+# Generate reflection configuration
+./scripts/generate-reflection-config.sh
+
+# Rebuild the native image with the new configuration
+./scripts/build-native-image.sh --verbose
+```
+
+See [NATIVE_IMAGE.md](NATIVE_IMAGE.md) for more details on troubleshooting reflection issues.
+
+### Benefits of Native Image
+
+- Faster startup time
+- Lower memory footprint
+- Standalone executable with no JVM required
+- Improved performance for certain workloads
