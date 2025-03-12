@@ -46,16 +46,21 @@
                              clojure -M:run 8080 6380          # Run with custom ports
                              clojure -M:run --disable-redis    # Run only REST API
                              clojure -M:run --disable-rest     # Run only Redis server
+                             clojure -M:run --disable-sql      # Run only SQL server
                              clojure -X:run                    # Run with default settings
                              clojure -X:run :args '[\"8080\" \"--disable-redis\"]' # Custom port, no Redis"}
              :run-rest {:main-opts ["-m" "chrondb.core" "--disable-redis"]
                         :exec-fn chrondb.core/-main
-                        :exec-args {:args ["--disable-redis"]}
+                        :exec-args {:args ["--disable-redis --disable-sql"]}
                         :doc "Run only the REST API server (no Redis)"}
-             :run-redis {:main-opts ["-m" "chrondb.core" "--disable-rest"]
+             :run-redis {:main-opts ["-m" "chrondb.core" "--disable-rest" "--disable-sql"]
                          :exec-fn chrondb.core/-main
-                         :exec-args {:args ["--disable-rest"]}
-                         :doc "Run only the Redis protocol server (no REST API)"}
+                         :exec-args {:args ["--disable-rest" "--disable-sql"]}
+                         :doc "Run only the Redis protocol server (no REST API and no SQL)"}
+             :run-sql {:main-opts ["-m" "chrondb.core" "--disable-rest" "--disable-redis"]
+                       :exec-fn chrondb.core/-main
+                       :exec-args {:args ["--disable-rest" "--disable-redis"]}
+                       :doc "Run only the SQL protocol server (no REST API and no Redis)"}
              :example {:main-opts ["-m" "chrondb.example"]
                        :exec-fn chrondb.example/-main}
              :build {:deps {io.github.clojure/tools.build {:git/tag "v0.9.4" :git/sha "76b78fe"}}
