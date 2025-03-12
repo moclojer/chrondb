@@ -62,6 +62,7 @@ ChronDB supports the following command line options:
 - Second non-flag argument: Redis port (default: 6379)
 - `--disable-redis`: Disable the Redis protocol server
 - `--disable-rest`: Disable the REST API server
+- `--disable-sql`: Disable the SQL server
 
 ### Examples
 
@@ -80,7 +81,18 @@ clojure -M:run-redis
 clojure -M:run 8080 --disable-redis
 
 # Run with both custom ports
-clojure -M:run 8080 6380
+clojure -M:run 8080 6380 5432
+```
+
+#### PostgreSQL
+
+```bash
+PGSSLMODE=disable psql \
+  -h localhost \
+  -p 5432 \
+  -d chrondb \
+  -U chrondb \
+  -c "SELECT * FROM key-chrondb"
 ```
 
 ### Using the Functional Interface
