@@ -35,77 +35,112 @@
 (def LOGICAL_OPERATORS #{"and" "or" "not"})
 
 ;; Protocol Communication Functions
-(defn write-bytes [^OutputStream out ^bytes data]
+(defn write-bytes
+  "Writes a byte array to an output stream and flushes.
+   Parameters:
+   - out: The output stream to write to
+   - data: The byte array to write
+   Returns: nil"
+  [^OutputStream out ^bytes data]
   (.write out data 0 (alength data))
   (.flush out))
 
-(defn write-message [^OutputStream out type ^bytes data]
+(defn write-message
+  "Writes a PostgreSQL protocol message to an output stream.
+   Parameters:
+   - out: The output stream to write to
+   - type: The message type (one byte)
+   - data: The message content as a byte array
+   Returns: nil"
+  [^OutputStream out type ^bytes data]
   (try
     (let [msg-length (+ 4 (alength data))
           dos (DataOutputStream. out)]
-      ;; Tipo da mensagem (1 byte)
+      ;; Message type (1 byte)
       (.writeByte dos (int type))
 
-      ;; Comprimento da mensagem (int - 4 bytes) em formato Big Endian (padrão do Java)
+      ;; Message length (int - 4 bytes) in Big Endian format (Java default)
       (.writeInt dos msg-length)
 
-      ;; Escrever o conteúdo da mensagem
+      ;; Write message content
       (.write dos data 0 (alength data))
       (.flush dos))
     (catch Exception e
       (log/log-error (str "Error writing message: " (.getMessage e))))))
 
-(defn read-startup-message [^InputStream in]
+(defn read-startup-message
+  "Reads the startup message from a PostgreSQL client.
+   Parameters:
+   - in: The input stream to read from
+   Returns: A map containing protocol version, database name, and username"
+  [^InputStream in]
   (try
     (let [dis (DataInputStream. in)
-          ;; Ler o tamanho da mensagem (primeiro campo - 4 bytes)
+          ;; Read message size (first field - 4 bytes)
           msg-length (.readInt dis)]
       (when (> msg-length 0)
         (let [content-length (- msg-length 4)
               buffer (byte-array content-length)]
-          ;; Ler o resto da mensagem
+          ;; Read the rest of the message
           (.readFully dis buffer 0 content-length)
 
-          ;; Log dos bytes recebidos para debug
+          ;; Log received bytes for debug
           (log/log-debug (str "Startup message bytes received: " (count buffer) " bytes"))
 
-          ;; Sempre retornar valores padrão para evitar falhas na análise
+          ;; Always return default values to avoid parsing failures
           {:protocol-version PG_PROTOCOL_VERSION
            :database "chrondb"
            :user "chrondb"})))
     (catch Exception e
       (log/log-error (str "Error reading startup message: " (.getMessage e)))
-      ;; Retornar um valor padrão para permitir a continuação do processo
+      ;; Return default values to allow the process to continue
       {:protocol-version PG_PROTOCOL_VERSION
        :database "chrondb"
        :user "chrondb"})))
 
-(defn send-authentication-ok [^OutputStream out]
+(defn send-authentication-ok
+  "Sends an authentication OK message to the client.
+   Parameters:
+   - out: The output stream to write to
+   Returns: nil"
+  [^OutputStream out]
   (let [buffer (ByteBuffer/allocate 4)]
     (.putInt buffer 0)  ;; Authentication success (0)
     (write-message out PG_AUTHENTICATION_OK (.array buffer))))
 
-(defn string-to-bytes [s]
+(defn string-to-bytes
+  "Converts a string to a null-terminated byte array.
+   Parameters:
+   - s: The string to convert
+   Returns: A byte array containing the string bytes followed by a null terminator"
+  [s]
   (let [s-bytes (.getBytes s StandardCharsets/UTF_8)
         result (byte-array (inc (alength s-bytes)))]
-    ;; Copiar a string original
+    ;; Copy the original string
     (System/arraycopy s-bytes 0 result 0 (alength s-bytes))
-    ;; Adicionar o terminador nulo
+    ;; Add the null terminator
     (aset-byte result (alength s-bytes) (byte 0))
     result))
 
-(defn send-parameter-status [^OutputStream out param value]
+(defn send-parameter-status
+  "Sends a parameter status message to the client.
+   Parameters:
+   - out: The output stream to write to
+   - param: The parameter name
+   - value: The parameter value
+   Returns: nil"
+  [^OutputStream out param value]
   (let [buffer (ByteBuffer/allocate 1024)
         param-bytes (.getBytes param StandardCharsets/UTF_8)
         value-bytes (.getBytes value StandardCharsets/UTF_8)]
 
-    ;; Adicionar o nome do parâmetro
+    ;; Add parameter name
     (.put buffer param-bytes)
-    (.put buffer (byte 0))  ;; Terminador nulo para o nome
+    (.put buffer (byte 0))  ;; Null terminator for the name
 
-    ;; Adicionar o valor do parâmetro
+    ;; Add parameter value
     (.put buffer value-bytes)
-    (.put buffer (byte 0))  ;; Terminador nulo para o valor
+    (.put buffer (byte 0))  ;; Null terminator for the value
 
     (let [pos (.position buffer)
           final-data (byte-array pos)]
@@ -113,7 +148,12 @@
       (.get buffer final-data)
       (write-message out PG_PARAMETER_STATUS final-data))))
 
-(defn send-backend-key-data [^OutputStream out]
+(defn send-backend-key-data
+  "Sends backend key data to the client.
+   Parameters:
+   - out: The output stream to write to
+   Returns: nil"
+  [^OutputStream out]
   (let [buffer (ByteBuffer/allocate 8)]
     ;; Process ID (4 bytes)
     (.putInt buffer 12345)
@@ -121,15 +161,26 @@
     (.putInt buffer 67890)
     (write-message out PG_BACKEND_KEY_DATA (.array buffer))))
 
-(defn send-ready-for-query [^OutputStream out]
+(defn send-ready-for-query
+  "Sends a ready-for-query message to the client.
+   Parameters:
+   - out: The output stream to write to
+   Returns: nil"
+  [^OutputStream out]
   (let [buffer (ByteBuffer/allocate 1)]
     ;; Status: 'I' = idle (ready for queries)
     (.put buffer (byte (int \I)))
     (write-message out PG_READY_FOR_QUERY (.array buffer))))
 
-(defn send-error-response [^OutputStream out message]
+(defn send-error-response
+  "Sends an error response message to the client.
+   Parameters:
+   - out: The output stream to write to
+   - message: The error message
+   Returns: nil"
+  [^OutputStream out message]
   (let [buffer (ByteBuffer/allocate 1024)]
-    ;; Adicionar os campos do erro
+    ;; Add error fields
     (.put buffer (.getBytes "S" StandardCharsets/UTF_8))   ;; Severity
     (.put buffer (byte 0))
     (.put buffer (.getBytes "ERROR" StandardCharsets/UTF_8))
@@ -145,7 +196,7 @@
     (.put buffer (.getBytes message StandardCharsets/UTF_8))
     (.put buffer (byte 0))
 
-    (.put buffer (byte 0))  ;; Terminador final
+    (.put buffer (byte 0))  ;; Final terminator
 
     (let [pos (.position buffer)
           final-data (byte-array pos)]
@@ -153,7 +204,14 @@
       (.get buffer final-data)
       (write-message out PG_ERROR_RESPONSE final-data))))
 
-(defn send-command-complete [^OutputStream out command rows]
+(defn send-command-complete
+  "Sends a command complete message to the client.
+   Parameters:
+   - out: The output stream to write to
+   - command: The command that was executed (e.g., 'SELECT', 'INSERT')
+   - rows: The number of rows affected
+   Returns: nil"
+  [^OutputStream out command rows]
   (let [buffer (ByteBuffer/allocate 128)
         command-str (str command " " rows)]
     (.put buffer (.getBytes command-str StandardCharsets/UTF_8))
@@ -165,33 +223,39 @@
       (.get buffer final-data)
       (write-message out PG_COMMAND_COMPLETE final-data))))
 
-(defn send-row-description [^OutputStream out columns]
+(defn send-row-description
+  "Sends a row description message to the client.
+   Parameters:
+   - out: The output stream to write to
+   - columns: A sequence of column names
+   Returns: nil"
+  [^OutputStream out columns]
   (let [buffer (ByteBuffer/allocate 1024)]
-    ;; Número de campos (2 bytes)
+    ;; Number of fields (2 bytes)
     (.putShort buffer (short (count columns)))
 
-    ;; Informações de cada coluna
+    ;; Information for each column
     (doseq [col columns]
-      ;; Nome da coluna (string terminada com null)
+      ;; Column name (null-terminated string)
       (.put buffer (.getBytes col StandardCharsets/UTF_8))
       (.put buffer (byte 0))
 
       ;; Table OID (4 bytes)
       (.putInt buffer 0)
 
-      ;; Atributo número (2 bytes)
+      ;; Attribute number (2 bytes)
       (.putShort buffer (short 0))
 
-      ;; Tipo de dados OID (4 bytes) - VARCHAR
+      ;; Data type OID (4 bytes) - VARCHAR
       (.putInt buffer 25)  ;; TEXT
 
-      ;; Tamanho do tipo (2 bytes)
+      ;; Type size (2 bytes)
       (.putShort buffer (short -1))
 
-      ;; Modificador tipo (4 bytes)
+      ;; Type modifier (4 bytes)
       (.putInt buffer -1)
 
-      ;; Formato código (2 bytes) - 0=texto
+      ;; Format code (2 bytes) - 0=text
       (.putShort buffer (short 0)))
 
     (let [pos (.position buffer)
@@ -200,21 +264,27 @@
       (.get buffer final-data)
       (write-message out PG_ROW_DESCRIPTION final-data))))
 
-(defn send-data-row [^OutputStream out values]
-  (let [buffer (ByteBuffer/allocate (+ 2 (* (count values) 256)))]  ;; Tamanho estimado
-    ;; Número de valores na linha
+(defn send-data-row
+  "Sends a data row message to the client.
+   Parameters:
+   - out: The output stream to write to
+   - values: A sequence of values for the row
+   Returns: nil"
+  [^OutputStream out values]
+  (let [buffer (ByteBuffer/allocate (+ 2 (* (count values) 256)))]  ;; Estimated size
+    ;; Number of values in the row
     (.putShort buffer (short (count values)))
 
-    ;; Cada valor
+    ;; Each value
     (doseq [val values]
       (if val
         (let [val-str (str val)
               val-bytes (.getBytes val-str StandardCharsets/UTF_8)]
-          ;; Comprimento do valor
+          ;; Value length
           (.putInt buffer (alength val-bytes))
-          ;; Valor
+          ;; Value
           (.put buffer val-bytes))
-        ;; Valor nulo
+        ;; Null value
         (.putInt buffer -1)))
 
     (let [pos (.position buffer)
@@ -224,14 +294,25 @@
       (write-message out PG_DATA_ROW final-data))))
 
 ;; SQL Parsing Functions
-(defn tokenize-sql [sql]
+(defn tokenize-sql
+  "Tokenizes an SQL query string into individual tokens.
+   Parameters:
+   - sql: The SQL query string
+   Returns: A sequence of tokens"
+  [sql]
   (-> sql
       (str/replace #"([(),;=<>])" " $1 ")
       (str/replace #"\s+" " ")
       (str/trim)
       (str/split #"\s+")))
 
-(defn find-token-index [tokens & keywords]
+(defn find-token-index
+  "Finds the index of the first token that matches any of the given keywords.
+   Parameters:
+   - tokens: The sequence of tokens to search
+   - keywords: The keywords to search for
+   Returns: The index of the first matching token, or nil if not found"
+  [tokens & keywords]
   (let [keyword-set (set (map str/lower-case keywords))]
     (->> tokens
          (map-indexed (fn [idx token] [idx (str/lower-case token)]))
@@ -240,7 +321,13 @@
          (first))))
 
 ;; SQL Clause Parsers
-(defn parse-select-columns [tokens from-index]
+(defn parse-select-columns
+  "Parses the column list from a SELECT query.
+   Parameters:
+   - tokens: The sequence of tokens from the query
+   - from-index: The index of the FROM keyword
+   Returns: A sequence of column specifications"
+  [tokens from-index]
   (let [column-tokens (subvec tokens 1 from-index)]
     (loop [remaining column-tokens
            columns []]
@@ -248,7 +335,7 @@
         columns
         (let [token (str/lower-case (first remaining))]
           (cond
-            ;; Função de agregação (count, sum, etc.)
+            ;; Aggregation function (count, sum, etc.)
             (and (re-matches #"\w+\(.*\)" token)
                  (AGGREGATE_FUNCTIONS (first (str/split token #"\("))))
             (let [[fn-name args] (str/split token #"\(|\)")
@@ -259,11 +346,11 @@
                                     :function (keyword fn-name)
                                     :args args})))
 
-            ;; Estrela (* - todas as colunas)
+            ;; Star (* - all columns)
             (= token "*")
             (recur (rest remaining) (conj columns {:type :all}))
 
-            ;; Coluna com alias (coluna as alias)
+            ;; Column with alias (column as alias)
             (and (> (count remaining) 2)
                  (= (str/lower-case (second remaining)) "as"))
             (recur (drop 3 remaining)
@@ -271,13 +358,20 @@
                                   :column (first remaining)
                                   :alias (nth remaining 2)}))
 
-            ;; Coluna normal
+            ;; Normal column
             :else
             (recur (rest remaining)
                    (conj columns {:type :column
                                   :column token}))))))))
 
-(defn parse-where-condition [tokens where-index end-index]
+(defn parse-where-condition
+  "Parses the WHERE condition from a SQL query.
+   Parameters:
+   - tokens: The sequence of tokens from the query
+   - where-index: The index of the WHERE keyword
+   - end-index: The index where the WHERE clause ends
+   Returns: A sequence of condition specifications"
+  [tokens where-index end-index]
   (if (or (< where-index 0) (>= where-index end-index))
     nil
     (let [condition-tokens (subvec tokens (inc where-index) end-index)]
@@ -291,7 +385,7 @@
             (conj conditions current-condition))
           (let [token (str/lower-case (first remaining))]
             (cond
-              ;; Operador lógico
+              ;; Logical operator
               (LOGICAL_OPERATORS token)
               (recur (rest remaining)
                      (if (empty? current-condition)
@@ -300,7 +394,7 @@
                      {}
                      token)
 
-              ;; Início de nova condição com operador lógico atual
+              ;; Start of new condition with current logical operator
               (and (not (empty? current-logical))
                    (empty? current-condition))
               (recur (rest remaining)
@@ -309,14 +403,14 @@
                       :logical current-logical}
                      current-logical)
 
-              ;; Campo da condição
+              ;; Condition field
               (empty? current-condition)
               (recur (rest remaining)
                      conditions
                      {:field token}
                      current-logical)
 
-              ;; Operador para condição
+              ;; Operator for condition
               (and (contains? current-condition :field)
                    (not (contains? current-condition :op)))
               (recur (rest remaining)
@@ -324,7 +418,7 @@
                      (assoc current-condition :op token)
                      current-logical)
 
-              ;; Valor para condição
+              ;; Value for condition
               (and (contains? current-condition :field)
                    (contains? current-condition :op)
                    (not (contains? current-condition :value)))
@@ -333,11 +427,18 @@
                      (assoc current-condition :value token)
                      current-logical)
 
-              ;; Caso padrão
+              ;; Default case
               :else
               (recur (rest remaining) conditions current-condition current-logical))))))))
 
-(defn parse-group-by [tokens group-index end-index]
+(defn parse-group-by
+  "Parses the GROUP BY clause from a SQL query.
+   Parameters:
+   - tokens: The sequence of tokens from the query
+   - group-index: The index of the GROUP keyword
+   - end-index: The index where the GROUP BY clause ends
+   Returns: A sequence of grouping columns or nil if no GROUP BY"
+  [tokens group-index end-index]
   (if (or (< group-index 0) (>= group-index end-index))
     nil
     (let [by-index (+ group-index 1)]
@@ -347,7 +448,14 @@
           (mapv (fn [col] {:column col}) columns))
         nil))))
 
-(defn parse-order-by [tokens order-index end-index]
+(defn parse-order-by
+  "Parses the ORDER BY clause from a SQL query.
+   Parameters:
+   - tokens: The sequence of tokens from the query
+   - order-index: The index of the ORDER keyword
+   - end-index: The index where the ORDER BY clause ends
+   Returns: A sequence of ordering specifications or nil if no ORDER BY"
+  [tokens order-index end-index]
   (if (or (< order-index 0) (>= order-index end-index))
     nil
     (let [by-index (+ order-index 1)]
@@ -371,7 +479,12 @@
         nil))))
 
 ;; Complete SQL Query Parsers
-(defn parse-select-query [tokens]
+(defn parse-select-query
+  "Parses a SELECT SQL query.
+   Parameters:
+   - tokens: The sequence of tokens from the query
+   Returns: A map representing the parsed query with :type, :columns, :table, :where, :group-by, :order-by, and :limit fields"
+  [tokens]
   (let [from-index (find-token-index tokens "from")
         where-index (find-token-index tokens "where")
         group-index (find-token-index tokens "group")
@@ -407,7 +520,12 @@
      :order-by order-by
      :limit limit}))
 
-(defn parse-insert-query [tokens]
+(defn parse-insert-query
+  "Parses an INSERT SQL query.
+   Parameters:
+   - tokens: The sequence of tokens from the query
+   Returns: A map representing the parsed query with :type, :table, :columns, and :values fields"
+  [tokens]
   (let [into-index (find-token-index tokens "into")
         values-index (find-token-index tokens "values")
         table-name (when (and into-index (> into-index 0))
@@ -444,7 +562,12 @@
      :columns columns
      :values (first values)}))
 
-(defn parse-update-query [tokens]
+(defn parse-update-query
+  "Parses an UPDATE SQL query.
+   Parameters:
+   - tokens: The sequence of tokens from the query
+   Returns: A map representing the parsed query with :type, :table, :updates, and :where fields"
+  [tokens]
   (let [table-name (second tokens)
         set-index (find-token-index tokens "set")
         where-index (find-token-index tokens "where")
@@ -477,7 +600,12 @@
      :updates updates
      :where where-condition}))
 
-(defn parse-delete-query [tokens]
+(defn parse-delete-query
+  "Parses a DELETE SQL query.
+   Parameters:
+   - tokens: The sequence of tokens from the query
+   Returns: A map representing the parsed query with :type, :table, and :where fields"
+  [tokens]
   (let [from-index (find-token-index tokens "from")
         where-index (find-token-index tokens "where")
         table-name (when (and from-index (< from-index (count tokens)))
@@ -489,7 +617,12 @@
      :table table-name
      :where where-condition}))
 
-(defn parse-sql-query [sql]
+(defn parse-sql-query
+  "Parses an SQL query string into a structured representation.
+   Parameters:
+   - sql: The SQL query string
+   Returns: A map representing the parsed query"
+  [sql]
   (let [tokens (tokenize-sql sql)
         command (str/lower-case (first tokens))]
     (case command
@@ -500,7 +633,14 @@
       {:type :unknown, :sql sql})))
 
 ;; Query Execution Functions
-(defn execute-aggregate-function [function docs field]
+(defn execute-aggregate-function
+  "Executes an aggregate function on a collection of documents.
+   Parameters:
+   - function: The aggregate function to execute (:count, :sum, :avg, :min, :max)
+   - docs: The documents to operate on
+   - field: The field to aggregate
+   Returns: The result of the aggregate function"
+  [function docs field]
   (case function
     :count (count docs)
     :sum (reduce + (keep #(get % (keyword field)) docs))
@@ -515,7 +655,13 @@
       (log/log-warn (str "Unsupported aggregate function: " function))
       nil)))
 
-(defn evaluate-condition [doc condition]
+(defn evaluate-condition
+  "Evaluates a condition against a document.
+   Parameters:
+   - doc: The document to evaluate against
+   - condition: The condition to evaluate
+   Returns: true if the condition is met, false otherwise"
+  [doc condition]
   (let [field-val (get doc (keyword (:field condition)))
         cond-val (str/replace (:value condition) #"['\"]" "")
         operator (:op condition)]
@@ -533,7 +679,13 @@
         (log/log-warn (str "Unsupported operator: " operator))
         false))))
 
-(defn apply-where-conditions [docs conditions]
+(defn apply-where-conditions
+  "Applies WHERE conditions to filter a collection of documents.
+   Parameters:
+   - docs: The documents to filter
+   - conditions: The conditions to apply
+   Returns: Filtered documents"
+  [docs conditions]
   (if (empty? conditions)
     docs
     (let [grouped-conditions (group-by #(:logical %) conditions)
@@ -553,14 +705,26 @@
               (some #(evaluate-condition doc %) or-conditions))))
        docs))))
 
-(defn group-docs-by [docs group-fields]
+(defn group-docs-by
+  "Groups documents by the specified fields.
+   Parameters:
+   - docs: The documents to group
+   - group-fields: The fields to group by
+   Returns: Grouped documents"
+  [docs group-fields]
   (if (empty? group-fields)
     [docs]
     (let [group-fn (fn [doc]
                      (mapv #(get doc (keyword (:column %))) group-fields))]
       (vals (group-by group-fn docs)))))
 
-(defn sort-docs-by [docs order-clauses]
+(defn sort-docs-by
+  "Sorts documents by the specified order clauses.
+   Parameters:
+   - docs: The documents to sort
+   - order-clauses: The order clauses to apply
+   Returns: Sorted documents"
+  [docs order-clauses]
   (if (empty? order-clauses)
     docs
     (let [comparators (for [{:keys [column direction]} order-clauses]
@@ -581,12 +745,24 @@
                       result)))))
             docs))))
 
-(defn apply-limit [docs limit]
+(defn apply-limit
+  "Applies a LIMIT clause to a collection of documents.
+   Parameters:
+   - docs: The documents to limit
+   - limit: The maximum number of documents to return
+   Returns: Limited documents"
+  [docs limit]
   (if limit
     (take limit docs)
     docs))
 
-(defn handle-select [storage query]
+(defn handle-select
+  "Handles a SELECT query.
+   Parameters:
+   - storage: The storage implementation
+   - query: The parsed query
+   Returns: A sequence of result documents"
+  [storage query]
   (try
     (let [where-condition (:where query)
           group-by (:group-by query)
@@ -649,24 +825,51 @@
           ;; Apply limit
           limited-results (apply-limit sorted-results limit)]
 
-      ;; Retornar pelo menos uma lista vazia se não houver resultados
+      ;; Return at least an empty list if there are no results
       (or limited-results []))
     (catch Exception e
       (log/log-error (str "Error in handle-select: " (.getMessage e)))
       [])))
 
-(defn handle-insert [storage doc]
+(defn handle-insert
+  "Handles an INSERT query.
+   Parameters:
+   - storage: The storage implementation
+   - doc: The document to insert
+   Returns: The saved document"
+  [storage doc]
   (storage/save-document storage doc))
 
-(defn handle-update [storage id updates]
+(defn handle-update
+  "Handles an UPDATE query.
+   Parameters:
+   - storage: The storage implementation
+   - id: The ID of the document to update
+   - updates: The updates to apply
+   Returns: The updated document or nil if not found"
+  [storage id updates]
   (when-let [doc (storage/get-document storage id)]
     (let [updated-doc (merge doc updates)]
       (storage/save-document storage updated-doc))))
 
-(defn handle-delete [storage id]
+(defn handle-delete
+  "Handles a DELETE query.
+   Parameters:
+   - storage: The storage implementation
+   - id: The ID of the document to delete
+   Returns: The deleted document or nil if not found"
+  [storage id]
   (storage/delete-document storage id))
 
-(defn handle-query [storage index ^OutputStream out sql]
+(defn handle-query
+  "Handles an SQL query.
+   Parameters:
+   - storage: The storage implementation
+   - index: The index implementation
+   - out: The output stream to write the results to
+   - sql: The SQL query string
+   Returns: nil"
+  [storage index ^OutputStream out sql]
   (log/log-info (str "Executing query: " sql))
   (let [parsed (parse-sql-query sql)]
     (case (:type parsed)
@@ -711,7 +914,17 @@
         (send-error-response out (str "Unknown command: " sql))
         (send-command-complete out "UNKNOWN" 0)))))
 
-(defn handle-message [storage index ^OutputStream out message-type buffer content-length]
+(defn handle-message
+  "Handles a PostgreSQL protocol message.
+   Parameters:
+   - storage: The storage implementation
+   - index: The index implementation
+   - out: The output stream to write responses to
+   - message-type: The type of the message
+   - buffer: The message content as a byte array
+   - content-length: The length of the message content
+   Returns: true to continue reading messages, false to terminate connection"
+  [storage index ^OutputStream out message-type buffer content-length]
   (log/log-debug (str "Received message type: " (char message-type)))
   (try
     (case (char message-type)
@@ -739,12 +952,19 @@
           (log/log-error (str "Error sending error response: " (.getMessage e2)))))
       true)))
 
-(defn handle-client [storage index ^Socket client-socket]
+(defn handle-client
+  "Handles a PostgreSQL client connection.
+   Parameters:
+   - storage: The storage implementation
+   - index: The index implementation
+   - client-socket: The client socket
+   Returns: nil"
+  [storage index ^Socket client-socket]
   (log/log-info (str "SQL client connected: " (.getRemoteSocketAddress client-socket)))
   (try
     (let [in (.getInputStream client-socket)
           out (.getOutputStream client-socket)]
-      ;; Autenticação e configuração inicial
+      ;; Authentication and initial configuration
       (when-let [startup-message (read-startup-message in)]
         (log/log-debug "Sending authentication OK")
         (send-authentication-ok out)
@@ -754,7 +974,7 @@
         (send-backend-key-data out)
         (send-ready-for-query out)
 
-        ;; Loop principal para ler consultas
+        ;; Main loop to read queries
         (let [dis (DataInputStream. in)]
           (try
             (loop []
@@ -765,14 +985,14 @@
                         buffer (byte-array content-length)]
                     (.readFully dis buffer 0 content-length)
 
-                    ;; Processar a mensagem
+                    ;; Process the message
                     (case (char message-type)
                       \Q (let [query-text (String. buffer 0 (dec content-length) StandardCharsets/UTF_8)]
                            (handle-query storage index out query-text)
                            (send-ready-for-query out)
                            (recur))
-                      \X nil  ;; Terminar
-                      (do     ;; Comando desconhecido
+                      \X nil  ;; Terminate
+                      (do     ;; Unknown command
                         (send-error-response out (str "Unsupported command: " (char message-type)))
                         (send-ready-for-query out)
                         (recur)))))))
@@ -807,9 +1027,9 @@
 
 (defn stop-sql-server
   "Stops the SQL server.
-Parameters:
-- server-socket: The server socket to close
-Returns: nil"
+   Parameters:
+   - server-socket: The server socket to close
+   Returns: nil"
   [^ServerSocket server-socket]
   (log/log-info "Stopping SQL server")
   (when (and server-socket (not (.isClosed server-socket)))
