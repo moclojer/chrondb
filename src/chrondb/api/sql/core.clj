@@ -6,8 +6,7 @@
             [clojure.string :as str]
             [clojure.core.async :as async])
   (:import [java.net ServerSocket Socket]
-           [java.io BufferedReader BufferedWriter InputStreamReader OutputStreamWriter OutputStream InputStream
-            DataOutputStream DataInputStream]
+           [java.io OutputStream InputStream DataOutputStream DataInputStream]
            [java.nio.charset StandardCharsets]
            [java.nio ByteBuffer]))
 
@@ -395,7 +394,7 @@
                      token)
 
               ;; Start of new condition with current logical operator
-              (and (not (empty? current-logical))
+              (and (seq current-logical)
                    (empty? current-condition))
               (recur (rest remaining)
                      conditions
@@ -965,7 +964,7 @@
     (let [in (.getInputStream client-socket)
           out (.getOutputStream client-socket)]
       ;; Authentication and initial configuration
-      (when-let [startup-message (read-startup-message in)]
+      (when-let [_ (read-startup-message in)]
         (log/log-debug "Sending authentication OK")
         (send-authentication-ok out)
         (send-parameter-status out "server_version" "14.0")
