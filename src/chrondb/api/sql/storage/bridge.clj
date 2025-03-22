@@ -1,23 +1,23 @@
 (ns chrondb.api.sql.storage.bridge
-  "Interface entre as consultas SQL e a camada de armazenamento ChronDB"
+  "Interface between SQL queries and the ChronDB storage layer"
   (:require [chrondb.storage.protocol :as storage]
             [chrondb.index.protocol :as index]
             [chrondb.util.logging :as log]))
 
 (defn execute-sql
-  "Executa uma consulta SQL na camada de armazenamento ChronDB.
-   Parâmetros:
-   - storage: A implementação de armazenamento
-   - index: A implementação de índice
-   - query: A consulta SQL analisada
-   Retorna: O resultado da execução da consulta"
+  "Executes a SQL query on the ChronDB storage layer.
+   Parameters:
+   - storage: The storage implementation
+   - index: The index implementation
+   - query: The parsed SQL query
+   Returns: The result of the query execution"
   [storage index query]
-  (log/log-debug (str "Executando consulta: " query))
+  (log/log-debug (str "Executing query: " query))
 
-  ;; A implementação real delegaria para as funções apropriadas
-  ;; nos outros módulos (execute-select, execute-insert, etc.)
-  ;; por ora, este é apenas um stub de interface
+  ;; The real implementation would delegate to appropriate functions
+  ;; in other modules (execute-select, execute-insert, etc.)
+  ;; for now, this is just an interface stub
 
   {:success true
-   :message "Consulta executada com sucesso"
+   :message "Query executed successfully"
    :query query})

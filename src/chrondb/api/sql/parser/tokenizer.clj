@@ -1,12 +1,12 @@
 (ns chrondb.api.sql.parser.tokenizer
-  "Funções para tokenização de consultas SQL"
+  "Functions for tokenizing SQL queries"
   (:require [clojure.string :as str]))
 
 (defn tokenize-sql
-  "Tokeniza uma string de consulta SQL em tokens individuais.
-   Parâmetros:
-   - sql: A string de consulta SQL
-   Retorna: Uma sequência de tokens"
+  "Tokenizes a SQL query string into individual tokens.
+   Parameters:
+   - sql: The SQL query string
+   Returns: A sequence of tokens"
   [sql]
   (-> sql
       (str/replace #"([(),;=<>])" " $1 ")
@@ -15,11 +15,11 @@
       (str/split #"\s+")))
 
 (defn find-token-index
-  "Encontra o índice do primeiro token que corresponde a qualquer uma das palavras-chave fornecidas.
-   Parâmetros:
-   - tokens: A sequência de tokens para pesquisa
-   - keywords: As palavras-chave para pesquisar
-   Retorna: O índice do primeiro token correspondente, ou nil se não for encontrado"
+  "Finds the index of the first token that matches any of the provided keywords.
+   Parameters:
+   - tokens: The sequence of tokens to search
+   - keywords: The keywords to search for
+   Returns: The index of the first matching token, or nil if not found"
   [tokens & keywords]
   (let [keyword-set (set (map str/lower-case keywords))]
     (->> tokens
