@@ -212,7 +212,12 @@
    Returns: nil"
   [^OutputStream out command rows]
   (let [buffer (ByteBuffer/allocate 128)
-        command-str (str command " " rows)]
+        ;; Format depends on the command
+        command-str (if (= command "INSERT")
+                      ;; For INSERT the format should be "INSERT 0 1" where 0 is the OID and 1 is the number of rows
+                      "INSERT 0 1"
+                      (str command " " rows))]
+    (log/log-debug (str "Sending command complete: " command-str))
     (.put buffer (.getBytes command-str StandardCharsets/UTF_8))
     (.put buffer (byte 0))  ;; String null terminator
 
@@ -371,20 +376,27 @@
    - end-index: The index where the WHERE clause ends
    Returns: A sequence of condition specifications"
   [tokens where-index end-index]
-  (if (or (< where-index 0) (>= where-index end-index))
-    nil
+    ;; Check if where-index is nil or invalid
+  (if (or (nil? where-index)
+          (< where-index 0)
+          (>= where-index (count tokens))
+          (>= where-index end-index))
+    nil  ;; If invalid, return nil (no conditions)
+      ;; If valid, process the conditions
     (let [condition-tokens (subvec tokens (inc where-index) end-index)]
       (loop [remaining condition-tokens
              conditions []
              current-condition {}
              current-logical nil]
         (if (empty? remaining)
+            ;; When we've finished processing all tokens
           (if (empty? current-condition)
             conditions
             (conj conditions current-condition))
+            ;; Process the next token
           (let [token (str/lower-case (first remaining))]
             (cond
-              ;; Logical operator
+                ;; Logical operator (AND, OR, NOT)
               (LOGICAL_OPERATORS token)
               (recur (rest remaining)
                      (if (empty? current-condition)
@@ -393,7 +405,7 @@
                      {}
                      token)
 
-              ;; Start of new condition with current logical operator
+                ;; Start of new condition with current logical operator
               (and (seq current-logical)
                    (empty? current-condition))
               (recur (rest remaining)
@@ -402,14 +414,14 @@
                       :logical current-logical}
                      current-logical)
 
-              ;; Condition field
+                ;; Condition field
               (empty? current-condition)
               (recur (rest remaining)
                      conditions
                      {:field token}
                      current-logical)
 
-              ;; Operator for condition
+                ;; Operator for condition
               (and (contains? current-condition :field)
                    (not (contains? current-condition :op)))
               (recur (rest remaining)
@@ -417,7 +429,7 @@
                      (assoc current-condition :op token)
                      current-logical)
 
-              ;; Value for condition
+                ;; Value for condition
               (and (contains? current-condition :field)
                    (contains? current-condition :op)
                    (not (contains? current-condition :value)))
@@ -426,9 +438,12 @@
                      (assoc current-condition :value token)
                      current-logical)
 
-              ;; Default case
+                ;; Default case
               :else
-              (recur (rest remaining) conditions current-condition current-logical))))))))
+              (recur (rest remaining)
+                     conditions
+                     current-condition
+                     current-logical))))))))
 
 (defn parse-group-by
   "Parses the GROUP BY clause from a SQL query.
@@ -438,7 +453,7 @@
    - end-index: The index where the GROUP BY clause ends
    Returns: A sequence of grouping columns or nil if no GROUP BY"
   [tokens group-index end-index]
-  (if (or (< group-index 0) (>= group-index end-index))
+  (if (or (nil? group-index) (< group-index 0) (>= group-index end-index))
     nil
     (let [by-index (+ group-index 1)]
       (if (and (< by-index end-index)
@@ -455,7 +470,7 @@
    - end-index: The index where the ORDER BY clause ends
    Returns: A sequence of ordering specifications or nil if no ORDER BY"
   [tokens order-index end-index]
-  (if (or (< order-index 0) (>= order-index end-index))
+  (if (or (nil? order-index) (< order-index 0) (>= order-index end-index))
     nil
     (let [by-index (+ order-index 1)]
       (if (and (< by-index end-index)
@@ -490,14 +505,16 @@
         order-index (find-token-index tokens "order")
         limit-index (find-token-index tokens "limit")
 
-        ;; Determine indices for each clause
+      ;; Determine indices for each clause
         where-end (or group-index order-index limit-index (count tokens))
         group-end (or order-index limit-index (count tokens))
         order-end (or limit-index (count tokens))
 
-        ;; Parse each clause
-        columns (parse-select-columns tokens from-index)
-        table-name (if (> from-index 0)
+      ;; Parse each clause
+        columns (if from-index
+                  (parse-select-columns tokens from-index)
+                  [])
+        table-name (if (and from-index (> from-index 0))
                      (if (and where-index (> where-index (inc from-index)))
                        (nth tokens (inc from-index))
                        (str/join " " (subvec tokens (inc from-index)
@@ -530,7 +547,7 @@
         table-name (when (and into-index (> into-index 0))
                      (nth tokens (inc into-index)))
 
-        ;; Parse column names if provided
+      ;; Parse column names if provided
         columns-start (+ into-index 2)  ;; after INTO table (
         columns-end (- values-index 1)  ;; before )
         columns (when (and (< columns-start columns-end)
@@ -538,7 +555,7 @@
                            (= (nth tokens columns-end) ")"))
                   (mapv str/trim (subvec tokens (inc columns-start) columns-end)))
 
-        ;; Parse values
+      ;; Parse values
         values-start (+ values-index 1)
         values-tokens (subvec tokens values-start)
         values (loop [remaining values-tokens
@@ -571,7 +588,7 @@
         set-index (find-token-index tokens "set")
         where-index (find-token-index tokens "where")
 
-        ;; Parse SET clause
+      ;; Parse SET clause
         set-end (or where-index (count tokens))
         set-tokens (subvec tokens (inc set-index) set-end)
         updates (loop [remaining set-tokens
@@ -590,7 +607,7 @@
                         :else
                         (recur (rest remaining) (assoc result current-field token) nil)))))
 
-        ;; Parse WHERE clause
+      ;; Parse WHERE clause
         where-condition (when where-index
                           (parse-where-condition tokens where-index (count tokens)))]
 
@@ -649,7 +666,7 @@
              (/ (reduce + values) (count values))))
     :min (apply min (keep #(get % (keyword field)) docs))
     :max (apply max (keep #(get % (keyword field)) docs))
-    ;; Default case
+  ;; Default case
     (do
       (log/log-warn (str "Unsupported aggregate function: " function))
       nil)))
@@ -673,7 +690,7 @@
       ">=" (>= (compare (str field-val) cond-val) 0)
       "<=" (<= (compare (str field-val) cond-val) 0)
       "like" (re-find (re-pattern (str/replace cond-val #"%" ".*")) (str field-val))
-      ;; Default case
+    ;; Default case
       (do
         (log/log-warn (str "Unsupported operator: " operator))
         false))))
@@ -695,11 +712,11 @@
       (filter
        (fn [doc]
          (and
-          ;; All default and AND conditions must be true
+      ;; All default and AND conditions must be true
           (every? #(evaluate-condition doc %)
                   (concat default-conditions and-conditions))
 
-          ;; At least one OR condition must be true (if there are any)
+      ;; At least one OR condition must be true (if there are any)
           (or (empty? or-conditions)
               (some #(evaluate-condition doc %) or-conditions))))
        docs))))
@@ -767,24 +784,45 @@
           group-by (:group-by query)
           order-by (:order-by query)
           limit (:limit query)
+          table-name (:table query)
 
-          ;; Fetch documents
+          ;; Detailed logs for debugging
+          _ (log/log-info (str "Executing SELECT on table: " table-name))
+          _ (log/log-debug (str "WHERE condition: " where-condition))
+          _ (log/log-debug (str "Columns: " (:columns query)))
+
+          ;; Always retrieve all documents (full scan) unless we have an ID query
           all-docs (if (and where-condition
+                            (seq where-condition)
                             (= (count where-condition) 1)
                             (get-in where-condition [0 :field])
                             (= (get-in where-condition [0 :field]) "id")
                             (= (get-in where-condition [0 :op]) "="))
-                     ;; Optimization for id lookup
+                     ;; Optimization for ID lookup
                      (let [id (str/replace (get-in where-condition [0 :value]) #"['\"]" "")]
-                       (when-let [doc (storage/get-document storage id)]
-                         [doc]))
-                     ;; Full scan
-                     (or (seq (storage/get-documents-by-prefix storage "")) []))
+                       (log/log-debug (str "Looking up document by ID: " id))
+                       (if-let [doc (storage/get-document storage id)]
+                         [doc]
+                         []))
+                     ;; Full scan - retrieve all documents
+                     (do
+                       (log/log-debug "Performing full document scan")
+                       (let [docs (storage/get-documents-by-prefix storage "")]
+                         (log/log-debug (str "Retrieved " (count docs) " documents"))
+                         (or (seq docs) []))))
 
-          ;; Apply where conditions
-          filtered-docs (apply-where-conditions all-docs where-condition)
+          _ (log/log-debug (str "Total documents retrieved: " (count all-docs)))
 
-          ;; Group documents if needed
+          ;; Apply WHERE filters
+          filtered-docs (if where-condition
+                          (do
+                            (log/log-debug "Applying WHERE filters")
+                            (apply-where-conditions all-docs where-condition))
+                          all-docs)
+
+          _ (log/log-debug (str "After filtering: " (count filtered-docs) " documents"))
+
+          ;; Group documents if necessary
           grouped-docs (group-docs-by filtered-docs group-by)
 
           ;; Process each group
@@ -822,12 +860,17 @@
           sorted-results (sort-docs-by processed-groups order-by)
 
           ;; Apply limit
-          limited-results (apply-limit sorted-results limit)]
+          limited-results (apply-limit sorted-results limit)
+
+          _ (log/log-info (str "Returning " (count limited-results) " results"))]
 
       ;; Return at least an empty list if there are no results
       (or limited-results []))
     (catch Exception e
-      (log/log-error (str "Error in handle-select: " (.getMessage e)))
+      (let [sw (java.io.StringWriter.)
+            pw (java.io.PrintWriter. sw)]
+        (.printStackTrace e pw)
+        (log/log-error (str "Error in handle-select: " (.getMessage e) "\n" (.toString sw))))
       [])))
 
 (defn handle-insert
@@ -837,7 +880,10 @@
    - doc: The document to insert
    Returns: The saved document"
   [storage doc]
-  (storage/save-document storage doc))
+  (log/log-info (str "Inserting document: " doc))
+  (let [result (storage/save-document storage doc)]
+    (log/log-info (str "Document inserted successfully: " result))
+    result))
 
 (defn handle-update
   "Handles an UPDATE query.
@@ -871,6 +917,7 @@
   [storage index ^OutputStream out sql]
   (log/log-info (str "Executing query: " sql))
   (let [parsed (parse-sql-query sql)]
+    (log/log-debug (str "Parsed query: " parsed))
     (case (:type parsed)
       :select
       (let [results (handle-select storage parsed)
@@ -883,11 +930,46 @@
         (send-command-complete out "SELECT" (count results)))
 
       :insert
-      (let [doc {:id (second (:values parsed))
-                 :value (nth (:values parsed) 2)}
-            saved (handle-insert storage doc)
-            _ (when index (index/index-document index saved))]
-        (send-command-complete out "INSERT" 1))
+      (try
+        (log/log-info (str "Processing INSERT on table: " (:table parsed)))
+        (log/log-debug (str "Values: " (:values parsed) ", columns: " (:columns parsed)))
+
+        (let [values (:values parsed)
+              columns (:columns parsed)
+              table (:table parsed)
+
+              ;; Create a document with provided values
+              doc (if (and (seq values) (seq columns))
+                    ;; If columns and values are defined, map them
+                    (reduce (fn [acc [col val]]
+                              (assoc acc (keyword col) val))
+                            {:id (str (java.util.UUID/randomUUID))}  ;; Always provide an ID
+                            (map vector columns values))
+                    ;; Otherwise, use the standard id/value format
+                    (cond
+                      (>= (count values) 2) {:id (first values) :value (second values)}
+                      (= (count values) 1) {:id (str (java.util.UUID/randomUUID)) :value (first values)}
+                      :else {:id (str (java.util.UUID/randomUUID)) :value ""}))
+
+              _ (log/log-info (str "Document to insert: " doc))
+
+              ;; Save the document in storage
+              saved (handle-insert storage doc)]
+
+          ;; Index the document (if we have an index)
+          (when index
+            (log/log-debug "Indexing document")
+            (index/index-document index saved))
+
+          (log/log-info (str "INSERT completed successfully, ID: " (:id saved)))
+          (send-command-complete out "INSERT" 1))
+        (catch Exception e
+          (let [sw (java.io.StringWriter.)
+                pw (java.io.PrintWriter. sw)]
+            (.printStackTrace e pw)
+            (log/log-error (str "Error processing INSERT: " (.getMessage e) "\n" (.toString sw))))
+          (send-error-response out (str "Error processing INSERT: " (.getMessage e)))
+          (send-command-complete out "INSERT" 0)))
 
       :update
       (let [id (str/replace (get-in parsed [:where 0 :value]) #"['\"]" "")
@@ -932,18 +1014,27 @@
            (try
              (handle-query storage index out query-text)
              (catch Exception e
-               (log/log-error (str "Error executing query: " (.getMessage e)))
-               (send-error-response out (str "Error executing query: " (.getMessage e)))))
+               (let [sw (java.io.StringWriter.)
+                     pw (java.io.PrintWriter. sw)]
+                 (.printStackTrace e pw)
+                 (log/log-error (str "Error executing query: " (.getMessage e) "\n" (.toString sw))))
+               (send-error-response out (str "Error executing query: " (.getMessage e)))
+               (send-command-complete out "UNKNOWN" 0)))
            (send-ready-for-query out)
            true)  ;; Continue reading
-      \X false   ;; Terminate
-      (do        ;; Other unsupported command
+      \X (do      ;; Terminate message received
+           (log/log-info "Client requested termination")
+           false) ;; Signal to close connection
+      (do         ;; Other unsupported command
         (log/log-debug (str "Unsupported command: " (char message-type)))
         (send-error-response out (str "Unsupported command: " (char message-type)))
         (send-ready-for-query out)
-        true))  ;; Continue reading
+        true))    ;; Continue reading
     (catch Exception e
-      (log/log-error (str "Error handling message: " (.getMessage e)))
+      (let [sw (java.io.StringWriter.)
+            pw (java.io.PrintWriter. sw)]
+        (.printStackTrace e pw)
+        (log/log-error (str "Error handling message: " (.getMessage e) "\n" (.toString sw))))
       (try
         (send-error-response out (str "Internal server error: " (.getMessage e)))
         (send-ready-for-query out)
@@ -963,8 +1054,8 @@
   (try
     (let [in (.getInputStream client-socket)
           out (.getOutputStream client-socket)]
-      ;; Authentication and initial configuration
-      (when-let [_ (read-startup-message in)]
+    ;; Authentication and initial configuration
+      (when-let [_startup-message (read-startup-message in)]
         (log/log-debug "Sending authentication OK")
         (send-authentication-ok out)
         (send-parameter-status out "server_version" "14.0")
@@ -973,40 +1064,66 @@
         (send-backend-key-data out)
         (send-ready-for-query out)
 
-        ;; Main loop to read queries
+    ;; Main loop to read queries
         (let [dis (DataInputStream. in)]
           (try
             (loop []
-              (let [message-type (.readByte dis)]
-                (when (pos? message-type)
-                  (let [message-length (.readInt dis)
-                        content-length (- message-length 4)
-                        buffer (byte-array content-length)]
-                    (.readFully dis buffer 0 content-length)
-
-                    ;; Process the message
-                    (case (char message-type)
-                      \Q (let [query-text (String. buffer 0 (dec content-length) StandardCharsets/UTF_8)]
-                           (handle-query storage index out query-text)
-                           (send-ready-for-query out)
-                           (recur))
-                      \X nil  ;; Terminate
-                      (do     ;; Unknown command
-                        (send-error-response out (str "Unsupported command: " (char message-type)))
-                        (send-ready-for-query out)
-                        (recur)))))))
+              (log/log-debug "Waiting for client message")
+              (let [continue?
+                    (try
+                      (let [message-type (.readByte dis)]
+                        (log/log-debug (str "Received message type: " (char message-type)))
+                        (when (pos? message-type)
+                          (let [message-length (.readInt dis)
+                                content-length (- message-length 4)
+                                buffer (byte-array content-length)]
+                            (.readFully dis buffer 0 content-length)
+                            (handle-message storage index out message-type buffer content-length))))
+                      (catch java.io.EOFException _e
+                        (log/log-info (str "Client disconnected: " (.getRemoteSocketAddress client-socket)))
+                        false) ;; Terminate
+                      (catch java.net.SocketException e
+                        (log/log-info (str "Socket closed: " (.getMessage e)))
+                        false) ;; Terminate
+                      (catch Exception e
+                        (let [sw (java.io.StringWriter.)
+                              pw (java.io.PrintWriter. sw)]
+                          (.printStackTrace e pw)
+                          (log/log-error (str "Error reading client message: " (.getMessage e) "\n" (.toString sw))))
+                        (try
+                          (send-error-response out (str "Internal server error: Error reading message"))
+                          (send-ready-for-query out)
+                          (catch Exception e2
+                            (log/log-error (str "Error sending error response: " (.getMessage e2)))))
+                        true))] ;; Continue reading unless socket was closed
+                (when continue?
+                  (recur))))
             (catch Exception e
-              (log/log-error (str "Error reading client message: " (.getMessage e))))))))
+              (let [sw (java.io.StringWriter.)
+                    pw (java.io.PrintWriter. sw)]
+                (.printStackTrace e pw)
+                (log/log-error (str "Error in client processing loop: " (.getMessage e) "\n" (.toString sw)))))))))
     (catch Exception e
-      (log/log-error (str "Error processing SQL client: " (.getMessage e))))))
+      (let [sw (java.io.StringWriter.)
+            pw (java.io.PrintWriter. sw)]
+        (.printStackTrace e pw)
+        (log/log-error (str "Error initializing SQL client: " (.getMessage e) "\n" (.toString sw)))))
+    (finally
+    ;; Always ensure socket is closed when we're done
+      (when (and client-socket (not (.isClosed client-socket)))
+        (try
+          (.close client-socket)
+          (log/log-info (str "Closed client socket: " (.getRemoteSocketAddress client-socket)))
+          (catch Exception e
+            (log/log-error (str "Error closing client socket: " (.getMessage e)))))))))
 
 (defn start-sql-server
   "Starts a SQL server for ChronDB.
-    Parameters:
-    - storage: The storage implementation
-    - index: The index implementation
-    - port: The port number to listen on
-    Returns: The server socket"
+   Parameters:
+   - storage: The storage implementation
+   - index: The index implementation
+   - port: The port number to listen on
+   Returns: The server socket"
   [storage index port]
   (let [server-socket (ServerSocket. port)]
     (log/log-info (str "Starting SQL server on port " port))
