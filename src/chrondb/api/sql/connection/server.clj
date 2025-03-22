@@ -1,20 +1,20 @@
 (ns chrondb.api.sql.connection.server
-  "Gerenciamento do servidor SQL"
+  "SQL server management"
   (:require [clojure.core.async :as async]
             [chrondb.api.sql.connection.client :as client]
             [chrondb.util.logging :as log])
   (:import [java.net ServerSocket]))
 
 (defn start-sql-server
-  "Inicia um servidor SQL para ChronDB.
-   Parâmetros:
-   - storage: A implementação de armazenamento
-   - index: A implementação de índice
-   - port: O número da porta para escutar
-   Retorna: O socket do servidor"
+  "Starts a SQL server for ChronDB.
+   Parameters:
+   - storage: The storage implementation
+   - index: The index implementation
+   - port: The port number to listen on
+   Returns: The server socket"
   [storage index port]
   (let [server-socket (ServerSocket. port)]
-    (log/log-info (str "Iniciando servidor SQL na porta " port))
+    (log/log-info (str "Starting SQL server on port " port))
     (async/go
       (try
         (while (not (.isClosed server-socket))
@@ -24,17 +24,17 @@
                 (client/handle-client storage index client-socket)))
             (catch Exception e
               (when-not (.isClosed server-socket)
-                (log/log-error (str "Erro ao aceitar conexão SQL: " (.getMessage e)))))))
+                (log/log-error (str "Error accepting SQL connection: " (.getMessage e)))))))
         (catch Exception e
-          (log/log-error (str "Erro no servidor SQL: " (.getMessage e))))))
+          (log/log-error (str "Error in SQL server: " (.getMessage e))))))
     server-socket))
 
 (defn stop-sql-server
-  "Para o servidor SQL.
-   Parâmetros:
-   - server-socket: O socket do servidor para fechar
-   Retorna: nil"
+  "Stops the SQL server.
+   Parameters:
+   - server-socket: The server socket to close
+   Returns: nil"
   [^ServerSocket server-socket]
-  (log/log-info "Parando servidor SQL")
+  (log/log-info "Stopping SQL server")
   (when (and server-socket (not (.isClosed server-socket)))
     (.close server-socket)))
