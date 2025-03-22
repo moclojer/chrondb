@@ -152,7 +152,3 @@
 
 ;; Use the fixture for integration tests
 (use-fixtures :once integration-fixture)
-
-;; PG2 Integration Test - versão anterior removida devido a problemas
-;; Para adicionar testes com pg2, é necessário configurar corretamente
-;; junto à implementação SQL do ChronDB que tem restrições específicas
