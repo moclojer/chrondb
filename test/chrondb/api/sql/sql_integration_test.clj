@@ -1,7 +1,8 @@
 (ns chrondb.api.sql.sql-integration-test
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [chrondb.api.sql.core :as sql]
-            [chrondb.api.sql.test-helpers :refer [create-test-resources]])
+            [chrondb.api.sql.test-helpers :refer [create-test-resources]]
+            [pg.core :as pg])
   (:import [java.net Socket]
            [java.io BufferedReader BufferedWriter InputStreamReader OutputStreamWriter]
            [java.nio.charset StandardCharsets]
@@ -151,3 +152,7 @@
 
 ;; Use the fixture for integration tests
 (use-fixtures :once integration-fixture)
+
+;; PG2 Integration Test - versão anterior removida devido a problemas
+;; Para adicionar testes com pg2, é necessário configurar corretamente
+;; junto à implementação SQL do ChronDB que tem restrições específicas
