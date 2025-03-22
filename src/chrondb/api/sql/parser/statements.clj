@@ -1,14 +1,14 @@
 (ns chrondb.api.sql.parser.statements
-  "Funções para parseamento de instruções SQL completas"
+  "Functions for parsing complete SQL statements"
   (:require [clojure.string :as str]
             [chrondb.api.sql.parser.tokenizer :as tokenizer]
             [chrondb.api.sql.parser.clauses :as clauses]))
 
 (defn parse-select-query
-  "Analisa uma consulta SQL SELECT.
-   Parâmetros:
-   - tokens: A sequência de tokens da consulta
-   Retorna: Um mapa representando a consulta analisada com campos :type, :columns, :table, :where, :group-by, :order-by e :limit"
+  "Parses a SQL SELECT query.
+   Parameters:
+   - tokens: The sequence of query tokens
+   Returns: A map representing the parsed query with fields :type, :columns, :table, :where, :group-by, :order-by and :limit"
   [tokens]
   (let [from-index (tokenizer/find-token-index tokens "from")
         where-index (tokenizer/find-token-index tokens "where")
@@ -16,12 +16,12 @@
         order-index (tokenizer/find-token-index tokens "order")
         limit-index (tokenizer/find-token-index tokens "limit")
 
-       ;; Determina índices para cada cláusula
+       ;; Determine indices for each clause
         where-end (or group-index order-index limit-index (count tokens))
         group-end (or order-index limit-index (count tokens))
         order-end (or limit-index (count tokens))
 
-       ;; Analisa cada cláusula
+       ;; Parse each clause
         columns (if from-index
                   (clauses/parse-select-columns tokens from-index)
                   [])
@@ -48,25 +48,25 @@
      :limit limit}))
 
 (defn parse-insert-query
-  "Analisa uma consulta SQL INSERT.
-   Parâmetros:
-   - tokens: A sequência de tokens da consulta
-   Retorna: Um mapa representando a consulta analisada com campos :type, :table, :columns e :values"
+  "Parses a SQL INSERT query.
+   Parameters:
+   - tokens: The sequence of query tokens
+   Returns: A map representing the parsed query with fields :type, :table, :columns and :values"
   [tokens]
   (let [into-index (tokenizer/find-token-index tokens "into")
         values-index (tokenizer/find-token-index tokens "values")
         table-name (when (and into-index (> into-index 0))
                      (nth tokens (inc into-index)))
 
-       ;; Analisa nomes de colunas se fornecidos
-        columns-start (+ into-index 2)  ;; após INTO tabela (
-        columns-end (- values-index 1)  ;; antes )
+       ;; Parse column names if provided
+        columns-start (+ into-index 2)  ;; after INTO table (
+        columns-end (- values-index 1)  ;; before )
         columns (when (and (< columns-start columns-end)
                            (= (nth tokens columns-start) "(")
                            (= (nth tokens columns-end) ")"))
                   (mapv str/trim (subvec tokens (inc columns-start) columns-end)))
 
-       ;; Analisa valores
+       ;; Parse values
         values-start (+ values-index 1)
         values-tokens (subvec tokens values-start)
         values (loop [remaining values-tokens
@@ -90,16 +90,16 @@
      :values (first values)}))
 
 (defn parse-update-query
-  "Analisa uma consulta SQL UPDATE.
-   Parâmetros:
-   - tokens: A sequência de tokens da consulta
-   Retorna: Um mapa representando a consulta analisada com campos :type, :table, :updates e :where"
+  "Parses a SQL UPDATE query.
+   Parameters:
+   - tokens: The sequence of query tokens
+   Returns: A map representing the parsed query with fields :type, :table, :updates and :where"
   [tokens]
   (let [table-name (second tokens)
         set-index (tokenizer/find-token-index tokens "set")
         where-index (tokenizer/find-token-index tokens "where")
 
-       ;; Analisa cláusula SET
+       ;; Parse SET clause
         set-end (or where-index (count tokens))
         set-tokens (subvec tokens (inc set-index) set-end)
         updates (loop [remaining set-tokens
@@ -118,7 +118,7 @@
                         :else
                         (recur (rest remaining) (assoc result current-field token) nil)))))
 
-       ;; Analisa cláusula WHERE
+       ;; Parse WHERE clause
         where-condition (when where-index
                           (clauses/parse-where-condition tokens where-index (count tokens)))]
 
@@ -128,10 +128,10 @@
      :where where-condition}))
 
 (defn parse-delete-query
-  "Analisa uma consulta SQL DELETE.
-   Parâmetros:
-   - tokens: A sequência de tokens da consulta
-   Retorna: Um mapa representando a consulta analisada com campos :type, :table e :where"
+  "Parses a SQL DELETE query.
+   Parameters:
+   - tokens: The sequence of query tokens
+   Returns: A map representing the parsed query with fields :type, :table and :where"
   [tokens]
   (let [from-index (tokenizer/find-token-index tokens "from")
         where-index (tokenizer/find-token-index tokens "where")
@@ -145,10 +145,10 @@
      :where where-condition}))
 
 (defn parse-sql-query
-  "Analisa uma string de consulta SQL em uma representação estruturada.
-   Parâmetros:
-   - sql: A string de consulta SQL
-   Retorna: Um mapa representando a consulta analisada"
+  "Parses a SQL query string into a structured representation.
+   Parameters:
+   - sql: The SQL query string
+   Returns: A map representing the parsed query"
   [sql]
   (let [tokens (tokenizer/tokenize-sql sql)
         command (str/lower-case (first tokens))]

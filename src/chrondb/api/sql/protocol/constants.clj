@@ -1,10 +1,10 @@
 (ns chrondb.api.sql.protocol.constants
-  "Constantes relacionadas ao protocolo PostgreSQL")
+  "Constants related to the PostgreSQL protocol")
 
-;; Versões do Protocolo
-(def PG_PROTOCOL_VERSION 196608)  ;; Versão do protocolo 3.0
+;; Protocol Versions
+(def PG_PROTOCOL_VERSION 196608)  ;; Protocol version 3.0
 
-;; Tipos de Mensagem
+;; Message Types
 (def PG_ERROR_RESPONSE (byte (int \E)))
 (def PG_READY_FOR_QUERY (byte (int \Z)))
 (def PG_ROW_DESCRIPTION (byte (int \T)))
@@ -14,7 +14,7 @@
 (def PG_PARAMETER_STATUS (byte (int \S)))
 (def PG_BACKEND_KEY_DATA (byte (int \K)))
 
-;; Constantes para o Analisador SQL
+;; Constants for the SQL Parser
 (def RESERVED_WORDS #{"select" "from" "where" "group" "by" "order" "having"
                       "limit" "offset" "insert" "update" "delete" "set" "values"
                       "into" "and" "or" "not" "in" "like" "between" "is" "null"

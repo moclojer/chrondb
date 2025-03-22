@@ -1,14 +1,14 @@
 (ns chrondb.api.sql.execution.functions
-  "Implementação de funções SQL como agregações"
+  "Implementation of SQL functions such as aggregations"
   (:require [chrondb.util.logging :as log]))
 
 (defn execute-aggregate-function
-  "Executa uma função de agregação em uma coleção de documentos.
-   Parâmetros:
-   - function: A função de agregação a executar (:count, :sum, :avg, :min, :max)
-   - docs: Os documentos para operar
-   - field: O campo para agregar
-   Retorna: O resultado da função de agregação"
+  "Executes an aggregate function on a collection of documents.
+   Parameters:
+   - function: The aggregate function to execute (:count, :sum, :avg, :min, :max)
+   - docs: The documents to operate on
+   - field: The field to aggregate
+   Returns: The result of the aggregate function"
   [function docs field]
   (case function
     :count (count docs)
@@ -19,7 +19,7 @@
              (/ (reduce + values) (count values))))
     :min (apply min (keep #(get % (keyword field)) docs))
     :max (apply max (keep #(get % (keyword field)) docs))
-    ;; Caso padrão
+    ;; Default case
     (do
-      (log/log-warn (str "Função de agregação não suportada: " function))
+      (log/log-warn (str "Unsupported aggregate function: " function))
       nil)))

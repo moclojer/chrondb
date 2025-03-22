@@ -1,14 +1,14 @@
 (ns chrondb.api.sql.execution.operators
-  "Implementação dos operadores SQL"
+  "Implementation of SQL operators"
   (:require [clojure.string :as str]
             [chrondb.util.logging :as log]))
 
 (defn evaluate-condition
-  "Avalia uma condição em relação a um documento.
-   Parâmetros:
-   - doc: O documento a ser avaliado
-   - condition: A condição a ser avaliada
-   Retorna: true se a condição for atendida, false caso contrário"
+  "Evaluates a condition against a document.
+   Parameters:
+   - doc: The document to be evaluated
+   - condition: The condition to be evaluated
+   Returns: true if the condition is met, false otherwise"
   [doc condition]
   (let [field-val (get doc (keyword (:field condition)))
         cond-val (str/replace (:value condition) #"['\"]" "")
@@ -22,24 +22,24 @@
       ">=" (>= (compare (str field-val) cond-val) 0)
       "<=" (<= (compare (str field-val) cond-val) 0)
       "like" (re-find (re-pattern (str/replace cond-val #"%" ".*")) (str field-val))
-      ;; Caso padrão
+      ;; Default case
       (do
-        (log/log-warn (str "Operador não suportado: " operator))
+        (log/log-warn (str "Unsupported operator: " operator))
         false))))
 
 (defn apply-where-conditions
-  "Aplica condições WHERE para filtrar uma coleção de documentos.
-   Parâmetros:
-   - docs: Os documentos a serem filtrados
-   - conditions: As condições a serem aplicadas
-   Retorna: Documentos filtrados"
+  "Applies WHERE conditions to filter a collection of documents.
+   Parameters:
+   - docs: The documents to be filtered
+   - conditions: The conditions to be applied
+   Returns: Filtered documents"
   [docs conditions]
-  (log/log-debug (str "Aplicando condições WHERE: " conditions " a " (count docs) " documentos"))
+  (log/log-debug (str "Applying WHERE conditions: " conditions " to " (count docs) " documents"))
   (if (empty? conditions)
     docs
     (filter
      (fn [document]
-       (log/log-debug (str "Verificando documento: " document))
+       (log/log-debug (str "Checking document: " document))
        (every?
         (fn [condition]
           (let [field (keyword (:field condition))
@@ -47,7 +47,7 @@
                 value (str/replace (:value condition) #"['\"]" "")
                 doc-value (str (get document field ""))]
 
-            (log/log-debug (str "Verificando condição: " field " " operator " " value " contra " doc-value))
+            (log/log-debug (str "Checking condition: " field " " operator " " value " against " doc-value))
 
             (case operator
               "=" (= doc-value value)
@@ -58,17 +58,17 @@
               "<=" (<= (compare doc-value value) 0)
               "LIKE" (let [pattern (str/replace value "%" ".*")]
                        (boolean (re-find (re-pattern pattern) doc-value)))
-              ;; Padrão: não correspondente
+              ;; Default: not matching
               false)))
         conditions))
      docs)))
 
 (defn group-docs-by
-  "Agrupa documentos pelos campos especificados.
-   Parâmetros:
-   - docs: Os documentos a serem agrupados
-   - group-fields: Os campos para agrupar
-   Retorna: Documentos agrupados"
+  "Groups documents by the specified fields.
+   Parameters:
+   - docs: The documents to be grouped
+   - group-fields: The fields to group by
+   Returns: Grouped documents"
   [docs group-fields]
   (if (empty? group-fields)
     [docs]
@@ -77,11 +77,11 @@
       (vals (group-by group-fn docs)))))
 
 (defn sort-docs-by
-  "Ordena documentos pelas cláusulas de ordenação especificadas.
-   Parâmetros:
-   - docs: Os documentos a serem ordenados
-   - order-clauses: As cláusulas de ordenação a serem aplicadas
-   Retorna: Documentos ordenados"
+  "Sorts documents by the specified order clauses.
+   Parameters:
+   - docs: The documents to be sorted
+   - order-clauses: The order clauses to be applied
+   Returns: Sorted documents"
   [docs order-clauses]
   (if (empty? order-clauses)
     docs
@@ -104,11 +104,11 @@
             docs))))
 
 (defn apply-limit
-  "Aplica uma cláusula LIMIT a uma coleção de documentos.
-   Parâmetros:
-   - docs: Os documentos a serem limitados
-   - limit: O número máximo de documentos a retornar
-   Retorna: Documentos limitados"
+  "Applies a LIMIT clause to a collection of documents.
+   Parameters:
+   - docs: The documents to be limited
+   - limit: The maximum number of documents to return
+   Returns: Limited documents"
   [docs limit]
   (if limit
     (take limit docs)
