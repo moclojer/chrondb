@@ -53,6 +53,23 @@
     (aset-byte result (alength s-bytes) (byte 0))
     result))
 
+(defn read-null-terminated-string
+  "Lê uma string terminada em nulo a partir de um array de bytes, começando em uma posição específica.
+   Retorna um mapa com a string lida e a nova posição no array."
+  [^bytes buffer pos]
+  (let [start-pos pos]
+    (loop [curr-pos pos]
+      (if (or (>= curr-pos (alength buffer))
+              (zero? (aget buffer curr-pos)))
+        ;; Encontrou o terminador NULL ou fim do buffer
+        (let [length (- curr-pos start-pos)
+              string-bytes (byte-array length)]
+          (System/arraycopy buffer start-pos string-bytes 0 length)
+          {:string (String. string-bytes StandardCharsets/UTF_8)
+           :new-pos (inc curr-pos)}) ; Pular o terminador NULL
+        ;; Continue procurando pelo terminador
+        (recur (inc curr-pos))))))
+
 (defn read-startup-message
   "Reads the startup message from a PostgreSQL client.
    Parameters:
@@ -69,19 +86,39 @@
           ;; Read the rest of the message
           (.readFully dis buffer 0 content-length)
 
-          ;; Log the received bytes for debugging
-          (log/log-debug (str "Startup message bytes received: " (count buffer) " bytes"))
+          ;; Parse the protocol version (int - 4 bytes)
+          (let [protocol-bytes (byte-array 4)]
+            (System/arraycopy buffer 0 protocol-bytes 0 4)
+            (let [protocol (.getInt (ByteBuffer/wrap protocol-bytes))
+                  parameters (atom {})
+                  pos (atom 4)]  ;; Start after the protocol version
 
-          ;; Always return default values to avoid parsing failures
-          {:protocol-version constants/PG_PROTOCOL_VERSION
-           :database "chrondb"
-           :user "chrondb"})))
+              ;; Parse parameters (null-terminated strings)
+              (loop []
+                (when (< @pos (alength buffer))
+                  (if (zero? (aget buffer @pos))
+                    ;; End of parameters
+                    (swap! pos inc)
+                    (let [param-result (read-null-terminated-string buffer @pos)
+                          param-name (:string param-result)]
+                      (reset! pos (:new-pos param-result))
+
+                      (when (< @pos (alength buffer))
+                        (let [value-result (read-null-terminated-string buffer @pos)
+                              param-value (:string value-result)]
+                          (reset! pos (:new-pos value-result))
+                          (swap! parameters assoc param-name param-value)
+                          (recur)))))))
+
+              ;; Create and return the result map
+              {:protocol protocol
+               :parameters @parameters})))))
     (catch Exception e
       (log/log-error (str "Error reading startup message: " (.getMessage e)))
       ;; Return default values to allow the process to continue
-      {:protocol-version constants/PG_PROTOCOL_VERSION
-       :database "chrondb"
-       :user "chrondb"})))
+      {:protocol constants/PG_PROTOCOL_VERSION
+       :parameters {"user" "chrondb"
+                    "database" "chrondb"}})))
 
 (defn send-authentication-ok
   "Sends an authentication OK message to the client.
