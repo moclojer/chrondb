@@ -1,30 +1,30 @@
 (ns chrondb.api.sql.core
-  "Implementação do servidor SQL para ChronDB"
+  "SQL server implementation for ChronDB"
   (:require [chrondb.storage.protocol :as storage]
             [chrondb.index.protocol :as index]
             [chrondb.util.logging :as log]
             [chrondb.api.sql.connection.server :as server]))
 
 (defn start-sql-server
-  "Inicia um servidor SQL para ChronDB.
-   Parâmetros:
-   - storage: A implementação de armazenamento
-   - index: A implementação de índice (opcional)
-   - port: O número da porta para escutar (opcional, padrão: 5432)
-   Retorna: O socket do servidor"
+  "Starts a SQL server for ChronDB.
+   Parameters:
+   - storage: The storage implementation
+   - index: The index implementation (optional)
+   - port: The port number to listen on (optional, default: 5432)
+   Returns: The server socket"
   ([storage]
    (start-sql-server storage nil 5432))
   ([storage index]
    (start-sql-server storage index 5432))
   ([storage index port]
-   (log/log-info (str "Iniciando servidor SQL do ChronDB na porta " port))
+   (log/log-info (str "Starting ChronDB SQL server on port " port))
    (server/start-sql-server storage index port)))
 
 (defn stop-sql-server
-  "Para o servidor SQL.
-   Parâmetros:
-   - server-socket: O socket do servidor para fechar
-   Retorna: nil"
+  "Stops the SQL server.
+   Parameters:
+   - server-socket: The server socket to close
+   Returns: nil"
   [server-socket]
-  (log/log-info "Parando servidor SQL do ChronDB")
+  (log/log-info "Stopping ChronDB SQL server")
   (server/stop-sql-server server-socket))
