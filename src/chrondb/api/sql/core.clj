@@ -1,8 +1,6 @@
 (ns chrondb.api.sql.core
   "SQL server implementation for ChronDB"
-  (:require [chrondb.storage.protocol :as storage]
-            [chrondb.index.protocol :as index]
-            [chrondb.util.logging :as log]
+  (:require [chrondb.util.logging :as log]
             [chrondb.api.sql.connection.server :as server]))
 
 (defn start-sql-server
