@@ -43,7 +43,7 @@
         (let [writer (create-string-writer)
               query "SELECT * FROM documentos"]
           (query/handle-query storage query (:output-stream writer) query)
-          ;; Verifica apenas que a resposta contém algo
+          ;; Only verify that the response contains something
           (is (pos? (count (get-writer-output writer))))))
 
       (testing "SELECT specific columns"
@@ -70,7 +70,7 @@
     (let [query "SELECT id, nome, valor FROM documentos WHERE ativo = true ORDER BY valor DESC LIMIT 10"
           parsed (statements/parse-sql-query query)]
       (is (= :select (:type parsed)))
-      ;; Verifica apenas que existem colunas, sem assumir o formato interno
+      ;; Only verify that columns exist, without assuming the internal format
       (is (seq (:columns parsed)))
       (is (= "documentos" (:table parsed)))
       (is (some? (:where parsed)))
@@ -82,7 +82,7 @@
           parsed (statements/parse-sql-query query)]
       (is (= :insert (:type parsed)))
       (is (= "documentos" (:table parsed)))
-      ;; Verifica apenas que existem colunas e valores, sem assumir o formato interno
+      ;; Only verify that columns and values exist, without assuming the internal format
       (is (seq (:columns parsed)))
       (is (seq (:values parsed))))))
 
@@ -101,16 +101,16 @@
                       :order-by nil
                       :limit nil}
               results (query/handle-select storage parsed)]
-          ;; Verifica apenas que existem resultados, sem assumir uma quantidade específica
+          ;; Only verify that results exist, without assuming a specific count
           (is (pos? (count results)))
           (is (some? (first results))))))))
 
-;; Verificar insert
+;; Verify insert
 (deftest test-sql-insert
   (testing "Handle INSERT query"
     (let [{storage :storage} (create-test-resources)
-          ;; Criar um documento completo em vez de usar apenas o mapa parsed
+          ;; Create a complete document instead of just using the parsed map
           doc {:id "test:4"
                :valor "40"}]
-      ;; O problema é que handle-insert espera um documento, não um mapa de parsed query
+      ;; The issue is that handle-insert expects a document, not a parsed query map
       (is (map? (query/handle-insert storage doc))))))

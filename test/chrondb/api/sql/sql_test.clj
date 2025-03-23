@@ -30,7 +30,7 @@
       (sql/stop-sql-server server)
       (is (.isClosed server)))))
 
-;; Test múltiplas aridades (overloads) das funções de inicialização do servidor
+;; Test multiple arities (overloads) of server initialization functions
 (deftest test-sql-server-overloads
   (testing "Start SQL server with just storage"
     (let [{storage :storage} (create-test-resources)
@@ -50,20 +50,20 @@
       (sql/stop-sql-server server)
       (is (.isClosed server)))))
 
-;; Teste para garantir que o servidor pode ser parado com segurança
+;; Test to ensure the server can be stopped safely
 (deftest test-sql-server-safe-stop
   (testing "Stopping SQL server safely"
     (let [{storage :storage index :index} (create-test-resources)]
-      ;; Caso normal: servidor iniciado e então parado
+      ;; Normal case: server started and then stopped
       (let [server (sql/start-sql-server storage index 0)]
         (sql/stop-sql-server server)
         (is (.isClosed server)))
 
-      ;; Caso de borda: tentar parar um servidor já fechado
+      ;; Edge case: try to stop an already closed server
       (let [server (sql/start-sql-server storage index 0)]
         (sql/stop-sql-server server)
-        (sql/stop-sql-server server) ;; Não deve lançar exceção
+        (sql/stop-sql-server server) ;; Should not throw an exception
         (is (.isClosed server)))
 
-      ;; Caso de borda: tentar parar com nil
-      (sql/stop-sql-server nil)))) ;; Não deve lançar exceção
+      ;; Edge case: try to stop with nil
+      (sql/stop-sql-server nil)))) ;; Should not throw an exception

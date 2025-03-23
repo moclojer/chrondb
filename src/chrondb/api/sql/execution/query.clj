@@ -193,24 +193,49 @@
 
     (let [values (:values parsed)
           columns (:columns parsed)
-          clean-values (if (seq values)
-                         (mapv #(str/replace % #"['\"]" "") values)
-                         [])
 
-          _ (log/log-debug (str "Clean values for INSERT: " clean-values))
+          ;; Log the raw tokens for debugging
+          _ (log/log-debug (str "Raw values tokens: " values))
+          _ (log/log-debug (str "Raw columns tokens: " columns))
 
-          doc (if (and (seq clean-values) (seq columns))
+          ;; Make sure we only have valid column names
+          clean-columns (when (seq columns)
+                          (map (fn [col]
+                                 ;; Ensure column names are valid identifiers
+                                 (let [clean-col (-> col
+                                                     (str/replace #"^['\"]|['\"]$" "") ;; Remove quotes
+                                                     (str/replace #"[^\w\d_]" "_"))] ;; Replace invalid chars with underscore
+                                   clean-col))
+                               columns))
+
+          _ (log/log-debug (str "Cleaned columns: " clean-columns))
+
+          ;; Properly clean values - keep quotes while processing
+          ;; and only remove them at the end to preserve values with spaces
+          doc (if (and (seq values) (seq clean-columns))
                 (let [doc-map (reduce (fn [acc [col val]]
-                                        (assoc acc (keyword col) val))
-                                      {:id (str (java.util.UUID/randomUUID))}
-                                      (map vector columns clean-values))]
+                                        ;; Skip invalid column names or values
+                                        (if (or (nil? col) (nil? val) (= col ",") (= val ","))
+                                          acc
+                                          ;; Remove quotes only now, after having the column/value pair
+                                          (assoc acc (keyword col) (str/replace val #"^['\"]|['\"]$" ""))))
+                                      {:id (if (and (seq clean-columns) (= (first clean-columns) "id"))
+                                             ;; If there's an ID column, use its value
+                                             (str/replace (first values) #"^['\"]|['\"]$" "")
+                                             ;; Otherwise, generate UUID
+                                             (str (java.util.UUID/randomUUID)))}
+                                      ;; Zip columns with values, ignoring ID if already processed
+                                      (if (and (seq clean-columns) (= (first clean-columns) "id"))
+                                        (map vector (rest clean-columns) (rest values))
+                                        (map vector clean-columns values)))]
                   (log/log-debug (str "Document created with column mapping: " doc-map))
                   doc-map)
+                ;; Fallback case (no explicit columns)
                 (let [doc-map (cond
-                                (>= (count clean-values) 2) {:id (first clean-values)
-                                                             :value (second clean-values)}
-                                (= (count clean-values) 1) {:id (str (java.util.UUID/randomUUID))
-                                                            :value (first clean-values)}
+                                (>= (count values) 2) {:id (str/replace (first values) #"^['\"]|['\"]$" "")
+                                                       :value (str/replace (second values) #"^['\"]|['\"]$" "")}
+                                (= (count values) 1) {:id (str (java.util.UUID/randomUUID))
+                                                      :value (str/replace (first values) #"^['\"]|['\"]$" "")}
                                 :else {:id (str (java.util.UUID/randomUUID)) :value ""})]
                   (log/log-debug (str "Document created with default format: " doc-map))
                   doc-map))
@@ -228,9 +253,8 @@
       (let [sw (java.io.StringWriter.)
             pw (java.io.PrintWriter. sw)]
         (.printStackTrace e pw)
-        (log/log-error (str "Error processing INSERT: " (.getMessage e) "\n" (.toString sw))))
-      (messages/send-error-response out (str "Error processing INSERT: " (.getMessage e)))
-      (messages/send-command-complete out "INSERT" 0))))
+        (log/log-error (str "Error processing INSERT: " (.getMessage e) "\n" (.toString sw)))
+        (messages/send-error-response out (str "Error processing INSERT: " (.getMessage e)))))))
 
 (defn handle-update-case
   "Handles the UPDATE case of an SQL query"

@@ -64,7 +64,10 @@
         columns (when (and (< columns-start columns-end)
                            (= (nth tokens columns-start) "(")
                            (= (nth tokens columns-end) ")"))
-                  (mapv str/trim (subvec tokens (inc columns-start) columns-end)))
+                  ;; Filter out comma tokens
+                  (->> (subvec tokens (inc columns-start) columns-end)
+                       (remove #(= "," %))
+                       (mapv str/trim)))
 
        ;; Parse values
         values-start (+ values-index 1)
@@ -81,6 +84,8 @@
                      (cond
                        (= token "(") (recur (rest remaining) current-values true [])
                        (= token ")") (recur (rest remaining) (conj current-values current-group) false [])
+                       ;; Skip commas inside parentheses
+                       (and in-parens (= token ",")) (recur (rest remaining) current-values true current-group)
                        in-parens (recur (rest remaining) current-values true (conj current-group token))
                        :else (recur (rest remaining) current-values in-parens current-group)))))]
 
