@@ -14,8 +14,8 @@ jobs:
       - name: Setup GraalVM
         uses: graalvm/setup-graalvm@v1
         with:
-          java-version: '17'
-          distribution: 'graalvm'
+          java-version: "17"
+          distribution: "graalvm"
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install Clojure tools
         uses: DeLaGuardo/setup-clojure@12.1
@@ -44,4 +44,4 @@ jobs:
       # Run coverage excluding Redis tests
       - name: Run coverage
         run: |
-          clojure -M:coverage-no-redis
+          clojure -M:coverage-non-external-protocol
