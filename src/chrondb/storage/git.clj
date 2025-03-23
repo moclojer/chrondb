@@ -238,8 +238,6 @@
           doc-path (get-file-path data-dir (:id document))
           doc-content (json/write-str document)]
 
-      (log/log-debug "Creating virtual document at:" doc-path)
-
       (commit-virtual (Git/wrap repository)
                       (get-in config-map [:git :default-branch])
                       doc-path

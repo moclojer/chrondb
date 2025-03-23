@@ -18,7 +18,7 @@
       (let [in (.getInputStream client-socket)
             out (.getOutputStream client-socket)]
         ;; Initialize the connection and process messages
-        (handlers/handle-client-connection storage index in out))
+        (handlers/handle-client storage index in out))
       (catch Exception e
         (let [sw (java.io.StringWriter.)
               pw (java.io.PrintWriter. sw)]

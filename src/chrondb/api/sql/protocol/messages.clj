@@ -1,125 +1,110 @@
 (ns chrondb.api.sql.protocol.messages
-  "Protocol message handling for PostgreSQL wire protocol"
-  (:require [chrondb.api.sql.protocol.constants :as constants]
-            [chrondb.util.logging :as log])
-  (:import [java.io OutputStream InputStream DataOutputStream DataInputStream ByteArrayOutputStream]
+  "PostgreSQL frontend/backend protocol message handling"
+  (:require [chrondb.util.logging :as log]
+            [chrondb.api.sql.protocol.constants :as constants])
+  (:import [java.nio ByteBuffer]
            [java.nio.charset StandardCharsets]
-           [java.nio ByteBuffer]))
+           [java.io OutputStream InputStream]))
 
-(defn write-bytes
-  "Writes a byte array to an output stream and flushes it.
-   Parameters:
-   - out: The output stream
-   - data: The byte array to write
-   Returns: nil"
-  [^OutputStream out ^bytes data]
-  (.write out data 0 (alength data))
-  (.flush out))
-
+;; Helper for writing messages to the stream
 (defn write-message
-  "Writes a PostgreSQL protocol message to an output stream.
+  "Write a message to the output stream.
    Parameters:
-   - out: The output stream
-   - type: The message type (a byte)
-   - data: The message content as a byte array
+   - out: The output stream to write to
+   - type: The message type (single byte)
+   - body: The message body (byte array)
    Returns: nil"
-  [^OutputStream out type ^bytes data]
+  [^OutputStream out type body]
   (try
-    (let [msg-length (+ 4 (alength data))
-          dos (DataOutputStream. out)]
-      ;; Message type (1 byte)
-      (.writeByte dos (int type))
-
-      ;; Message length (int - 4 bytes) in Big Endian format (Java default)
-      (.writeInt dos msg-length)
-
-      ;; Write the message content
-      (.write dos data 0 (alength data))
-      (.flush dos))
+    (let [length (+ 4 (count body))]  ;; 4 bytes for length field + body length
+      ;; Message type
+      (.write out (int type))
+      ;; Message length (4 bytes, big-endian)
+      (.write out (bit-shift-right (bit-and length 0xFF000000) 24))
+      (.write out (bit-shift-right (bit-and length 0x00FF0000) 16))
+      (.write out (bit-shift-right (bit-and length 0x0000FF00) 8))
+      (.write out (bit-and length 0x000000FF))
+      ;; Message body
+      (.write out body)
+      (.flush out))
     (catch Exception e
       (log/log-error (str "Error writing message: " (.getMessage e))))))
 
-(defn string-to-bytes
-  "Converts a string to a null-terminated byte array.
-   Parameters:
-   - s: The string to convert
-   Returns: A byte array containing the string bytes followed by a null terminator"
-  [s]
-  (let [s-bytes (.getBytes s StandardCharsets/UTF_8)
-        result (byte-array (inc (alength s-bytes)))]
-    ;; Copy the original string
-    (System/arraycopy s-bytes 0 result 0 (alength s-bytes))
-    ;; Add the null terminator
-    (aset-byte result (alength s-bytes) (byte 0))
-    result))
+;; Reading functions
+(defn read-byte
+  "Read a single byte from the input stream"
+  [^InputStream in]
+  (.read in))
 
-(defn read-null-terminated-string
-  "Lê uma string terminada em nulo a partir de um array de bytes, começando em uma posição específica.
-   Retorna um mapa com a string lida e a nova posição no array."
-  [^bytes buffer pos]
-  (let [start-pos pos]
-    (loop [curr-pos pos]
-      (if (or (>= curr-pos (alength buffer))
-              (zero? (aget buffer curr-pos)))
-        ;; Encontrou o terminador NULL ou fim do buffer
-        (let [length (- curr-pos start-pos)
-              string-bytes (byte-array length)]
-          (System/arraycopy buffer start-pos string-bytes 0 length)
-          {:string (String. string-bytes StandardCharsets/UTF_8)
-           :new-pos (inc curr-pos)}) ; Pular o terminador NULL
-        ;; Continue procurando pelo terminador
-        (recur (inc curr-pos))))))
+(defn read-int
+  "Read a 4-byte integer from the input stream"
+  [^InputStream in]
+  (-> (read-byte in)
+      (bit-shift-left 24)
+      (bit-or (bit-shift-left (read-byte in) 16))
+      (bit-or (bit-shift-left (read-byte in) 8))
+      (bit-or (read-byte in))))
+
+(defn read-short
+  "Read a 2-byte short from the input stream"
+  [^InputStream in]
+  (-> (bit-shift-left (read-byte in) 8)
+      (bit-or (read-byte in))))
+
+(defn read-string
+  "Read a null-terminated string from the input stream"
+  [^InputStream in]
+  (let [buffer (ByteBuffer/allocate 1024)
+        sb (StringBuilder.)]
+    (loop []
+      (let [b (read-byte in)]
+        (if (zero? b)
+          (.toString sb)
+          (do
+            (.append sb (char b))
+            (recur)))))))
 
 (defn read-startup-message
-  "Reads the startup message from a PostgreSQL client.
-   Parameters:
-   - in: The input stream to read from
-   Returns: A map containing protocol version, database name, and username"
+  "Read a startup message from the client"
   [^InputStream in]
   (try
-    (let [dis (DataInputStream. in)
-          ;; Read the message length (first field - 4 bytes)
-          msg-length (.readInt dis)]
-      (when (> msg-length 0)
-        (let [content-length (- msg-length 4)
-              buffer (byte-array content-length)]
-          ;; Read the rest of the message
-          (.readFully dis buffer 0 content-length)
-
-          ;; Parse the protocol version (int - 4 bytes)
-          (let [protocol-bytes (byte-array 4)]
-            (System/arraycopy buffer 0 protocol-bytes 0 4)
-            (let [protocol (.getInt (ByteBuffer/wrap protocol-bytes))
-                  parameters (atom {})
-                  pos (atom 4)]  ;; Start after the protocol version
-
-              ;; Parse parameters (null-terminated strings)
-              (loop []
-                (when (< @pos (alength buffer))
-                  (if (zero? (aget buffer @pos))
-                    ;; End of parameters
-                    (swap! pos inc)
-                    (let [param-result (read-null-terminated-string buffer @pos)
-                          param-name (:string param-result)]
-                      (reset! pos (:new-pos param-result))
-
-                      (when (< @pos (alength buffer))
-                        (let [value-result (read-null-terminated-string buffer @pos)
-                              param-value (:string value-result)]
-                          (reset! pos (:new-pos value-result))
-                          (swap! parameters assoc param-name param-value)
-                          (recur)))))))
-
-              ;; Create and return the result map
-              {:protocol protocol
-               :parameters @parameters})))))
+    (let [length (read-int in)
+          protocol-version (read-int in)
+          parameter-bytes (byte-array (- length 8))]
+      (.read in parameter-bytes)
+      (let [parameters (ByteBuffer/wrap parameter-bytes)
+            result {:protocol-version protocol-version
+                    :parameters {}}]
+        (loop [r result]
+          (let [key-start (.position parameters)
+                key-length (loop [pos key-start]
+                             (if (zero? (.get parameters pos))
+                               (- pos key-start)
+                               (recur (inc pos))))
+                key-bytes (byte-array key-length)
+                _ (.position parameters key-start)
+                _ (.get parameters key-bytes 0 key-length)
+                _ (.position parameters (+ key-start key-length 1))
+                key (when (pos? key-length) (String. key-bytes StandardCharsets/UTF_8))]
+            (if (or (nil? key) (zero? (count key)))
+              r
+              (let [value-start (.position parameters)
+                    value-length (loop [pos value-start]
+                                   (if (zero? (.get parameters pos))
+                                     (- pos value-start)
+                                     (recur (inc pos))))
+                    value-bytes (byte-array value-length)
+                    _ (.position parameters value-start)
+                    _ (.get parameters value-bytes 0 value-length)
+                    _ (.position parameters (+ value-start value-length 1))
+                    value (String. value-bytes StandardCharsets/UTF_8)
+                    updated-params (assoc (:parameters r) key value)]
+                (recur (assoc r :parameters updated-params))))))))
     (catch Exception e
       (log/log-error (str "Error reading startup message: " (.getMessage e)))
-      ;; Return default values to allow the process to continue
-      {:protocol constants/PG_PROTOCOL_VERSION
-       :parameters {"user" "chrondb"
-                    "database" "chrondb"}})))
+      nil)))
 
+;; Message sending functions
 (defn send-authentication-ok
   "Sends an authentication OK message to the client.
    Parameters:
@@ -127,58 +112,13 @@
    Returns: nil"
   [^OutputStream out]
   (let [buffer (ByteBuffer/allocate 4)]
-    (.putInt buffer 0)  ;; Successful authentication (0)
-    (write-message out constants/PG_AUTHENTICATION_OK (.array buffer))))
-
-(defn send-parameter-status
-  "Sends a parameter status message to the client.
-   Parameters:
-   - out: The output stream
-   - param: The parameter name
-   - value: The parameter value
-   Returns: nil"
-  [^OutputStream out param value]
-  (let [buffer (ByteBuffer/allocate 1024)
-        param-bytes (.getBytes param StandardCharsets/UTF_8)
-        value-bytes (.getBytes value StandardCharsets/UTF_8)]
-
-    ;; Add the parameter name
-    (.put buffer param-bytes)
-    (.put buffer (byte 0))  ;; Null terminator for the name
-
-    ;; Add the parameter value
-    (.put buffer value-bytes)
-    (.put buffer (byte 0))  ;; Null terminator for the value
+    (.putInt buffer 0)  ;; Auth code 0 = OK
 
     (let [pos (.position buffer)
           final-data (byte-array pos)]
       (.flip buffer)
       (.get buffer final-data)
-      (write-message out constants/PG_PARAMETER_STATUS final-data))))
-
-(defn send-backend-key-data
-  "Sends backend key data to the client.
-   Parameters:
-   - out: The output stream
-   Returns: nil"
-  [^OutputStream out]
-  (let [buffer (ByteBuffer/allocate 8)]
-    ;; Process ID (4 bytes)
-    (.putInt buffer 12345)
-    ;; Secret key (4 bytes)
-    (.putInt buffer 67890)
-    (write-message out constants/PG_BACKEND_KEY_DATA (.array buffer))))
-
-(defn send-ready-for-query
-  "Sends a ready for query message to the client.
-   Parameters:
-   - out: The output stream
-   Returns: nil"
-  [^OutputStream out]
-  (let [buffer (ByteBuffer/allocate 1)]
-    ;; Status: 'I' = idle (ready for queries)
-    (.put buffer (byte (int \I)))
-    (write-message out constants/PG_READY_FOR_QUERY (.array buffer))))
+      (write-message out constants/PG_AUTHENTICATION_OK final-data))))
 
 (defn send-error-response
   "Sends an error response message to the client.
@@ -187,35 +127,47 @@
    - message: The error message
    Returns: nil"
   [^OutputStream out message]
-  (let [buffer (ByteBuffer/allocate 1024)]
-    ;; Add error fields
-    (.put buffer (byte (int \S)))   ;; Severity field identifier
-    (.put buffer (.getBytes "ERROR" StandardCharsets/UTF_8))
-    (.put buffer (byte 0))
+  (let [buffer (ByteBuffer/allocate 1024)  ;; Aumentar para 1KB, suficiente para a maioria das mensagens de erro
+        ;; Add error fields
+        _ (.put buffer (byte (int \S)))  ;; Severity field
+        _ (.put buffer (.getBytes "ERROR" StandardCharsets/UTF_8))
+        _ (.put buffer (byte 0))  ;; Null terminator
 
-    (.put buffer (byte (int \C)))  ;; Code field identifier
-    (.put buffer (.getBytes "42501" StandardCharsets/UTF_8))  ;; Permission denied (for UPDATE/DELETE without WHERE)
-    (.put buffer (byte 0))
+        ;; Message field
+        _ (.put buffer (byte (int \M)))  ;; Message field
+        _ (.put buffer (.getBytes message StandardCharsets/UTF_8))
+        _ (.put buffer (byte 0))  ;; Null terminator
 
-    (.put buffer (byte (int \M)))  ;; Message field identifier
-    (.put buffer (.getBytes message StandardCharsets/UTF_8))
-    (.put buffer (byte 0))
+        ;; Final null terminator for the entire message
+        _ (.put buffer (byte 0))
 
-    (.put buffer (byte (int \H)))  ;; Hint field identifier
-    (.put buffer (.getBytes "Add a WHERE clause with a specific ID" StandardCharsets/UTF_8))
-    (.put buffer (byte 0))
+        pos (.position buffer)
+        final-data (byte-array pos)]
+    (.flip buffer)
+    (.get buffer final-data)
+    (write-message out constants/PG_ERROR_RESPONSE final-data)))
 
-    (.put buffer (byte (int \P)))  ;; Position field identifier
-    (.put buffer (.getBytes "1" StandardCharsets/UTF_8))
-    (.put buffer (byte 0))
-
-    (.put buffer (byte 0))  ;; Final terminator
+(defn send-parameter-status
+  "Sends a parameter status message to inform client of settings
+   Parameters:
+   - out: The output stream
+   - name: The parameter name
+   - value: The parameter value
+   Returns: nil"
+  [^OutputStream out name value]
+  (let [name-bytes (.getBytes name StandardCharsets/UTF_8)
+        value-bytes (.getBytes value StandardCharsets/UTF_8)
+        buffer (ByteBuffer/allocate (+ (count name-bytes) (count value-bytes) 2))]
+    (.put buffer name-bytes)
+    (.put buffer (byte 0))  ;; Null terminator
+    (.put buffer value-bytes)
+    (.put buffer (byte 0))  ;; Null terminator
 
     (let [pos (.position buffer)
           final-data (byte-array pos)]
       (.flip buffer)
       (.get buffer final-data)
-      (write-message out constants/PG_ERROR_RESPONSE final-data))))
+      (write-message out constants/PG_PARAMETER_STATUS final-data))))
 
 (defn send-command-complete
   "Sends a command complete message to the client.
@@ -225,14 +177,13 @@
    - rows: The number of rows affected
    Returns: nil"
   [^OutputStream out command rows]
-  (let [buffer (ByteBuffer/allocate 128)
-        ;; The format depends on the command
-        command-str (cond
+  (let [command-str (cond
                       (= command "INSERT") "INSERT 0 1"  ;; For INSERT, the format should be "INSERT 0 1" where 0 is the OID and 1 is the row count
                       (and (= command "SELECT") (zero? rows)) "SELECT 0 0"  ;; Explicit format for zero results (0 rows)
-                      :else (str command " " rows))]
-    (log/log-debug (str "Sending command complete: " command-str))
-    (.put buffer (.getBytes command-str StandardCharsets/UTF_8))
+                      :else (str command " " rows))
+        command-bytes (.getBytes command-str StandardCharsets/UTF_8)
+        buffer (ByteBuffer/allocate (+ (count command-bytes) 1))] ;; +1 for null terminator
+    (.put buffer command-bytes)
     (.put buffer (byte 0))  ;; Null terminator for the string
 
     (let [pos (.position buffer)
@@ -242,51 +193,59 @@
       (write-message out constants/PG_COMMAND_COMPLETE final-data))))
 
 (defn send-row-description
-  "Sends a row description message to the client.
+  "Sends a row description message.
    Parameters:
    - out: The output stream
-   - columns: A sequence of column names
+   - columns: A list of column names
    Returns: nil"
   [^OutputStream out columns]
-  (let [buffer (ByteBuffer/allocate 1024)]
-    ;; Number of fields (2 bytes)
+  (let [buffer (ByteBuffer/allocate (+ 2 (* (count columns) 128)))]  ;; Estimated size, 2 for field count + space for each field
+
+    ;; Number of fields
     (.putShort buffer (short (count columns)))
 
-    ;; Information for each column (only if there are columns)
-    (when (seq columns)
-      (doseq [col columns]
-        ;; Column name (null-terminated string)
-        (.put buffer (.getBytes col StandardCharsets/UTF_8))
-        (.put buffer (byte 0))
+    ;; For each column
+    (doseq [column columns]
+      ;; Column name
+      (.put buffer (.getBytes (or column "") StandardCharsets/UTF_8))
+      (.put buffer (byte 0))  ;; Null terminator
 
-        ;; Table OID (4 bytes)
-        (.putInt buffer 0)
+      ;; Table OID (0 = not part of a specific table)
+      (.putInt buffer 0)
 
-        ;; Attribute number (2 bytes)
-        (.putShort buffer (short 0))
+      ;; Column attribute number within the table (0 = not from a table)
+      (.putShort buffer (short 0))
 
-        ;; Data type OID (4 bytes) - VARCHAR
-        (.putInt buffer 25)  ;; TEXT
+      ;; Data type OID (23 = INT4)
+      (.putInt buffer 25)  ;; 25 = TEXT
 
-        ;; Type size (2 bytes)
-        (.putShort buffer (short -1))
+      ;; Data type size (4 bytes for INT4)
+      (.putShort buffer (short -1))  ;; -1 = variable length
 
-        ;; Type modifier (4 bytes)
-        (.putInt buffer -1)
+      ;; Type modifier (usually -1 = no specific modifier)
+      (.putInt buffer -1)
 
-        ;; Format code (2 bytes) - 0=text
-        (.putShort buffer (short 0))))
+      ;; Format code (0 = text, 1 = binary)
+      (.putShort buffer (short 0)))
 
-    (let [pos (.position buffer)
-          final-data (byte-array pos)]
-      (.flip buffer)
-      (.get buffer final-data)
-      (write-message out constants/PG_ROW_DESCRIPTION final-data))))
+    ;; Reset buffer position for reading
+    (.flip buffer)
+
+    ;; Create byte array from buffer
+    (let [size (.remaining buffer)
+          message-body (byte-array size)]
+      (.get buffer message-body)
+
+      ;; Send the row description
+      (write-message out constants/PG_ROW_DESCRIPTION message-body))))
 
 (defn send-data-row
-  "Sends a data row message"
+  "Sends a data row message.
+   Parameters:
+   - out: The output stream
+   - values: A list of column values
+   Returns: nil"
   [^OutputStream out values]
-  (log/log-debug (str "Enviando linha de dados: " values))
   (let [buffer (ByteBuffer/allocate (+ 2 (* (count values) 256)))]  ;; Estimated size
     ;; Number of values in the row
     (.putShort buffer (short (count values)))
@@ -312,3 +271,19 @@
 
       ;; Send the data row
       (write-message out constants/PG_DATA_ROW message-body))))
+
+(defn send-ready-for-query
+  "Sends a ready for query message.
+   Parameters:
+   - out: The output stream
+   - status: Transaction status (I=idle, T=in transaction, E=error)
+   Returns: nil"
+  [^OutputStream out status]
+  (let [buffer (ByteBuffer/allocate 1)]
+    (.put buffer (byte (int (or status \I))))  ;; Default to Idle status
+
+    (let [pos (.position buffer)
+          final-data (byte-array pos)]
+      (.flip buffer)
+      (.get buffer final-data)
+      (write-message out constants/PG_READY_FOR_QUERY final-data))))

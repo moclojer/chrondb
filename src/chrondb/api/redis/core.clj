@@ -537,7 +537,6 @@
     (when-not (.isClosed server-socket)
       (try
         (let [client-socket (.accept server-socket)]
-          (log/log-debug "Accepted connection from" (.getInetAddress client-socket))
           (handle-client client-socket storage index))
         (catch Exception e
           (log/log-error (str "Error accepting connection: " (.getMessage e)))))

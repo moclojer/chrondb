@@ -46,7 +46,6 @@
         ; Saves with new ID
         (let [saved (storage/save-document storage new-doc)]
           (when index
-            (log/log-debug "Re-indexing document")
             (index/index-document index saved))
 
           ; Removes old document
