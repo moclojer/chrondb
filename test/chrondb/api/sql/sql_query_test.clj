@@ -1,6 +1,6 @@
 (ns chrondb.api.sql.sql-query-test
   (:require [clojure.test :refer [deftest is testing]]
-            [chrondb.api.sql.protocol.query :as query]
+            [chrondb.api.sql.execution.query :as query]
             [chrondb.api.sql.parser.statements :as statements]
             [chrondb.storage.protocol :as storage-protocol]
             [chrondb.api.sql.test-helpers :refer [create-test-resources]]
