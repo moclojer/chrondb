@@ -121,7 +121,7 @@
             result (messages/read-startup-message input-stream)]
         (is (= "postgres" (get-in result [:parameters "user"])))
         (is (= "chrondb" (get-in result [:parameters "database"])))
-        (is (= protocol-version (:protocol result)))))))
+        (is (= protocol-version (:protocol-version result)))))))
 
 ;; Test transaction status characters
 (deftest test-transaction-status

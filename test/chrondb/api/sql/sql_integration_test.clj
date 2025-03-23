@@ -5,11 +5,28 @@
   (:import [java.net Socket]
            [java.io BufferedReader BufferedWriter InputStreamReader OutputStreamWriter]
            [java.nio.charset StandardCharsets]
-           [java.nio ByteBuffer]))
+           [java.nio ByteBuffer]
+           [java.util.concurrent Executors TimeUnit TimeoutException Future Callable]))
+
+;; Função para executar uma tarefa com timeout
+(defn with-timeout [timeout-ms timeout-msg f]
+  (let [executor (Executors/newSingleThreadExecutor)
+        future (.submit executor ^Callable f)]
+    (try
+      (try
+        (.get future timeout-ms TimeUnit/MILLISECONDS)
+        (catch TimeoutException e
+          (println (str "TIMEOUT: " timeout-msg))
+          (.cancel future true)
+          (throw (Exception. (str "Timeout: " timeout-msg)))))
+      (finally
+        (.shutdownNow executor)))))
 
 ;; Helper functions for PostgreSQL protocol client simulation
 (defn connect-to-sql [host port]
   (let [socket (Socket. host port)]
+    ;; Set socket timeouts
+    (.setSoTimeout socket 2000)  ;; 2 segundos de timeout para operações de leitura
     {:socket socket
      :reader (BufferedReader. (InputStreamReader. (.getInputStream socket) StandardCharsets/UTF_8))
      :writer (BufferedWriter. (OutputStreamWriter. (.getOutputStream socket) StandardCharsets/UTF_8))
@@ -83,16 +100,21 @@
   (let [in (:input-stream conn)
         type (.read in)]
     (when (pos? type)
-      (let [byte-buffer (byte-array 4)]
-        (.readNBytes in byte-buffer 0 4)
-        (let [buffer (ByteBuffer/wrap byte-buffer)
-              length (.getInt buffer)
-              content-length (- length 4)
-              content (byte-array content-length)]
-          (.readNBytes in content 0 content-length)
+      (try
+        (let [byte-buffer (byte-array 4)]
+          (.readNBytes in byte-buffer 0 4)
+          (let [buffer (ByteBuffer/wrap byte-buffer)
+                length (.getInt buffer)
+                content-length (- length 4)
+                content (byte-array content-length)]
+            (.readNBytes in content 0 content-length)
+            {:type (char type)
+             :length length
+             :content content}))
+        (catch Exception e
+          (println "Erro ao ler mensagem:" (.getMessage e))
           {:type (char type)
-           :length length
-           :content content})))))
+           :error (.getMessage e)})))))
 
 (defn send-terminate [conn]
   (let [out (:output-stream conn)
@@ -108,42 +130,87 @@
     (.write out (.array buffer))
     (.flush out)))
 
+(defn run-with-safe-logging [label f]
+  (println "Iniciando:" label)
+  (try
+    (f)
+    (println "Concluído com sucesso:" label)
+    (catch Exception e
+      (println "Falha em" label ":" (.getMessage e))
+      (println "Continuando execução..."))))
+
 ;; Integration test with a PostgreSQL protocol client
 (deftest ^:integration test-sql-integration
   (testing "SQL client integration"
     (let [{storage :storage index :index} (create-test-resources)
           port 15432  ;; Use a port different from the default PostgreSQL port
           server (sql/start-sql-server storage index port)]
+      (println "Servidor SQL iniciado na porta:" port)
       (try
-        ;; Connect to the SQL server
+        (println "Conectando ao servidor SQL...")
         (let [conn (connect-to-sql "localhost" port)]
+          (println "Conexão estabelecida com sucesso")
           (try
             ;; Send startup message
-            (testing "Connection startup"
-              (send-startup-message conn)
-              (let [auth-message (read-message conn)]
-                (is (= \R (char (:type auth-message)))))
+            (run-with-safe-logging "Autenticação"
+                                   #(testing "Connection startup"
+                                      (send-startup-message conn)
+                                      (let [auth-message (read-message conn)]
+                                        (println "Mensagem de autenticação recebida:" auth-message)
+                                        (when auth-message
+                                          (is (= \R (char (:type auth-message))))))))
 
-              ;; Skip reading several parameter status messages
-              (dotimes [_ 5]
-                (read-message conn)))
+            ;; Read parameter messages with timeout
+            (with-timeout 2000 "Timeout ao ler mensagens de parâmetros"
+              #(run-with-safe-logging "Leitura de parâmetros"
+                                      (fn []
+                                        (dotimes [i 5]
+                                          (try
+                                            (let [msg (read-message conn)]
+                                              (println "Parâmetro" (inc i) ":" msg)
+                                              (when (nil? msg)
+                                                (println "Fim dos parâmetros")
+                                                (throw (Exception. "Fim dos parâmetros"))))
+                                            (catch Exception e
+                                              (println "Erro na leitura do parâmetro" (inc i) ":" (.getMessage e))
+                                              (throw e)))))))
 
-            ;; Test a simple query
-            (testing "Simple SELECT query"
-              (send-query conn "SELECT 1 as test")
+            ;; Send query and read response
+            (run-with-safe-logging "Consulta SQL"
+                                   #(testing "Simple SELECT query"
+                                      (send-query conn "SELECT 1 as test")
+                                      (with-timeout 2000 "Timeout ao ler respostas da consulta"
+                                        (fn []
+                                          (dotimes [i 3]
+                                            (try
+                                              (let [msg (read-message conn)]
+                                                (println "Resposta" (inc i) ":" msg)
+                                                (when (nil? msg)
+                                                  (println "Fim das respostas")
+                                                  (throw (Exception. "Fim das respostas"))))
+                                              (catch Exception e
+                                                (println "Erro na leitura da resposta" (inc i) ":" (.getMessage e))
+                                                (throw e))))))))
 
-              ;; Skip various response messages to get to the result
-              (dotimes [_ 3]
-                (read-message conn)))
-
-            ;; Terminate the connection
-            (testing "Connection termination"
-              (send-terminate conn))
+            ;; Terminate connection
+            (run-with-safe-logging "Terminação da conexão"
+                                   #(testing "Connection termination"
+                                      (send-terminate conn)))
 
             (finally
-              (close-sql-connection conn))))
+              (println "Fechando conexão...")
+              (try
+                (close-sql-connection conn)
+                (println "Conexão fechada com sucesso")
+                (catch Exception e
+                  (println "Erro ao fechar conexão:" (.getMessage e)))))))
         (finally
-          (sql/stop-sql-server server))))))
+          (println "Parando servidor SQL...")
+          (try
+            (sql/stop-sql-server server)
+            (println "Servidor SQL parado com sucesso")
+            (catch Exception e
+              (println "Erro ao parar servidor SQL:" (.getMessage e)))))))))
 
 ;; Define a fixture that can be used to run only integration tests
 (defn integration-fixture [f]

@@ -32,6 +32,14 @@
         matching-keys (filter #(.startsWith % prefix) keys)]
     (map #(.get data %) matching-keys)))
 
+(defn get-documents-by-table-memory
+  "Retrieves all documents from the in-memory store that belong to a specific table."
+  [^ConcurrentHashMap data table-name]
+  (let [table-prefix (str table-name ":")
+        keys (.keySet data)
+        matching-keys (filter #(.startsWith % table-prefix) keys)]
+    (map #(.get data %) matching-keys)))
+
 (defn close-memory-storage
   "Clears all documents from memory and releases resources."
   [^ConcurrentHashMap data]
@@ -43,6 +51,7 @@
   (get-document [_ id] (get-document-memory data id))
   (delete-document [_ id] (delete-document-memory data id))
   (get-documents-by-prefix [_ prefix] (get-documents-by-prefix-memory data prefix))
+  (get-documents-by-table [_ table-name] (get-documents-by-table-memory data table-name))
   (close [_]
     (close-memory-storage data)
     nil))

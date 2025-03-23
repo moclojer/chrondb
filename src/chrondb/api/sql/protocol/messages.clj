@@ -72,7 +72,8 @@
           parameter-bytes (byte-array (- length 8))]
       (.read in parameter-bytes)
       (let [parameters (ByteBuffer/wrap parameter-bytes)
-            result {:protocol-version protocol-version
+            result {:protocol protocol-version
+                    :protocol-version protocol-version
                     :parameters {}}]
         (loop [r result]
           (let [key-start (.position parameters)
