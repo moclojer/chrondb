@@ -21,7 +21,8 @@ Git storage related configurations:
 }
 ```
 
-#### Details:
+#### Details
+
 - `committer-name`: Name used to identify the commit author
 - `committer-email`: Email used to identify the commit author
 - `default-branch`: Name of the main branch where changes will be saved
@@ -37,7 +38,8 @@ Data storage related configurations:
 }
 ```
 
-#### Details:
+#### Details
+
 - `data-dir`: Directory where documents will be stored
   - Documents are saved in JSON format
   - Directory structure is maintained by Git
@@ -51,34 +53,35 @@ Logging system configurations:
 :logging {
   :level :info                  ; Minimum log level
   :output :stdout               ; Where logs will be written
-  :file "chrondb.log"          ; Log file (if output = :file)
+  :file "chrondb.log"           ; Log file (if output = :file)
 }
 ```
 
-#### Details:
+### 4. Servers (:servers)
 
-##### Log Levels:
-- `:debug` - Detailed information useful for development
-  - Detailed Git operations
-  - Repository status
-  - Indexing details
-- `:info` - General operation information
-  - Document creation/deletion
-  - Search operations
-  - Component initialization
-- `:warn` - Warnings about non-ideal situations
-  - Attempts to access non-existent documents
-  - Performance issues
-- `:error` - Errors affecting functionality
-  - Git operation failures
-  - Indexing problems
-  - I/O errors
+Configuration for different protocols:
 
-##### Log Outputs:
-- `:stdout` - Logs are written to standard output
-- `:file` - Logs are written to a file
-  - File is created if it doesn't exist
-  - Log rotation is not handled automatically
+```clojure
+:servers {
+  :rest {
+    :enabled true
+    :host "0.0.0.0"
+    :port 3000
+  }
+  :redis {
+    :enabled true
+    :host "0.0.0.0"
+    :port 6379
+  }
+  :postgresql {
+    :enabled true
+    :host "0.0.0.0"
+    :port 5432
+    :username "chrondb"
+    :password "chrondb"
+  }
+}
+```
 
 ## Complete Example
 
@@ -90,7 +93,18 @@ Logging system configurations:
  :storage {:data-dir "/var/lib/chrondb/data"}
  :logging {:level :info
            :output :file
-           :file "/var/log/chrondb/chrondb.log"}}
+           :file "/var/log/chrondb/chrondb.log"}
+ :servers {:rest {:enabled true
+                 :host "0.0.0.0"
+                 :port 3000}
+          :redis {:enabled true
+                 :host "0.0.0.0"
+                 :port 6379}
+          :postgresql {:enabled true
+                      :host "0.0.0.0"
+                      :port 5432
+                      :username "chrondb"
+                      :password "chrondb"}}}
 ```
 
 ## Loading Configuration
@@ -124,4 +138,4 @@ Logging system configurations:
 3. **Security**:
    - Don't version control `config.edn` with credentials
    - Use environment variables for sensitive information
-   - Restrict configuration file permissions 
+   - Restrict configuration file permissions

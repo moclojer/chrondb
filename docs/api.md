@@ -2,7 +2,7 @@
 
 This document provides detailed information about the ChronDB API.
 
-## Core API
+## Core API (Clojure/Java)
 
 ### Creating a Database
 
@@ -25,6 +25,7 @@ This document provides detailed information about the ChronDB API.
 ```
 
 Parameters:
+
 - `db`: ChronDB instance
 - `key`: String identifier for the document
 - `value`: Document data (will be stored as JSON)
@@ -38,6 +39,7 @@ Returns: The saved document
 ```
 
 Parameters:
+
 - `db`: ChronDB instance
 - `key`: String identifier for the document
 
@@ -50,6 +52,7 @@ Returns: The document if found, nil otherwise
 ```
 
 Parameters:
+
 - `db`: ChronDB instance
 - `key`: String identifier for the document
 
@@ -65,6 +68,7 @@ Returns: true if document was deleted, false otherwise
 ```
 
 Parameters:
+
 - `db`: ChronDB instance
 - `query`: Lucene query string
 - `options`: Optional map with:
@@ -82,6 +86,7 @@ Returns: Sequence of matching documents
 ```
 
 Parameters:
+
 - `db`: ChronDB instance
 - `key`: String identifier for the document
 
@@ -94,6 +99,7 @@ Returns: Sequence of document versions with timestamps
 ```
 
 Parameters:
+
 - `db`: ChronDB instance
 - `key`: String identifier for the document
 - `timestamp`: ISO-8601 timestamp string or java.time.Instant
@@ -107,6 +113,7 @@ Returns: The document as it existed at the specified time
 ```
 
 Parameters:
+
 - `db`: ChronDB instance
 - `key`: String identifier for the document
 - `timestamp1`: First timestamp
@@ -123,6 +130,7 @@ Returns: Differences between versions
 ```
 
 Parameters:
+
 - `db`: ChronDB instance
 - `branch-name`: Name of the new branch
 
@@ -135,6 +143,7 @@ Returns: Updated ChronDB instance
 ```
 
 Parameters:
+
 - `db`: ChronDB instance
 - `branch-name`: Name of the branch to switch to
 
@@ -147,6 +156,7 @@ Returns: Updated ChronDB instance
 ```
 
 Parameters:
+
 - `db`: ChronDB instance
 - `source-branch`: Branch to merge from
 - `target-branch`: Branch to merge into
@@ -162,6 +172,7 @@ Returns: Updated ChronDB instance
 ```
 
 All operations within the transaction block are atomic:
+
 - Either all succeed or all fail
 - Changes are only visible after successful commit
 - Automatic rollback on failure
@@ -171,13 +182,14 @@ All operations within the transaction block are atomic:
 #### Register Hook
 
 ```clojure
-(chrondb/register-hook db :pre-save 
-  (fn [doc] 
+(chrondb/register-hook db :pre-save
+  (fn [doc]
     ;; Hook logic here
     doc))
 ```
 
 Available hook points:
+
 - `:pre-save`: Before saving a document
 - `:post-save`: After saving a document
 - `:pre-delete`: Before deleting a document
@@ -212,6 +224,7 @@ Returns: Map with database statistics
 ## Error Handling
 
 All API functions may throw the following exceptions:
+
 - `ChronDBException`: Base exception class
 - `StorageException`: Storage-related errors
 - `IndexException`: Index-related errors
@@ -219,10 +232,11 @@ All API functions may throw the following exceptions:
 - `ValidationException`: Data validation errors
 
 Example error handling:
+
 ```clojure
 (try
   (chrondb/save db "key" value)
   (catch chrondb.exceptions.StorageException e
     (log/error "Storage error:" (.getMessage e)))
   (catch chrondb.exceptions.ValidationException e
-    (log/error "Validation error:" (.getMessage e)))) 
+    (log/error "Validation error:" (.getMessage e))))
