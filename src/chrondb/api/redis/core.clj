@@ -240,10 +240,10 @@
   (if (not= (count args) 1)
     (write-error writer "ERR wrong number of arguments for 'hgetall' command")
     (let [key (first args)
-          ;; Buscar todos os documentos que começam com o prefixo da chave
+          ;; Fetch all documents that start with the key prefix
           prefix (str key ":")
           docs (storage/get-documents-by-prefix storage prefix)
-          ;; Transformar em um mapa de campo -> valor
+          ;; Transform into a map of field -> value
           result (reduce (fn [acc doc]
                            (let [field (subs (:id doc) (count prefix))]
                              (conj acc field (:value doc))))

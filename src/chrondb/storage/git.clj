@@ -287,8 +287,11 @@
 
     (let [config-map (config/load-config)
           branch-name (get-in config-map [:git :default-branch])
-          head-id (.resolve repository (str branch-name "^{commit}"))]
+          head-id (.resolve repository (str branch-name "^{commit}"))
+          encoded-prefix (when (seq prefix) (encode-path prefix))]
 
+      (log/log-debug (str "Searching documents with prefix: " prefix))
+      (log/log-debug (str "Encoded prefix for search: " encoded-prefix))
       (when head-id
         (let [tree-walk (TreeWalk. repository)
               rev-walk (RevWalk. repository)]
@@ -299,35 +302,82 @@
             (let [results (atom [])]
               (while (.next tree-walk)
                 (let [path (.getPathString tree-walk)]
+                  (log/log-debug (str "Examining path: " path))
                   (when (and (.endsWith path ".json")
-                             (let [decoded-path (-> path
-                                                    (str/replace #"\.json$" "")
-                                                    (str/replace "_COLON_" ":")
-                                                    (str/replace "_SLASH_" "/")
-                                                    (str/replace "_QMARK_" "?")
-                                                    (str/replace "_STAR_" "*")
-                                                    (str/replace "_BSLASH_" "\\")
-                                                    (str/replace "_LT_" "<")
-                                                    (str/replace "_GT_" ">")
-                                                    (str/replace "_PIPE_" "|")
-                                                    (str/replace "_QUOTE_" "\"")
-                                                    (str/replace "_PERCENT_" "%")
-                                                    (str/replace "_HASH_" "#")
-                                                    (str/replace "_AMP_" "&")
-                                                    (str/replace "_EQ_" "=")
-                                                    (str/replace "_PLUS_" "+")
-                                                    (str/replace "_AT_" "@")
-                                                    (str/replace "_SPACE_" " "))]
-                               (.startsWith decoded-path prefix)))
+                             (or (empty? prefix)
+                                 (and (seq encoded-prefix) (.startsWith path encoded-prefix))
+                                 (let [decoded-path (-> path
+                                                        (str/replace #"\.json$" "")
+                                                        (str/replace "_COLON_" ":")
+                                                        (str/replace "_SLASH_" "/")
+                                                        (str/replace "_QMARK_" "?")
+                                                        (str/replace "_STAR_" "*")
+                                                        (str/replace "_BSLASH_" "\\")
+                                                        (str/replace "_LT_" "<")
+                                                        (str/replace "_GT_" ">")
+                                                        (str/replace "_PIPE_" "|")
+                                                        (str/replace "_QUOTE_" "\"")
+                                                        (str/replace "_PERCENT_" "%")
+                                                        (str/replace "_HASH_" "#")
+                                                        (str/replace "_AMP_" "&")
+                                                        (str/replace "_EQ_" "=")
+                                                        (str/replace "_PLUS_" "+")
+                                                        (str/replace "_AT_" "@")
+                                                        (str/replace "_SPACE_" " "))]
+                                   (log/log-debug (str "Decoded path: " decoded-path))
+                                   (log/log-debug (str "Checking if starts with prefix: " prefix))
+                                   (log/log-debug (str "Prefix check result: " (.startsWith decoded-path prefix)))
+                                   (.startsWith decoded-path prefix))))
                     (let [object-id (.getObjectId tree-walk 0)
                           object-loader (.open repository object-id)
                           content (String. (.getBytes object-loader) "UTF-8")]
                       (try
                         (let [doc (json/read-str content :key-fn keyword)]
+                          (log/log-debug (str "Found document with ID: " (:id doc)))
                           (swap! results conj doc))
                         (catch Exception e
                           (log/log-warn "Failed to read document:" path (.getMessage e))))))))
 
+              (log/log-debug (str "Found " (count @results) " documents with prefix: " prefix))
+              @results)
+            (finally
+              (.close tree-walk)
+              (.close rev-walk)))))))
+
+  (get-documents-by-table [_ table-name]
+    (when-not repository
+      (throw (Exception. "Repository is closed")))
+
+    (let [config-map (config/load-config)
+          branch-name (get-in config-map [:git :default-branch])
+          head-id (.resolve repository (str branch-name "^{commit}"))
+          table-prefix (str table-name ":")]
+
+      (log/log-debug (str "Searching documents for table: " table-name))
+      (when head-id
+        (let [tree-walk (TreeWalk. repository)
+              rev-walk (RevWalk. repository)]
+          (try
+            (.addTree tree-walk (.parseTree rev-walk head-id))
+            (.setRecursive tree-walk true)
+
+            (let [results (atom [])]
+              (while (.next tree-walk)
+                (let [path (.getPathString tree-walk)]
+                  (log/log-debug (str "Examining path: " path))
+                  (when (.endsWith path ".json")
+                    (let [object-id (.getObjectId tree-walk 0)
+                          object-loader (.open repository object-id)
+                          content (String. (.getBytes object-loader) "UTF-8")]
+                      (try
+                        (let [doc (json/read-str content :key-fn keyword)]
+                          (when (str/starts-with? (:id doc) table-prefix)
+                            (log/log-debug (str "Found table document with ID: " (:id doc)))
+                            (swap! results conj doc)))
+                        (catch Exception e
+                          (log/log-warn "Failed to read document:" path (.getMessage e))))))))
+
+              (log/log-debug (str "Found " (count @results) " documents for table: " table-name))
               @results)
             (finally
               (.close tree-walk)

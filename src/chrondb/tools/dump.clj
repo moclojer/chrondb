@@ -18,30 +18,30 @@
         storage (git/create-git-storage repository-dir data-dir)
         prefix (first args)]
 
-    (log/log-info "Conectando ao repositório Git")
+    (log/log-info "Connecting to Git repository")
 
     (try
       (if (and prefix (not (str/blank? prefix)))
         (let [table-name (if (str/ends-with? prefix ":")
                            (subs prefix 0 (dec (count prefix)))
                            prefix)
-              _ (log/log-info (str "Listando documentos com prefixo: '" prefix "'"))
+              _ (log/log-info (str "Listing documents with prefix: '" prefix "'"))
               docs (if (str/ends-with? prefix ":")
-                     ;; Se terminar com ":", é uma tabela
+                     ;; If ending with ":", it's a table
                      (storage/get-documents-by-table storage table-name)
-                     ;; Senão, é um prefixo comum
+                     ;; Otherwise, it's a common prefix
                      (storage/get-documents-by-prefix storage prefix))]
-          (log/log-info (str "Encontrados " (count docs) " documentos"))
+          (log/log-info (str "Found " (count docs) " documents"))
           (doseq [doc docs]
             (println)
             (println "-----------------------------------")
             (println "ID:" (:id doc))
             (println (json/write-str doc))))
 
-        ;; Se não tiver prefixo, lista todos os documentos
-        (let [_ (log/log-info "Listando documentos com prefixo: ''")
+        ;; If no prefix is provided, list all documents
+        (let [_ (log/log-info "Listing documents with prefix: ''")
               docs (storage/get-documents-by-prefix storage "")]
-          (log/log-info (str "Encontrados " (count docs) " documentos"))
+          (log/log-info (str "Found " (count docs) " documents"))
           (doseq [doc docs]
             (println)
             (println "-----------------------------------")
@@ -50,4 +50,4 @@
 
       (finally
         (storage/close storage)
-        (log/log-info "Recursos liberados")))))
+        (log/log-info "Resources released")))))

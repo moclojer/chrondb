@@ -4,6 +4,7 @@
             [chrondb.api.redis.core :as redis-core]
             [chrondb.api.sql.server :as sql-server]
             [chrondb.storage.memory :as memory]
+            [chrondb.storage.git :as git]
             [chrondb.index.lucene :as lucene]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -13,11 +14,16 @@
    This includes the main data directory and the index subdirectory."
   []
   (let [data-dir "data"
-        index-dir (str data-dir "/index")]
+        index-dir (str data-dir "/index")
+        lock-file (io/file (str index-dir "/write.lock"))]
     (when-not (.exists (io/file data-dir))
       (.mkdirs (io/file data-dir)))
     (when-not (.exists (io/file index-dir))
-      (.mkdirs (io/file index-dir)))))
+      (.mkdirs (io/file index-dir)))
+    ;; Remove any stale lock files that might exist
+    (when (.exists lock-file)
+      (println "Removing stale Lucene lock file")
+      (.delete lock-file))))
 
 (defn parse-args
   "Parse command line arguments into a map of options.
@@ -94,7 +100,7 @@
   [& args]
   (ensure-data-directories)
   (let [options (parse-args args)
-        storage (memory/create-memory-storage)
+        storage (git/create-git-storage "data")
         index (lucene/create-lucene-index "data/index")
         http-port (Integer/parseInt (:http-port options))
         redis-port (Integer/parseInt (:redis-port options))

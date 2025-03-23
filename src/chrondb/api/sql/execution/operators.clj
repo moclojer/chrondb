@@ -1,5 +1,5 @@
 (ns chrondb.api.sql.execution.operators
-  "Implementation of SQL operators"
+  "SQL operators for query execution"
   (:require [clojure.string :as str]
             [chrondb.util.logging :as log]))
 
@@ -104,12 +104,14 @@
             docs))))
 
 (defn apply-limit
-  "Applies a LIMIT clause to a collection of documents.
+  "Applies a LIMIT to a sequence of docs
    Parameters:
-   - docs: The documents to be limited
-   - limit: The maximum number of documents to return
-   Returns: Limited documents"
+   - docs: The docs to limit
+   - limit: The maximum number of docs to return, or nil for no limit
+   Returns: A sequence of docs, limited if limit is provided"
   [docs limit]
   (if limit
-    (take limit docs)
+    (do
+      (log/log-debug (str "Applying limit of " limit " documents to " (count docs) " documents"))
+      (take limit docs))
     docs))
