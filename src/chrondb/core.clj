@@ -3,7 +3,6 @@
   (:require [chrondb.api.server :as server]
             [chrondb.api.redis.core :as redis-core]
             [chrondb.api.sql.server :as sql-server]
-            [chrondb.storage.memory :as memory]
             [chrondb.storage.git :as git]
             [chrondb.index.lucene :as lucene]
             [clojure.java.io :as io]

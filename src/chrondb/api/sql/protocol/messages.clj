@@ -51,11 +51,10 @@
   (-> (bit-shift-left (read-byte in) 8)
       (bit-or (read-byte in))))
 
-(defn read-string
+(defn read-null-terminated-string
   "Read a null-terminated string from the input stream"
   [^InputStream in]
-  (let [buffer (ByteBuffer/allocate 1024)
-        sb (StringBuilder.)]
+  (let [sb (StringBuilder.)]
     (loop []
       (let [b (read-byte in)]
         (if (zero? b)

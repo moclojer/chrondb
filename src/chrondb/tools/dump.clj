@@ -4,7 +4,6 @@
   (:require [chrondb.storage.protocol :as storage]
             [chrondb.storage.git :as git]
             [chrondb.util.logging :as log]
-            [clojure.pprint :as pprint]
             [clojure.string :as str]
             [clojure.data.json :as json]
             [chrondb.config :as config]))

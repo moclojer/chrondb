@@ -4,8 +4,7 @@
             [chrondb.index.lucene :as lucene]
             [chrondb.index.protocol :as index]
             [chrondb.util.logging :as log]
-            [clojure.string :as str]
-            [clojure.java.io :as io]))
+            [clojure.string :as str]))
 
 (defn- ensure-table-prefix
   "Ensures that the given ID has the table prefix"
