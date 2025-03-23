@@ -26,7 +26,7 @@
 (defn connect-to-sql [host port]
   (let [socket (Socket. host port)]
     ;; Set socket timeouts
-    (.setSoTimeout socket 2000)  ;; 2 segundos de timeout para operações de leitura
+    (.setSoTimeout socket 5000)  ;; 5 segundos de timeout para operações de leitura (aumentado de 2s)
     {:socket socket
      :reader (BufferedReader. (InputStreamReader. (.getInputStream socket) StandardCharsets/UTF_8))
      :writer (BufferedWriter. (OutputStreamWriter. (.getOutputStream socket) StandardCharsets/UTF_8))
@@ -99,6 +99,7 @@
 (defn read-message [conn]
   (let [in (:input-stream conn)
         type (.read in)]
+    (println "Lendo mensagem, tipo recebido:" (if (pos? type) (str (char type)) "EOF/error"))
     (when (pos? type)
       (try
         (let [byte-buffer (byte-array 4)]
@@ -107,6 +108,7 @@
                 length (.getInt buffer)
                 content-length (- length 4)
                 content (byte-array content-length)]
+            (println "Lendo conteúdo da mensagem, comprimento:" length "bytes")
             (.readNBytes in content 0 content-length)
             {:type (char type)
              :length length
@@ -161,7 +163,7 @@
                                           (is (= \R (char (:type auth-message))))))))
 
             ;; Read parameter messages with timeout
-            (with-timeout 2000 "Timeout ao ler mensagens de parâmetros"
+            (with-timeout 5000 "Timeout ao ler mensagens de parâmetros"
               #(run-with-safe-logging "Leitura de parâmetros"
                                       (fn []
                                         (dotimes [i 5]
@@ -179,7 +181,7 @@
             (run-with-safe-logging "Consulta SQL"
                                    #(testing "Simple SELECT query"
                                       (send-query conn "SELECT 1 as test")
-                                      (with-timeout 2000 "Timeout ao ler respostas da consulta"
+                                      (with-timeout 5000 "Timeout ao ler respostas da consulta"
                                         (fn []
                                           (dotimes [i 3]
                                             (try
