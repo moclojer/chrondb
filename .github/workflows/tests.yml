@@ -42,6 +42,7 @@ jobs:
       - name: Run non external protocol tests
         run: clojure -M:test-non-external-protocol
 
+      # Run all SQL tests sequentially with proper cleanup between them
       - name: Run SQL tests
         run: clojure -M:test-sql-only
 
