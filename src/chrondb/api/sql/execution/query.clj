@@ -21,9 +21,6 @@
         prefixed-id (if (and (seq table-name) (not (str/includes? id (str table-name ":"))))
                       (str table-name ":" id)
                       id)]
-    (log/log-debug (str "Searching document by ID: " id))
-    (log/log-debug (str "Table name: " table-name))
-    (log/log-debug (str "Using prefixed ID for search: " prefixed-id))
     (if-let [doc (or (storage/get-document storage prefixed-id)
                      (storage/get-document storage id))]
       [doc]
@@ -32,9 +29,7 @@
 (defn- get-all-documents
   "Retrieves all documents"
   [storage]
-  (log/log-debug "Performing full document scan")
   (let [docs (storage/get-documents-by-prefix storage "")]
-    (log/log-debug (str "Retrieved " (count docs) " documents"))
     (or (seq docs) [])))
 
 (defn- get-all-documents-for-table
@@ -43,8 +38,6 @@
   (log/log-info (str "Starting document search for table: " table-name))
   (let [documents (storage/get-documents-by-table storage table-name)]
     (log/log-info (str "Found " (count documents) " documents for table: " table-name))
-    (when (seq documents)
-      (log/log-debug (str "Found document IDs: " (string/join ", " (map :id documents)))))
     documents))
 
 (defn- process-group-columns
@@ -99,11 +92,6 @@
 
          ;; Detailed logs for debugging
           _ (log/log-info (str "Executing SELECT on table: " table-name))
-          _ (log/log-debug (str "WHERE condition: " where-condition))
-          _ (log/log-debug (str "Columns: " (:columns query)))
-          _ (log/log-debug (str "LIMIT: " limit))
-          _ (log/log-debug (str "ORDER BY: " order-by))
-          _ (log/log-debug (str "GROUP BY: " group-by))
 
          ;; Retrieve documents
           condition-by-id? (and where-condition
@@ -112,7 +100,6 @@
                                 (get-in where-condition [0 :field])
                                 (= (get-in where-condition [0 :field]) "id")
                                 (= (get-in where-condition [0 :op]) "="))
-          _ (log/log-debug (str "Search by ID? " condition-by-id?))
 
           all-docs (if condition-by-id?
                      (get-documents-by-id storage where-condition)
@@ -121,23 +108,14 @@
                        (get-all-documents storage)))
 
           _ (log/log-info (str "Total documents retrieved: " (count all-docs)))
-          _ (log/log-info (str "Retrieved IDs: " (mapv :id all-docs)))
-          _ (when (seq all-docs)
-              (log/log-debug "Sample document: " (first all-docs))
-              (log/log-debug "Document IDs: " (mapv :id all-docs)))
 
          ;; Apply WHERE filters
           filtered-docs (if where-condition
                           (do
-                            (log/log-debug "Applying WHERE filters")
                             (let [result (operators/apply-where-conditions all-docs where-condition)]
                               (log/log-info (str "After WHERE filtering: " (count result) " documents, IDs: " (mapv :id result)))
                               result))
                           all-docs)
-
-          _ (log/log-debug (str "After filtering: " (count filtered-docs) " documents"))
-          _ (when (seq filtered-docs)
-              (log/log-debug "Filtered document IDs: " (mapv :id filtered-docs)))
 
          ;; Group and process documents
           processed-docs (if (seq group-by)
@@ -182,9 +160,7 @@
           _ (log/log-info (str "After applying limit: " (count limited-results) " documents"))
           _ (log/log-info (str "Final documents: " (mapv :id limited-results)))
 
-          _ (log/log-info (str "Returning " (count limited-results) " results"))
-          _ (when (seq limited-results)
-              (log/log-debug "Result document IDs: " (mapv :id limited-results)))]
+          _ (log/log-info (str "Returning " (count limited-results) " results"))]
 
       (or limited-results []))
     (catch Exception e
@@ -215,11 +191,8 @@
    Returns: The updated document or nil if not found"
   [storage id updates]
   (try
-    (log/log-debug (str "Trying to update document with ID: " id))
     (when-let [doc (storage/get-document storage id)]
-      (log/log-debug (str "Document found for update: " doc))
       (let [updated-doc (merge doc updates)]
-        (log/log-debug (str "Merged document: " updated-doc))
         (storage/save-document storage updated-doc)))
     (catch Exception e
       (let [sw (java.io.StringWriter.)
@@ -262,7 +235,6 @@
         (messages/send-row-description out columns)
         (doseq [row results]
           (log/log-info (str "Sending row: " (:id row)))
-          (log/log-debug (str "Complete row content: " row))
           (let [values (map #(get row (keyword %)) columns)]
             (log/log-info (str "Values sent: " values))
             (messages/send-data-row out values)))
@@ -274,15 +246,10 @@
   [storage index out parsed]
   (try
     (log/log-info (str "Processing INSERT in table: " (:table parsed)))
-    (log/log-debug (str "Values: " (:values parsed) ", columns: " (:columns parsed)))
 
     (let [values (:values parsed)
           columns (:columns parsed)
           table-name (:table parsed)
-
-          ;; Log the raw tokens for debugging
-          _ (log/log-debug (str "Raw values tokens: " values))
-          _ (log/log-debug (str "Raw columns tokens: " columns))
 
           ;; Make sure we only have valid column names
           clean-columns (when (seq columns)
@@ -293,8 +260,6 @@
                                                      (str/replace #"[^\w\d_]" "_"))] ;; Replace invalid chars with underscore
                                    clean-col))
                                columns))
-
-          _ (log/log-debug (str "Cleaned columns: " clean-columns))
 
           ;; Properly clean values - keep quotes while processing
           ;; and only remove them at the end to preserve values with spaces
@@ -319,7 +284,6 @@
                                       (if (and (seq clean-columns) (= (first clean-columns) "id"))
                                         (map vector (rest clean-columns) (rest values))
                                         (map vector clean-columns values)))]
-                  (log/log-debug (str "Document created with column mapping: " doc-map))
                   doc-map)
                 ;; Fallback case (no explicit columns)
                 (let [raw-id (if (>= (count values) 1)
@@ -335,14 +299,12 @@
                                 (= (count values) 1) {:id doc-id
                                                       :value ""}
                                 :else {:id doc-id :value ""})]
-                  (log/log-debug (str "Document created with default format: " doc-map))
                   doc-map))
 
           _ (log/log-info (str "Document to insert: " doc))
           saved (handle-insert storage doc)]
 
       (when index
-        (log/log-debug "Indexing document")
         (index/index-document index saved))
 
       (log/log-info (str "INSERT completed successfully, ID: " (:id saved)))
@@ -370,8 +332,6 @@
                       (log/log-error (str "Error processing update values: " (.getMessage e)))
                       {}))]
 
-      (log/log-debug (str "Update conditions: " where-conditions ", values: " updates))
-
       (if (and (seq where-conditions) (seq updates))
         (let [_ (log/log-info (str "Searching for documents matching: " where-conditions))
               all-docs (storage/get-documents-by-prefix storage "")
@@ -383,12 +343,9 @@
               (log/log-info (str "Found " (count matching-docs) " documents to update"))
               (doseq [doc matching-docs]
                 (let [updated-doc (merge doc updates)
-                      _ (log/log-debug (str "Updating document: " (:id doc) " with values: " updates))
-                      _ (log/log-debug (str "Merged document: " updated-doc))
                       saved (storage/save-document storage updated-doc)]
 
                   (when (and saved index)
-                    (log/log-debug (str "Re-indexing updated document: " (:id saved)))
                     (index/index-document index saved))
 
                   (swap! update-count inc)))
@@ -446,7 +403,6 @@
   [storage index ^java.io.OutputStream out sql]
   (log/log-info (str "Executing query: " sql))
   (let [parsed (statements/parse-sql-query sql)]
-    (log/log-debug (str "Query parsed: " parsed))
     (case (:type parsed)
       :select (handle-select-case storage out parsed)
       :insert (handle-insert-case storage index out parsed)

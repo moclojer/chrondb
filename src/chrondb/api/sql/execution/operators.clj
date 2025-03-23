@@ -34,20 +34,16 @@
    - conditions: The conditions to be applied
    Returns: Filtered documents"
   [docs conditions]
-  (log/log-debug (str "Applying WHERE conditions: " conditions " to " (count docs) " documents"))
   (if (empty? conditions)
     docs
     (filter
      (fn [document]
-       (log/log-debug (str "Checking document: " document))
        (every?
         (fn [condition]
           (let [field (keyword (:field condition))
                 operator (:op condition)
                 value (str/replace (:value condition) #"['\"]" "")
                 doc-value (str (get document field ""))]
-
-            (log/log-debug (str "Checking condition: " field " " operator " " value " against " doc-value))
 
             (case operator
               "=" (= doc-value value)
@@ -111,7 +107,5 @@
    Returns: A sequence of docs, limited if limit is provided"
   [docs limit]
   (if limit
-    (do
-      (log/log-debug (str "Applying limit of " limit " documents to " (count docs) " documents"))
-      (take limit docs))
+    (take limit docs)
     docs))

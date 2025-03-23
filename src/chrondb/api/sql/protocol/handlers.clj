@@ -1,123 +1,156 @@
 (ns chrondb.api.sql.protocol.handlers
-  "PostgreSQL protocol message handlers"
-  (:require [chrondb.api.sql.protocol.messages :as messages]
-            [chrondb.util.logging :as log]
+  "Request handlers for SQL protocol"
+  (:require [chrondb.util.logging :as log]
+            [chrondb.api.sql.protocol.messages :as messages]
             [chrondb.api.sql.execution.query :as query])
-  (:import [java.io InputStream OutputStream DataInputStream]
-           [java.nio.charset StandardCharsets]))
+  (:import [java.io InputStream OutputStream ByteArrayOutputStream]))
 
-(defn handle-message
-  "Handles a PostgreSQL protocol message.
+(defn handle-query-message
+  "Handles a query message from a client.
    Parameters:
    - storage: The storage implementation
-   - index: The index implementation
-   - out: The output stream to write responses
+   - index: The index implementation (optional)
+   - in: The input stream
+   - out: The output stream
    - message-type: The message type
-   - buffer: The message content as a byte array
-   - content-length: The content length of the message
-   Returns: true to continue reading messages, false to terminate the connection"
-  [storage index ^OutputStream out message-type buffer content-length]
-  (log/log-debug (str "Message received of type: " (char message-type)))
+   Returns: nil"
+  [storage index ^InputStream in ^OutputStream out message-type]
   (try
-    (case (char message-type)
-      \Q (let [query-text (String. buffer 0 (dec content-length) StandardCharsets/UTF_8)]
-           (log/log-debug (str "SQL Query: " query-text))
-           (try
-             (query/handle-query storage index out query-text)
-             (catch Exception e
-               (let [sw (java.io.StringWriter.)
-                     pw (java.io.PrintWriter. sw)]
-                 (.printStackTrace e pw)
-                 (log/log-error (str "Error executing query: " (.getMessage e) "\n" (.toString sw))))
-               (messages/send-error-response out (str "Error executing query: " (.getMessage e)))
-               (messages/send-command-complete out "UNKNOWN" 0)))
-           (messages/send-ready-for-query out)
-           true)  ;; Continue reading
-      \X (do      ;; Termination message received
-           (log/log-info "Client requested termination")
-           false) ;; Signal to close the connection
-      (do         ;; Other unsupported command
-        (log/log-debug (str "Unsupported command: " (char message-type)))
-        (messages/send-error-response out (str "Unsupported command: " (char message-type)))
-        (messages/send-ready-for-query out)
-        true))    ;; Continue reading
+    (let [;; Ler o comprimento da mensagem (4 bytes como um int)
+          length-bytes (byte-array 4)
+          _ (.read in length-bytes)
+          length (-> (bit-and (aget length-bytes 0) 0xFF) (bit-shift-left 24)
+                     (bit-or (-> (bit-and (aget length-bytes 1) 0xFF) (bit-shift-left 16)))
+                     (bit-or (-> (bit-and (aget length-bytes 2) 0xFF) (bit-shift-left 8)))
+                     (bit-or (bit-and (aget length-bytes 3) 0xFF)))
+          ;; O comprimento inclui os próprios 4 bytes do campo de comprimento
+          content-length (- length 4)
+          ;; Ler o restante da mensagem
+          message-bytes (byte-array content-length)
+          bytes-read (.read in message-bytes 0 content-length)
+
+          ;; Obter o texto da consulta SQL (ignorando o byte nulo final)
+          query-text (String. message-bytes 0 (dec bytes-read) "UTF-8")]
+
+      (log/log-info (str "Executando consulta SQL: " query-text))
+
+      ;; Executar a consulta
+      (query/handle-query storage index out query-text)
+
+      ;; Indicar que estamos prontos para a próxima consulta
+      (messages/send-ready-for-query out \I))
     (catch Exception e
       (let [sw (java.io.StringWriter.)
             pw (java.io.PrintWriter. sw)]
         (.printStackTrace e pw)
-        (log/log-error (str "Error handling message: " (.getMessage e) "\n" (.toString sw))))
-      (try
-        (messages/send-error-response out (str "Internal server error: " (.getMessage e)))
-        (messages/send-ready-for-query out)
-        (catch Exception e2
-          (log/log-error (str "Error sending error response: " (.getMessage e2)))))
-      true)))
+        (log/log-error (str "Erro ao executar consulta: " (.getMessage e) "\n" (.toString sw))))
+      (messages/send-error-response out (str "Erro ao executar consulta: " (.getMessage e)))
+      (messages/send-ready-for-query out \E))))
 
-(defn read-client-messages
-  "Reads messages from a PostgreSQL client.
+(defn handle-message
+  "Handles a message from a client.
    Parameters:
    - storage: The storage implementation
-   - index: The index implementation
-   - in: The input stream to read from
-   - out: The output stream to write responses
+   - index: The index implementation (optional)
+   - in: The input stream
+   - out: The output stream
+   - message-type: The message type
+   Returns: nil"
+  [storage index ^InputStream in ^OutputStream out message-type]
+  (try
+    (case message-type
+      ;; 'Q' = Simple Query
+      81 (handle-query-message storage index in out message-type)
+      ;; 'X' = Terminate
+      88 (do
+           (log/log-info "Cliente solicitou encerramento")
+           ;; Não envie uma resposta aqui, apenas retorne
+           nil)
+      ;; Outros tipos de mensagem não suportados
+      (do
+        (log/log-info (str "Comando não suportado: " (char message-type)))
+        ;; Leia e descarte o resto da mensagem
+        (let [length-bytes (byte-array 4)
+              _ (.read in length-bytes)
+              length (-> (bit-and (aget length-bytes 0) 0xFF) (bit-shift-left 24)
+                         (bit-or (-> (bit-and (aget length-bytes 1) 0xFF) (bit-shift-left 16)))
+                         (bit-or (-> (bit-and (aget length-bytes 2) 0xFF) (bit-shift-left 8)))
+                         (bit-or (bit-and (aget length-bytes 3) 0xFF)))
+              content-length (- length 4)
+              discard-buffer (byte-array content-length)]
+          (.read in discard-buffer))
+        (messages/send-error-response out (str "Comando não suportado: " (char message-type)))
+        (messages/send-ready-for-query out \I)))
+    (catch Exception e
+      (let [sw (java.io.StringWriter.)
+            pw (java.io.PrintWriter. sw)]
+        (.printStackTrace e pw)
+        (log/log-error (str "Erro ao processar mensagem: " (.getMessage e) "\n" (.toString sw))))
+      (try
+        (messages/send-error-response out (str "Erro interno do servidor: " (.getMessage e)))
+        (messages/send-ready-for-query out \E)
+        (catch Exception e2
+          (log/log-error (str "Erro ao enviar resposta de erro: " (.getMessage e2))))))))
+
+(defn handle-client
+  "Handles a client socket.
+   Parameters:
+   - storage: The storage implementation
+   - index: The index implementation (optional)
+   - in: The input stream
+   - out: The output stream
    Returns: nil"
   [storage index ^InputStream in ^OutputStream out]
-  (let [dis (DataInputStream. in)]
-    (try
+  (try
+    ;; Read initial startup message
+    (let [startup-message (messages/read-startup-message in)]
+      (log/log-info (str "Client connected: " startup-message))
+
+      ;; Send authentication OK
+      (messages/send-authentication-ok out)
+
+      ;; Send parameter status messages
+      (messages/send-parameter-status out "server_version" "9.5.0")
+      (messages/send-parameter-status out "client_encoding" "UTF8")
+
+      ;; Indicate that we're ready to process queries
+      (messages/send-ready-for-query out \I)
+
+      ;; Process client messages until EOF
       (loop []
-        (log/log-debug "Waiting for client message")
-        (let [continue?
-              (try
-                (let [message-type (.readByte dis)]
-                  (log/log-debug (str "Message received of type: " (char message-type)))
-                  (when (pos? message-type)
-                    (let [message-length (.readInt dis)
-                          content-length (- message-length 4)
-                          buffer (byte-array content-length)]
-                      (.readFully dis buffer 0 content-length)
-                      (handle-message storage index out message-type buffer content-length))))
-                (catch java.io.EOFException _e
-                  (log/log-info "Client disconnected")
-                  false) ;; Terminate
-                (catch java.net.SocketException e
-                  (log/log-info (str "Socket closed: " (.getMessage e)))
-                  false) ;; Terminate
-                (catch Exception e
-                  (let [sw (java.io.StringWriter.)
-                        pw (java.io.PrintWriter. sw)]
-                    (.printStackTrace e pw)
-                    (log/log-error (str "Error reading client message: " (.getMessage e) "\n" (.toString sw))))
-                  (try
-                    (messages/send-error-response out "Internal server error: Error reading message")
-                    (messages/send-ready-for-query out)
-                    (catch Exception e2
-                      (log/log-error (str "Error sending error response: " (.getMessage e2)))))
-                  true))] ;; Continue reading unless socket has been closed
-          (when continue?
-            (recur))))
+        ;; Read message type
+        (let [message-type (.read in)]
+          (if (not= message-type -1)  ;; EOF check
+            (do
+              (log/log-info (str "Message type received: " (char message-type)))
+              (handle-message storage index in out message-type)
+              (recur))
+            (log/log-info "Client disconnected")))))
+    (catch Exception e
+      (let [sw (java.io.StringWriter.)
+            pw (java.io.PrintWriter. sw)]
+        (.printStackTrace e pw)
+        (log/log-error (str "Error reading client message: " (.getMessage e) "\n" (.toString sw))))
+      (try
+        (messages/send-error-response out "Internal server error: Error reading message")
+        (messages/send-ready-for-query out \E)
+        (catch Exception e2
+          (log/log-error (str "Error sending error response: " (.getMessage e2))))))))
+
+(defn create-client-handler
+  "Creates a handler for a client socket.
+   Parameters:
+   - storage: The storage implementation
+   - index: The index implementation (optional)
+   Returns: A function that takes a socket and handles it"
+  [storage index]
+  (fn [socket]
+    (try
+      (with-open [in (.getInputStream socket)
+                  out (.getOutputStream socket)]
+        (handle-client storage index in out))
       (catch Exception e
         (let [sw (java.io.StringWriter.)
               pw (java.io.PrintWriter. sw)]
           (.printStackTrace e pw)
           (log/log-error (str "Error in client processing loop: " (.getMessage e) "\n" (.toString sw))))))))
-
-(defn handle-client-connection
-  "Initializes connection with a PostgreSQL client.
-   Parameters:
-   - storage: The storage implementation
-   - index: The index implementation
-   - in: The client's input stream
-   - out: The client's output stream
-   Returns: nil"
-  [storage index ^InputStream in ^OutputStream out]
-  (when-let [_startup-message (messages/read-startup-message in)]
-    (log/log-debug "Sending authentication OK")
-    (messages/send-authentication-ok out)
-    (messages/send-parameter-status out "server_version" "14.0")
-    (messages/send-parameter-status out "client_encoding" "UTF8")
-    (messages/send-parameter-status out "DateStyle" "ISO, MDY")
-    (messages/send-backend-key-data out)
-    (messages/send-ready-for-query out)
-
-    ;; Main loop to read queries
-    (read-client-messages storage index in out)))
