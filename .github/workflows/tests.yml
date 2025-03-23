@@ -12,8 +12,8 @@ jobs:
       - name: Setup GraalVM
         uses: graalvm/setup-graalvm@v1
         with:
-          java-version: '17'
-          distribution: 'graalvm'
+          java-version: "17"
+          distribution: "graalvm"
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install Clojure tools
         uses: DeLaGuardo/setup-clojure@12.1
@@ -39,8 +39,11 @@ jobs:
           pkill -f "java.*chrondb" || true
           sleep 3
 
-      - name: Run non-Redis tests
-        run: clojure -M:test-no-redis
+      - name: Run non external protocol tests
+        run: clojure -M:test-non-external-protocol
+
+      - name: Run SQL tests
+        run: clojure -M:test-sql-only
 
       # Run all Redis tests sequentially with proper cleanup between them
       - name: Run Redis tests sequentially
