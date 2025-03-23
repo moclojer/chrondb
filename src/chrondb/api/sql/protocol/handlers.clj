@@ -88,7 +88,7 @@
                     (.printStackTrace e pw)
                     (log/log-error (str "Error reading client message: " (.getMessage e) "\n" (.toString sw))))
                   (try
-                    (messages/send-error-response out (str "Internal server error: Error reading message"))
+                    (messages/send-error-response out "Internal server error: Error reading message")
                     (messages/send-ready-for-query out)
                     (catch Exception e2
                       (log/log-error (str "Error sending error response: " (.getMessage e2)))))

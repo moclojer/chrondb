@@ -2,8 +2,7 @@
   "Client connection management"
   (:require [chrondb.api.sql.protocol.handlers :as handlers]
             [chrondb.util.logging :as log])
-  (:import [java.net Socket]
-           [java.io InputStream OutputStream]))
+  (:import [java.net Socket]))
 
 (defn handle-client
   "Handles a PostgreSQL client connection.

@@ -1,11 +1,11 @@
 (ns chrondb.api.sql.sql-query-test
   (:require [clojure.test :refer [deftest is testing]]
-            [chrondb.api.sql.execution.query :as query]
+            [chrondb.api.sql.protocol.query :as query]
             [chrondb.api.sql.parser.statements :as statements]
+            [chrondb.storage.protocol :as storage-protocol]
             [chrondb.api.sql.test-helpers :refer [create-test-resources]]
-            [chrondb.storage.protocol :as storage-protocol])
-  (:import [java.io StringWriter BufferedWriter]
-           [java.nio.charset StandardCharsets]))
+            [clojure.string :as string])
+  (:import [java.io BufferedWriter StringWriter]))
 
 ;; Helper functions for testing
 (defn create-string-writer []
@@ -25,7 +25,7 @@
 
 (defn prepare-test-data [storage]
   (doseq [id ["test:1" "test:2" "test:3"]]
-    (let [num (Integer/parseInt (second (clojure.string/split id #":")))
+    (let [num (Integer/parseInt (second (string/split id #":")))
           doc {:id id
                :nome (str "Item " num)
                :valor (* num 10)
@@ -35,33 +35,33 @@
 ;; Test parse and execute SQL queries
 (deftest test-handle-query
   (testing "Handle SQL queries"
-    (let [{storage :storage index :index} (create-test-resources)]
+    (let [{storage :storage} (create-test-resources)]
       ;; Prepare test data
       (prepare-test-data storage)
 
       (testing "SELECT all documents"
         (let [writer (create-string-writer)
               query "SELECT * FROM documentos"]
-          (query/handle-query storage index (:output-stream writer) query)
+          (query/handle-query storage query (:output-stream writer) query)
           ;; Verifica apenas que a resposta contém algo
           (is (pos? (count (get-writer-output writer))))))
 
       (testing "SELECT specific columns"
         (let [writer (create-string-writer)
               query "SELECT id, nome FROM documentos"]
-          (query/handle-query storage index (:output-stream writer) query)
+          (query/handle-query storage query (:output-stream writer) query)
           (is (pos? (count (get-writer-output writer))))))
 
       (testing "SELECT with WHERE clause"
         (let [writer (create-string-writer)
               query "SELECT * FROM documentos WHERE id = 'test:1'"]
-          (query/handle-query storage index (:output-stream writer) query)
+          (query/handle-query storage query (:output-stream writer) query)
           (is (pos? (count (get-writer-output writer))))))
 
       (testing "Invalid SQL query"
         (let [writer (create-string-writer)
               query "INVALID SQL QUERY"]
-          (query/handle-query storage index (:output-stream writer) query)
+          (query/handle-query storage query (:output-stream writer) query)
           (is (pos? (count (get-writer-output writer)))))))))
 
 ;; Test SQL statement parsing
@@ -89,7 +89,7 @@
 ;; Test SQL query execution operations
 (deftest test-sql-execution-operators
   (testing "Test SQL query execution operators"
-    (let [{storage :storage index :index} (create-test-resources)]
+    (let [{storage :storage} (create-test-resources)]
       ;; Prepare test data
       (prepare-test-data storage)
 

@@ -1,10 +1,9 @@
 (ns chrondb.api.sql.sql-test
   (:require [clojure.test :refer [deftest is testing]]
             [chrondb.api.sql.core :as sql]
-            [chrondb.api.sql.test-helpers :refer [with-test-data create-test-resources]])
-  (:import [java.io BufferedReader BufferedWriter InputStreamReader OutputStreamWriter StringReader StringWriter]
-           [java.net ServerSocket Socket]
-           [java.nio.charset StandardCharsets]))
+            [chrondb.api.sql.test-helpers :refer [create-test-resources]])
+  (:import [java.io BufferedReader BufferedWriter StringReader StringWriter]
+           [java.net ServerSocket]))
 
 ;; Helper functions for testing
 (defn create-string-reader [s]

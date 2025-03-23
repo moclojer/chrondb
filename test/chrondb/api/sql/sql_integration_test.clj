@@ -1,8 +1,7 @@
 (ns chrondb.api.sql.sql-integration-test
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [chrondb.api.sql.core :as sql]
-            [chrondb.api.sql.test-helpers :refer [create-test-resources]]
-            [pg.core :as pg])
+            [chrondb.api.sql.test-helpers :refer [create-test-resources]])
   (:import [java.net Socket]
            [java.io BufferedReader BufferedWriter InputStreamReader OutputStreamWriter]
            [java.nio.charset StandardCharsets]
