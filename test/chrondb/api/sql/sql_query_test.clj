@@ -95,7 +95,7 @@
 
       (testing "Handle SELECT query"
         (let [parsed {:type :select
-                      :table "documentos"
+                      :table "test"
                       :columns ["*"]
                       :where nil
                       :order-by nil
