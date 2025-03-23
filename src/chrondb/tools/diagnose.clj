@@ -1,6 +1,5 @@
 (ns chrondb.tools.diagnose
   (:require [clojure.string :as str]
-            [chrondb.storage.git :as git]
             [chrondb.util.logging :as log]))
 
 (defn- encode-path

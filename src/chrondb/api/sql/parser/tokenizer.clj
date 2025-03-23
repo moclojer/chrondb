@@ -17,7 +17,7 @@
 
     ;; Process each character in the SQL string
     (doseq [ch sql]
-      (let [{:keys [tokens current-token in-single-quote in-double-quote escaped]} @state]
+      (let [{:keys [current-token in-single-quote in-double-quote escaped]} @state]
         (cond
           ;; Handle escape character
           (and (= ch \\) (not escaped))

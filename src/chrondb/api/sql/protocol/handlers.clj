@@ -3,7 +3,7 @@
   (:require [chrondb.util.logging :as log]
             [chrondb.api.sql.protocol.messages :as messages]
             [chrondb.api.sql.execution.query :as query])
-  (:import [java.io InputStream OutputStream ByteArrayOutputStream]))
+  (:import [java.io InputStream OutputStream]))
 
 (defn handle-query-message
   "Handles a query message from a client.
@@ -12,9 +12,8 @@
    - index: The index implementation (optional)
    - in: The input stream
    - out: The output stream
-   - message-type: The message type
    Returns: nil"
-  [storage index ^InputStream in ^OutputStream out message-type]
+  [storage index ^InputStream in ^OutputStream out _]
   (try
     (let [;; Ler o comprimento da mensagem (4 bytes como um int)
           length-bytes (byte-array 4)

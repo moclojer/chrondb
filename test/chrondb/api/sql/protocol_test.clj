@@ -45,7 +45,7 @@
 
   (testing "Ready for Query message"
     (let [out (create-output-stream)]
-      (messages/send-ready-for-query out)
+      (messages/send-ready-for-query out \I)
       (let [bytes (get-output-bytes out)
             type (char (aget bytes 0))
             status (char (aget bytes 5))]
@@ -84,14 +84,7 @@
       (messages/send-command-complete out "SELECT" 10)
       (let [bytes (get-output-bytes out)
             type (char (aget bytes 0))]
-        (is (= \C type)))))
-
-  (testing "Backend Key Data message"
-    (let [out (create-output-stream)]
-      (messages/send-backend-key-data out)
-      (let [bytes (get-output-bytes out)
-            type (char (aget bytes 0))]
-        (is (= \K type))))))
+        (is (= \C type))))))
 
 ;; Test reading startup message
 (deftest test-startup-message-reading

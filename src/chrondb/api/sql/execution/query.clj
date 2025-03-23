@@ -1,17 +1,13 @@
 (ns chrondb.api.sql.execution.query
   "SQL query execution"
   (:require [clojure.string :as str]
-            [clojure.set :as set]
-            [clojure.data.json :as json]
-            [clojure.string :as string]
             [chrondb.util.logging :as log]
             [chrondb.api.sql.parser.statements :as statements]
             [chrondb.api.sql.protocol.messages :as messages]
             [chrondb.api.sql.execution.operators :as operators]
             [chrondb.api.sql.execution.functions :as functions]
             [chrondb.storage.protocol :as storage]
-            [chrondb.index.protocol :as index]
-            [chrondb.storage.protocol :as protocol]))
+            [chrondb.index.protocol :as index]))
 
 (defn- get-documents-by-id
   "Retrieves a document by ID"
@@ -111,10 +107,9 @@
 
          ;; Apply WHERE filters
           filtered-docs (if where-condition
-                          (do
-                            (let [result (operators/apply-where-conditions all-docs where-condition)]
-                              (log/log-info (str "After WHERE filtering: " (count result) " documents, IDs: " (mapv :id result)))
-                              result))
+                          (let [result (operators/apply-where-conditions all-docs where-condition)]
+                            (log/log-info (str "After WHERE filtering: " (count result) " documents, IDs: " (mapv :id result)))
+                            result)
                           all-docs)
 
          ;; Group and process documents
