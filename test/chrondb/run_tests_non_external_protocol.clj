@@ -2,8 +2,8 @@
   (:require [chrondb.test-helpers :as helpers]))
 
 (defn non-external-protocol? [ns-sym]
-  (or (not (.contains (str ns-sym) "chrondb.api.redis"))
-      (not (.contains (str ns-sym) "chrondb.api.sql"))))
+  (and (not (.contains (str ns-sym) "chrondb.api.redis"))
+       (not (.contains (str ns-sym) "chrondb.api.sql"))))
 
 (defn -main [& args]
   (helpers/run-test-main
