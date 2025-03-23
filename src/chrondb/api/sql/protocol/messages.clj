@@ -1,8 +1,8 @@
 (ns chrondb.api.sql.protocol.messages
-  "Functions for creating and sending PostgreSQL protocol messages"
+  "Protocol message handling for PostgreSQL wire protocol"
   (:require [chrondb.api.sql.protocol.constants :as constants]
             [chrondb.util.logging :as log])
-  (:import [java.io OutputStream InputStream DataOutputStream DataInputStream]
+  (:import [java.io OutputStream InputStream DataOutputStream DataInputStream ByteArrayOutputStream]
            [java.nio.charset StandardCharsets]
            [java.nio ByteBuffer]))
 
@@ -284,30 +284,31 @@
       (write-message out constants/PG_ROW_DESCRIPTION final-data))))
 
 (defn send-data-row
-  "Sends a data row message to the client.
-   Parameters:
-   - out: The output stream
-   - values: A sequence of values for the row
-   Returns: nil"
+  "Sends a data row message"
   [^OutputStream out values]
+  (log/log-debug (str "Enviando linha de dados: " values))
   (let [buffer (ByteBuffer/allocate (+ 2 (* (count values) 256)))]  ;; Estimated size
     ;; Number of values in the row
     (.putShort buffer (short (count values)))
 
-    ;; Each value
-    (doseq [val values]
-      (if val
-        (let [val-str (str val)
-              val-bytes (.getBytes val-str StandardCharsets/UTF_8)]
-          ;; Value length
-          (.putInt buffer (alength val-bytes))
-          ;; Value
-          (.put buffer val-bytes))
-        ;; Null value
-        (.putInt buffer -1)))
+    ;; For each value
+    (doseq [value values]
+      (if (nil? value)
+        ;; For NULL values, write a length of -1
+        (.putInt buffer -1)
+        ;; For non-NULL, write the value's length and then the value itself
+        (let [str-value (str value)
+              bytes (.getBytes str-value "UTF-8")]
+          (.putInt buffer (count bytes))
+          (.put buffer bytes))))
 
-    (let [pos (.position buffer)
-          final-data (byte-array pos)]
-      (.flip buffer)
-      (.get buffer final-data)
-      (write-message out constants/PG_DATA_ROW final-data))))
+    ;; Reset buffer position for reading
+    (.flip buffer)
+
+    ;; Create byte array from buffer
+    (let [size (.remaining buffer)
+          message-body (byte-array size)]
+      (.get buffer message-body)
+
+      ;; Send the data row
+      (write-message out constants/PG_DATA_ROW message-body))))

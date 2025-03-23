@@ -31,6 +31,12 @@
      - prefix: The prefix to match against document IDs
      Returns: A sequence of documents whose IDs start with the prefix.")
 
+  (get-documents-by-table [this table-name]
+    "Retrieves all documents belonging to a specific table.
+     Parameters:
+     - table-name: The name of the table
+     Returns: A sequence of documents for the table.")
+
   (close [this]
     "Closes the storage system and releases any resources.
      Should be called when the storage system is no longer needed.
