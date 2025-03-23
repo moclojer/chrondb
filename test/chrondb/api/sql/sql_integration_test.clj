@@ -6,7 +6,7 @@
            [java.io BufferedReader BufferedWriter InputStreamReader OutputStreamWriter]
            [java.nio.charset StandardCharsets]
            [java.nio ByteBuffer]
-           [java.util.concurrent Executors TimeUnit TimeoutException Future Callable]))
+           [java.util.concurrent Executors TimeUnit TimeoutException Callable]))
 
 ;; Função para executar uma tarefa com timeout
 (defn with-timeout [timeout-ms timeout-msg f]
@@ -15,7 +15,7 @@
     (try
       (try
         (.get future timeout-ms TimeUnit/MILLISECONDS)
-        (catch TimeoutException e
+        (catch TimeoutException _e
           (println (str "TIMEOUT: " timeout-msg))
           (.cancel future true)
           (throw (Exception. (str "Timeout: " timeout-msg)))))
