@@ -8,7 +8,7 @@
            [java.nio ByteBuffer]
            [java.util.concurrent Executors TimeUnit TimeoutException Callable]))
 
-;; Função para executar uma tarefa com timeout
+;; Function to execute a task with timeout
 (defn with-timeout [timeout-ms timeout-msg f]
   (let [executor (Executors/newSingleThreadExecutor)
         future (.submit executor ^Callable f)]
@@ -25,7 +25,7 @@
 (defn read-message [conn]
   (let [in (:input-stream conn)
         type (.read in)]
-    (println "Lendo mensagem, tipo recebido:" (if (pos? type) (str (char type)) "EOF/error"))
+    (println "Reading message, received type:" (if (pos? type) (str (char type)) "EOF/error"))
     (when (pos? type)
       (try
         (let [byte-buffer (byte-array 4)]
@@ -34,21 +34,21 @@
                 length (.getInt buffer)
                 content-length (- length 4)
                 content (byte-array content-length)]
-            (println "Lendo conteúdo da mensagem, comprimento:" length "bytes")
+            (println "Reading message content, length:" length "bytes")
             (.readNBytes in content 0 content-length)
             {:type (char type)
              :length length
              :content content}))
         (catch Exception e
-          (println "Erro ao ler mensagem:" (.getMessage e))
+          (println "Error reading message:" (.getMessage e))
           {:type (char type)
            :error (.getMessage e)})))))
 
-;; Função para tentar ler mensagem com retry
+;; Function to read messages with retry
 (defn read-message-with-retry [conn max-retries]
   (letfn [(try-read [retries]
             (if (> retries max-retries)
-              (throw (Exception. "Número máximo de tentativas excedido"))
+              (throw (Exception. "Maximum number of attempts exceeded"))
               (let [result
                     (try
                       (let [msg (read-message conn)]
@@ -60,11 +60,11 @@
                 (case (first result)
                   :success (second result)
                   :retry (do
-                           (println (str "Tentativa " (inc retries) " falhou, tentando novamente..."))
+                           (println (str "Attempt " (inc retries) " failed, trying again..."))
                            (Thread/sleep 100)
                            (try-read (inc retries)))
                   :error (let [e (second result)]
-                           (println (str "Erro na tentativa " (inc retries) ": " (.getMessage e)))
+                           (println (str "Error in attempt " (inc retries) ": " (.getMessage e)))
                            (Thread/sleep 100)
                            (try-read (inc retries)))))))]
     (try-read 0)))
@@ -73,7 +73,7 @@
 (defn connect-to-sql [host port]
   (let [socket (Socket. host port)]
     ;; Set socket timeouts
-    (.setSoTimeout socket 10000)  ;; 10 segundos de timeout para operações de leitura (aumentado de 5s)
+    (.setSoTimeout socket 10000)  ;; 10 seconds timeout for read operations (increased from 5s)
     {:socket socket
      :reader (BufferedReader. (InputStreamReader. (.getInputStream socket) StandardCharsets/UTF_8))
      :writer (BufferedWriter. (OutputStreamWriter. (.getOutputStream socket) StandardCharsets/UTF_8))
@@ -158,13 +158,13 @@
     (.flush out)))
 
 (defn run-with-safe-logging [label f]
-  (println "Iniciando:" label)
+  (println "Starting:" label)
   (try
     (f)
-    (println "Concluído com sucesso:" label)
+    (println "Successfully completed:" label)
     (catch Exception e
-      (println "Falha em" label ":" (.getMessage e))
-      (println "Continuando execução..."))))
+      (println "Failed in" label ":" (.getMessage e))
+      (println "Continuing execution..."))))
 
 ;; Integration test with a PostgreSQL protocol client
 (deftest ^:integration test-sql-integration
@@ -173,89 +173,89 @@
           port 15432  ;; Use a port different from the default PostgreSQL port
           is-ci (some? (System/getenv "CI"))
           server (sql/start-sql-server storage index port)]
-      (println "Servidor SQL iniciado na porta:" port)
-      (println "Executando em ambiente CI:" is-ci)
+      (println "SQL server started on port:" port)
+      (println "Running in CI environment:" is-ci)
       (try
-        ;; No ambiente CI, apenas verificamos se o servidor inicia
+        ;; In CI environment, we only verify the server starts
         (if is-ci
           (do
-            (println "Executando em CI - Teste reduzido para apenas verificar se o servidor inicia")
-            (is (some? server) "Servidor SQL deve ter iniciado corretamente"))
-          ;; Testes completos fora do CI
+            (println "Running in CI - Reduced test to just verify the server starts")
+            (is (some? server) "SQL server should have started correctly"))
+          ;; Complete tests outside CI
           (do
-            (println "Aguardando inicialização completa do servidor...")
+            (println "Waiting for complete server initialization...")
             (Thread/sleep 2000)
-            (println "Conectando ao servidor SQL...")
+            (println "Connecting to SQL server...")
             (let [conn (connect-to-sql "localhost" port)]
-              (println "Conexão estabelecida com sucesso")
+              (println "Connection established successfully")
               (try
                 ;; Send startup message
-                (run-with-safe-logging "Autenticação"
+                (run-with-safe-logging "Authentication"
                                        #(testing "Connection startup"
-                                          (println "Enviando mensagem de inicialização...")
+                                          (println "Sending initialization message...")
                                           (send-startup-message conn)
-                                          (println "Mensagem de inicialização enviada, aguardando resposta...")
+                                          (println "Initialization message sent, waiting for response...")
                                           (Thread/sleep 1000)
                                           (let [auth-message (read-message conn)]
-                                            (println "Mensagem de autenticação recebida:" auth-message)
+                                            (println "Authentication message received:" auth-message)
                                             (when auth-message
                                               (is (= \R (char (:type auth-message))))))))
 
                 ;; Read parameter messages with timeout
-                (with-timeout 20000 "Timeout ao ler mensagens de parâmetros"
-                  #(run-with-safe-logging "Leitura de parâmetros"
+                (with-timeout 20000 "Timeout reading parameter messages"
+                  #(run-with-safe-logging "Parameter reading"
                                           (fn []
-                                            (println "Ambiente: " (System/getenv "CI"))
-                                            (println "Propriedades do Sistema: " (select-keys (System/getProperties) ["os.name" "java.version"]))
-                                            (println "Iniciando leitura de parâmetros com timeout estendido...")
+                                            (println "Environment: " (System/getenv "CI"))
+                                            (println "System Properties: " (select-keys (System/getProperties) ["os.name" "java.version"]))
+                                            (println "Starting parameter reading with extended timeout...")
                                             (dotimes [i 5]
                                               (try
-                                                (println "Tentando ler parâmetro" (inc i) "...")
+                                                (println "Trying to read parameter" (inc i) "...")
                                                 (let [msg (read-message-with-retry conn 5)]
-                                                  (println "Parâmetro" (inc i) ":" msg)
+                                                  (println "Parameter" (inc i) ":" msg)
                                                   (when (nil? msg)
-                                                    (println "Fim dos parâmetros")
-                                                    (throw (Exception. "Fim dos parâmetros"))))
+                                                    (println "End of parameters")
+                                                    (throw (Exception. "End of parameters"))))
                                                 (catch Exception e
-                                                  (println "Erro na leitura do parâmetro" (inc i) ":" (.getMessage e))
+                                                  (println "Error reading parameter" (inc i) ":" (.getMessage e))
                                                   (throw e)))))))
 
                 ;; Send query and read response
-                (run-with-safe-logging "Consulta SQL"
+                (run-with-safe-logging "SQL Query"
                                        #(testing "Simple SELECT query"
                                           (send-query conn "SELECT 1 as test")
-                                          (with-timeout 5000 "Timeout ao ler respostas da consulta"
+                                          (with-timeout 5000 "Timeout reading query responses"
                                             (fn []
                                               (dotimes [i 3]
                                                 (try
                                                   (let [msg (read-message conn)]
-                                                    (println "Resposta" (inc i) ":" msg)
+                                                    (println "Response" (inc i) ":" msg)
                                                     (when (nil? msg)
-                                                      (println "Fim das respostas")
-                                                      (throw (Exception. "Fim das respostas"))))
+                                                      (println "End of responses")
+                                                      (throw (Exception. "End of responses"))))
                                                   (catch Exception e
-                                                    (println "Erro na leitura da resposta" (inc i) ":" (.getMessage e))
+                                                    (println "Error reading response" (inc i) ":" (.getMessage e))
                                                     (throw e))))))))
 
                 ;; Terminate connection
-                (run-with-safe-logging "Terminação da conexão"
+                (run-with-safe-logging "Connection termination"
                                        #(testing "Connection termination"
                                           (send-terminate conn)))
 
                 (finally
-                  (println "Fechando conexão...")
+                  (println "Closing connection...")
                   (try
                     (close-sql-connection conn)
-                    (println "Conexão fechada com sucesso")
+                    (println "Connection closed successfully")
                     (catch Exception e
-                      (println "Erro ao fechar conexão:" (.getMessage e)))))))))
+                      (println "Error closing connection:" (.getMessage e)))))))))
         (finally
-          (println "Parando servidor SQL...")
+          (println "Stopping SQL server...")
           (try
             (sql/stop-sql-server server)
-            (println "Servidor SQL parado com sucesso")
+            (println "SQL server stopped successfully")
             (catch Exception e
-              (println "Erro ao parar servidor SQL:" (.getMessage e)))))))))
+              (println "Error stopping SQL server:" (.getMessage e)))))))))
 
 ;; Define a fixture that can be used to run only integration tests
 (defn integration-fixture [f]
