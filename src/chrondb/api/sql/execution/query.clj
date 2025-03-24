@@ -209,8 +209,15 @@
   "Handles the SELECT case of an SQL query"
   [storage out parsed]
   (log/log-info (str "Starting handle-select-case with parsed: " parsed))
-  (let [results (handle-select storage parsed)]
+  (let [results (handle-select storage parsed)
+        columns-def (:columns parsed)
+        is-count-star-query? (and (= 1 (count columns-def))
+                                  (= :aggregate-function (:type (first columns-def)))
+                                  (= :count (:function (first columns-def)))
+                                  (= "*" (first (:args (first columns-def)))))]
+
     (log/log-info (str "Results obtained: " (count results) " documents"))
+    (log/log-info (str "Is count(*) query: " is-count-star-query?))
     (log/log-info (str "Complete details of results: " (mapv :id results)))
 
     (if (empty? results)
@@ -224,16 +231,24 @@
         ;; This specific format informs the client that there are no rows
         (messages/send-command-complete out "SELECT" 0))
 
-      ;; For non-empty results, proceed normally
-      (let [columns (mapv name (keys (first results)))]
-        (log/log-info (str "Sending column description: " columns))
-        (messages/send-row-description out columns)
-        (doseq [row results]
-          (log/log-info (str "Sending row: " (:id row)))
-          (let [values (map #(get row (keyword %)) columns)]
-            (log/log-info (str "Values sent: " values))
-            (messages/send-data-row out values)))
-        (messages/send-command-complete out "SELECT" (count results))))
+      ;; For COUNT(*) queries
+      (if is-count-star-query?
+        (do
+          (log/log-info "Processing count(*) query")
+          (messages/send-row-description out ["count"])
+          (messages/send-data-row out [(str (count results))])
+          (messages/send-command-complete out "SELECT" 1))
+
+        ;; For normal queries
+        (let [columns (mapv name (keys (first results)))]
+          (log/log-info (str "Sending column description: " columns))
+          (messages/send-row-description out columns)
+          (doseq [row results]
+            (log/log-info (str "Sending row: " (:id row)))
+            (let [values (map #(get row (keyword %)) columns)]
+              (log/log-info (str "Values sent: " values))
+              (messages/send-data-row out values)))
+          (messages/send-command-complete out "SELECT" (count results)))))
     (log/log-info "SELECT query processing completed")))
 
 (defn handle-insert-case

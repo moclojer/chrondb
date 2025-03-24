@@ -19,11 +19,17 @@
   (.flush (:writer writer-map))
   (str (.getBuffer (:string-writer writer-map))))
 
+;; Helper function to get a random available port
+(defn get-available-port []
+  (with-open [socket (ServerSocket. 0)]
+    (.getLocalPort socket)))
+
 ;; Test Server Functions
 (deftest test-sql-server
   (testing "Start and stop SQL server"
     (let [{storage :storage index :index} (create-test-resources)
-          server (sql/start-sql-server storage index 0)]
+          port (get-available-port)
+          server (sql/start-sql-server storage index port)]
       (is (not (nil? server)))
       (is (instance? ServerSocket server))
       (is (not (.isClosed server)))
@@ -34,7 +40,8 @@
 (deftest test-sql-server-overloads
   (testing "Start SQL server with just storage"
     (let [{storage :storage} (create-test-resources)
-          server (sql/start-sql-server storage)]
+          port (get-available-port)
+          server (sql/start-sql-server storage nil port)]
       (is (not (nil? server)))
       (is (instance? ServerSocket server))
       (is (not (.isClosed server)))
@@ -43,7 +50,8 @@
 
   (testing "Start SQL server with storage and index"
     (let [{storage :storage index :index} (create-test-resources)
-          server (sql/start-sql-server storage index)]
+          port (get-available-port)
+          server (sql/start-sql-server storage index port)]
       (is (not (nil? server)))
       (is (instance? ServerSocket server))
       (is (not (.isClosed server)))
@@ -55,12 +63,14 @@
   (testing "Stopping SQL server safely"
     (let [{storage :storage index :index} (create-test-resources)]
       ;; Normal case: server started and then stopped
-      (let [server (sql/start-sql-server storage index 0)]
+      (let [port (get-available-port)
+            server (sql/start-sql-server storage index port)]
         (sql/stop-sql-server server)
         (is (.isClosed server)))
 
       ;; Edge case: try to stop an already closed server
-      (let [server (sql/start-sql-server storage index 0)]
+      (let [port (get-available-port)
+            server (sql/start-sql-server storage index port)]
         (sql/stop-sql-server server)
         (sql/stop-sql-server server) ;; Should not throw an exception
         (is (.isClosed server)))

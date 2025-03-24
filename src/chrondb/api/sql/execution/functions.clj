@@ -11,7 +11,9 @@
    Returns: The result of the aggregate function"
   [function docs field]
   (case function
-    :count (count docs)
+    :count (if (= field "*")
+             (count docs)  ;; For count(*), count all documents
+             (count (keep #(get % (keyword field)) docs)))  ;; For count(field), count only non-null values
     :sum (reduce + (keep #(get % (keyword field)) docs))
     :avg (let [values (keep #(get % (keyword field)) docs)]
            (if (empty? values)

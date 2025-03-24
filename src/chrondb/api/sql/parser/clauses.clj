@@ -23,7 +23,18 @@
             (recur (rest remaining)
                    (conj columns {:type :all}))
 
-            ;; Aggregate function
+            ;; Aggregate function with * as argument (e.g. count(*))
+            (and (constants/AGGREGATE_FUNCTIONS token)
+                 (>= (count remaining) 4)
+                 (= (nth remaining 1) "(")
+                 (= (nth remaining 2) "*")
+                 (= (nth remaining 3) ")"))
+            (recur (drop 4 remaining)
+                   (conj columns {:type :aggregate-function
+                                  :function (keyword token)
+                                  :args ["*"]}))
+
+            ;; Aggregate function with specific field
             (and (constants/AGGREGATE_FUNCTIONS token)
                  (>= (count remaining) 4)
                  (= (nth remaining 1) "(")
