@@ -56,8 +56,12 @@
        (let [fn-result (functions/execute-aggregate-function
                         (:function col-def)
                         group
-                        (first (:args col-def)))]
-         (assoc acc (keyword (str (name (:function col-def)) "_" (first (:args col-def)))) fn-result))
+                        (first (:args col-def)))
+             result-map (functions/process-aggregate-result
+                         (:function col-def)
+                         fn-result
+                         (first (:args col-def)))]
+         (merge acc result-map))
 
        ;; Default
        acc))
@@ -214,10 +218,13 @@
         is-count-star-query? (and (= 1 (count columns-def))
                                   (= :aggregate-function (:type (first columns-def)))
                                   (= :count (:function (first columns-def)))
-                                  (= "*" (first (:args (first columns-def)))))]
+                                  (= "*" (first (:args (first columns-def)))))
+        is-aggregate-query? (and (= 1 (count columns-def))
+                                 (= :aggregate-function (:type (first columns-def))))]
 
     (log/log-info (str "Results obtained: " (count results) " documents"))
     (log/log-info (str "Is count(*) query: " is-count-star-query?))
+    (log/log-info (str "Is aggregate query: " is-aggregate-query?))
     (log/log-info (str "Complete details of results: " (mapv :id results)))
 
     (if (empty? results)
@@ -231,24 +238,59 @@
         ;; This specific format informs the client that there are no rows
         (messages/send-command-complete out "SELECT" 0))
 
-      ;; For COUNT(*) queries
-      (if is-count-star-query?
+      ;; Non-empty results
+      (cond
+        ;; For COUNT(*) queries
+        is-count-star-query?
         (do
           (log/log-info "Processing count(*) query")
           (messages/send-row-description out ["count"])
           (messages/send-data-row out [(str (count results))])
           (messages/send-command-complete out "SELECT" 1))
 
+        ;; For other aggregate functions (sum, avg, min, max)
+        is-aggregate-query?
+        (do
+          (log/log-info "Processing aggregate function query")
+          (let [agg-function (:function (first columns-def))
+                agg-field (first (:args (first columns-def)))
+                column-name (name agg-function)
+                _ (log/log-info (str "Aggregate function: " agg-function ", Field: " agg-field))
+
+                ;; Execute aggregate function directly
+                agg-result (functions/execute-aggregate-function
+                            agg-function
+                            (if (= agg-field "*")
+                              results
+                              results)
+                            agg-field)
+                _ (log/log-info (str "Aggregate result: " agg-result))]
+
+            (messages/send-row-description out [column-name])
+            (messages/send-data-row out [(if (nil? agg-result) "0" (str agg-result))])
+            (messages/send-command-complete out "SELECT" 1)))
+
         ;; For normal queries
-        (let [columns (mapv name (keys (first results)))]
+        :else
+        (let [columns (try
+                        (mapv #(if (keyword? %)
+                                 (name %)
+                                 (str %))
+                              (keys (first results)))
+                        (catch Exception e
+                          (log/log-error (str "Erro ao extrair nomes de colunas: " (.getMessage e)))
+                          ["resultado"]))]
           (log/log-info (str "Sending column description: " columns))
           (messages/send-row-description out columns)
           (doseq [row results]
             (log/log-info (str "Sending row: " (:id row)))
-            (let [values (map #(get row (keyword %)) columns)]
+            (let [values (map #(let [val (get row (if (string? %) (keyword %) %))]
+                                 (if (nil? val) "" (str val)))
+                              columns)]
               (log/log-info (str "Values sent: " values))
               (messages/send-data-row out values)))
           (messages/send-command-complete out "SELECT" (count results)))))
+
     (log/log-info "SELECT query processing completed")))
 
 (defn handle-insert-case
