@@ -6,6 +6,7 @@
 
 ;; Message Types
 (def PG_ERROR_RESPONSE (byte (int \E)))
+(def PG_NOTICE_RESPONSE (byte (int \N)))  ;; Added for welcome messages
 (def PG_READY_FOR_QUERY (byte (int \Z)))
 (def PG_ROW_DESCRIPTION (byte (int \T)))
 (def PG_DATA_ROW (byte (int \D)))
