@@ -147,6 +147,33 @@
     (.get buffer final-data)
     (write-message out constants/PG_ERROR_RESPONSE final-data)))
 
+(defn send-notice-response
+  "Sends a notice response message to the client.
+   Parameters:
+   - out: The output stream
+   - message: The notice message
+   Returns: nil"
+  [^OutputStream out message]
+  (let [buffer (ByteBuffer/allocate 1024)
+        ;; Add notice fields
+        _ (.put buffer (byte (int \S)))  ;; Severity field
+        _ (.put buffer (.getBytes "NOTICE" StandardCharsets/UTF_8))
+        _ (.put buffer (byte 0))  ;; Null terminator
+
+        ;; Message field
+        _ (.put buffer (byte (int \M)))  ;; Message field
+        _ (.put buffer (.getBytes message StandardCharsets/UTF_8))
+        _ (.put buffer (byte 0))  ;; Null terminator
+
+        ;; Final null terminator for the entire message
+        _ (.put buffer (byte 0))
+
+        pos (.position buffer)
+        final-data (byte-array pos)]
+    (.flip buffer)
+    (.get buffer final-data)
+    (write-message out constants/PG_NOTICE_RESPONSE final-data)))
+
 (defn send-parameter-status
   "Sends a parameter status message to inform client of settings
    Parameters:

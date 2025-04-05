@@ -112,6 +112,9 @@
       (messages/send-parameter-status out "server_version" "9.5.0")
       (messages/send-parameter-status out "client_encoding" "UTF8")
 
+      ;; Send welcome message
+      (messages/send-notice-response out "Welcome to ChronDB - Git-backed Versioned Database System")
+
       ;; Indicate that we're ready to process queries
       (messages/send-ready-for-query out \I)
 
