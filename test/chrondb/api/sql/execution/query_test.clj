@@ -28,10 +28,13 @@
         (swap! documents assoc (:id doc) doc)
         doc))))
 
+;; Define a dynamic var for the test storage
+(def ^:dynamic *test-storage* nil)
+
 ;; Define a fixture to set up and tear down the mock storage
 (defn with-mock-storage [f]
-  (def test-storage (create-mock-storage))
-  (f))
+  (binding [*test-storage* (create-mock-storage)]
+    (f)))
 
 (use-fixtures :each with-mock-storage)
 
@@ -43,7 +46,7 @@
                  :where nil
                  :order-by nil
                  :limit nil}
-          results (query/handle-select test-storage query)]
+          results (query/handle-select *test-storage* query)]
       (is (= 4 (count results)))
       (is (= #{"user:1" "user:2" "user:3" "user:4"}
              (set (map :id results)))))))
@@ -56,7 +59,7 @@
                  :where [{:field "age" :op ">" :value "28"}]
                  :order-by nil
                  :limit nil}
-          results (query/handle-select test-storage query)]
+          results (query/handle-select *test-storage* query)]
       (is (= 2 (count results)))
       (is (= #{"user:1" "user:3"}
              (set (map :id results)))))))
@@ -69,7 +72,7 @@
                  :where nil
                  :order-by [{:column "age" :direction :desc}]
                  :limit nil}
-          results (query/handle-select test-storage query)]
+          results (query/handle-select *test-storage* query)]
       (is (= 4 (count results)))
       (is (= ["user:3" "user:1" "user:4" "user:2"]
              (map :id results))))))
@@ -82,7 +85,7 @@
                  :where nil
                  :order-by [{:column "age" :direction :desc}]
                  :limit 2}
-          results (query/handle-select test-storage query)]
+          results (query/handle-select *test-storage* query)]
       (is (= 2 (count results)))
       (is (= ["user:3" "user:1"]
              (map :id results))))))
@@ -96,7 +99,7 @@
                  :where nil
                  :order-by nil
                  :limit nil}
-          results (query/handle-select test-storage query)]
+          results (query/handle-select *test-storage* query)]
       (is (= 4 (count results)))
       (is (every? #(= #{:name :age} (set (keys %))) results)))))
 
@@ -108,7 +111,7 @@
                  :where [{:field "id" :op "=" :value "user:1"}]
                  :order-by nil
                  :limit nil}
-          results (query/handle-select test-storage query)]
+          results (query/handle-select *test-storage* query)]
       (is (= 1 (count results)))
       (is (= "user:1" (:id (first results)))))))
 
@@ -122,7 +125,7 @@
                  :group-by [{:column "dept"}]
                  :order-by nil
                  :limit nil}
-          results (query/handle-select test-storage query)]
+          results (query/handle-select *test-storage* query)]
       ;; Two departments: IT and HR
       (is (= 2 (count results)))
       ;; Each result should have dept and count_* fields
@@ -131,7 +134,7 @@
 (deftest test-handle-insert
   (testing "INSERT query"
     (let [new-doc {:id "user:5" :name "Eve" :age 40 :active true}
-          result (query/handle-insert test-storage new-doc)]
+          result (query/handle-insert *test-storage* new-doc)]
       (is (= new-doc result))
       ;; Verify the document was added to storage
       (let [query {:type :select
@@ -140,14 +143,14 @@
                    :where [{:field "id" :op "=" :value "user:5"}]
                    :order-by nil
                    :limit nil}
-            results (query/handle-select test-storage query)]
+            results (query/handle-select *test-storage* query)]
         (is (= 1 (count results)))
         (is (= "user:5" (:id (first results))))))))
 
 (deftest test-handle-update
   (testing "UPDATE query"
     (let [updates {:age 31 :active false}
-          result (query/handle-update test-storage "user:1" updates)]
+          result (query/handle-update *test-storage* "user:1" updates)]
       (is (= "user:1" (:id result)))
       (is (= 31 (:age result)))
       (is (= false (:active result)))
@@ -160,7 +163,7 @@
                    :where [{:field "id" :op "=" :value "user:1"}]
                    :order-by nil
                    :limit nil}
-            results (query/handle-select test-storage query)]
+            results (query/handle-select *test-storage* query)]
         (is (= 1 (count results)))
         (is (= 31 (:age (first results))))
         (is (= false (:active (first results))))))))
