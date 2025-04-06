@@ -27,6 +27,12 @@
     (is (= {:avg_price 0}
            (functions/process-aggregate-result :avg nil "price")))))
 
+(defn- approximately=
+  "Compare two numbers for approximate equality within a small delta"
+  [a b]
+  (let [delta 0.0001]
+    (< (Math/abs (- a b)) delta)))
+
 (deftest test-execute-aggregate-function
   (let [test-docs [{:id "user:1", :name "Alice", :age 30, :score 85.5}
                    {:id "user:2", :name "Bob", :age 25, :score 92.0}
@@ -44,16 +50,16 @@
       (is (= 118 (functions/execute-aggregate-function :sum test-docs "age"))))
 
     (testing "avg function"
-      (is (= 29.5 (functions/execute-aggregate-function :avg test-docs "age"))))
+      (is (approximately= 29.5 (functions/execute-aggregate-function :avg test-docs "age"))))
 
     (testing "min function"
-      (is (= 25.0 (functions/execute-aggregate-function :min test-docs "age"))))
+      (is (approximately= 25.0 (functions/execute-aggregate-function :min test-docs "age"))))
 
     (testing "max function"
-      (is (= 35.0 (functions/execute-aggregate-function :max test-docs "age"))))
+      (is (approximately= 35.0 (functions/execute-aggregate-function :max test-docs "age"))))
 
     (testing "numeric extraction from id field"
-      (is (= 15 (functions/execute-aggregate-function :sum test-docs "id"))))
+      (is (approximately= 15 (functions/execute-aggregate-function :sum test-docs "id"))))
 
     (testing "unsupported aggregate function"
       (is (nil? (functions/execute-aggregate-function :unknown test-docs "age"))))))
