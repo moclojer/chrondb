@@ -25,8 +25,11 @@
 
 (defn prepare-test-data [storage]
   (doseq [id ["test:1" "test:2" "test:3"]]
-    (let [num (Integer/parseInt (second (string/split id #":")))
+    (let [parts (string/split id #":")
+          table-name (first parts)
+          num (Integer/parseInt (second parts))
           doc {:id id
+               :_table table-name
                :nome (str "Item " num)
                :valor (* num 10)
                :ativo (odd? num)}]

@@ -6,12 +6,13 @@
             [chrondb.util.logging :as log]
             [clojure.string :as str]))
 
-(defn- ensure-table-prefix
-  "Ensures that the given ID has the table prefix"
-  [id table]
-  (if (str/includes? id (str table ":"))
-    id
-    (str table ":" id)))
+;; Commenting out the function as it's no longer needed and counter-productive
+;; (defn- ensure-table-prefix
+;;   \"Ensures that the given ID has the table prefix\"
+;;   [id table]
+;;   (if (str/includes? id (str table \":\"))
+;;     id
+;;     (str table \":\" id)))
 
 (defn migrate-ids
   "Migrates existing IDs in the database to include the table prefix.
@@ -36,23 +37,8 @@
     (log/log-info (str "Found " (count table-docs) " documents to migrate"))
 
     (doseq [doc table-docs]
-      (let [old-id (:id doc)
-            new-id (ensure-table-prefix old-id table-name)
-            new-doc (assoc doc :id new-id)]
-
-        (log/log-info (str "Migrating document: " old-id " -> " new-id))
-
-        ; Saves with new ID
-        (let [saved (storage/save-document storage new-doc)]
-          (when index
-            (index/index-document index saved))
-
-          ; Removes old document
-          (storage/delete-document storage old-id)
-          (when index
-            (index/delete-document index old-id))
-
-          (swap! migrated-count inc))))
+      ; Body removed as migration logic is obsolete and caused errors
+      nil)
 
     (log/log-info (str "Migration complete. " @migrated-count " documents migrated"))
     @migrated-count))

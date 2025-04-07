@@ -12,13 +12,8 @@
 (defn- get-documents-by-id
   "Retrieves a document by ID"
   [storage where-condition]
-  (let [id (str/replace (get-in where-condition [0 :value]) #"['\"]" "")
-        table-name (get-in where-condition [0 :table])
-        prefixed-id (if (and (seq table-name) (not (str/includes? id (str table-name ":"))))
-                      (str table-name ":" id)
-                      id)]
-    (if-let [doc (or (storage/get-document storage prefixed-id)
-                     (storage/get-document storage id))]
+  (let [id (str/replace (get-in where-condition [0 :value]) #"['\"]" "")]
+    (if-let [doc (storage/get-document storage id)]
       [doc]
       [])))
 
@@ -272,11 +267,13 @@
 
         ;; For normal queries
         :else
-        (let [columns (try
-                        (mapv #(if (keyword? %)
-                                 (name %)
-                                 (str %))
-                              (keys (first results)))
+        (let [;; Get column names from the first result, excluding internal fields like :_table
+              columns (try
+                        (->> (keys (first results))
+                             (filter #(not= % :_table)) ; Exclude :_table
+                             (mapv #(if (keyword? %)
+                                      (name %)
+                                      (str %))))
                         (catch Exception e
                           (log/log-error (str "Erro ao extrair nomes de colunas: " (.getMessage e)))
                           ["resultado"]))]
@@ -284,9 +281,10 @@
           (messages/send-row-description out columns)
           (doseq [row results]
             (log/log-info (str "Sending row: " (:id row)))
+            ;; Map values according to the filtered columns
             (let [values (map #(let [val (get row (if (string? %) (keyword %) %))]
                                  (if (nil? val) "" (str val)))
-                              columns)]
+                              columns)] ; Use the filtered columns here
               (log/log-info (str "Values sent: " values))
               (messages/send-data-row out values)))
           (messages/send-command-complete out "SELECT" (count results)))))
@@ -322,16 +320,14 @@
                                ;; Otherwise, generate UUID
                                (str (java.util.UUID/randomUUID)))
                       ;; Add table prefix to ID
-                      doc-id (if (str/includes? raw-id (str table-name ":"))
-                               raw-id
-                               (str table-name ":" raw-id))
+                      doc-id raw-id
                       doc-map (reduce (fn [acc [col val]]
                                         ;; Skip invalid column names or values
                                         (if (or (nil? col) (nil? val) (= col ",") (= val ","))
                                           acc
                                           ;; Remove quotes only now, after having the column/value pair
                                           (assoc acc (keyword col) (str/replace val #"^['\"]|['\"]$" ""))))
-                                      {:id doc-id}
+                                      {:id doc-id :_table table-name}
                                       ;; Zip columns with values, ignoring ID if already processed
                                       (if (and (seq clean-columns) (= (first clean-columns) "id"))
                                         (map vector (rest clean-columns) (rest values))
@@ -342,15 +338,13 @@
                                (str/replace (first values) #"^['\"]|['\"]$" "")
                                (str (java.util.UUID/randomUUID)))
                       ;; Add table prefix to ID
-                      doc-id (if (str/includes? raw-id (str table-name ":"))
-                               raw-id
-                               (str table-name ":" raw-id))
+                      doc-id raw-id
                       doc-map (cond
-                                (>= (count values) 2) {:id doc-id
+                                (>= (count values) 2) {:id doc-id :_table table-name
                                                        :value (str/replace (second values) #"^['\"]|['\"]$" "")}
-                                (= (count values) 1) {:id doc-id
+                                (= (count values) 1) {:id doc-id :_table table-name
                                                       :value ""}
-                                :else {:id doc-id :value ""})]
+                                :else {:id doc-id :_table table-name :value ""})]
                   doc-map))
 
           _ (log/log-info (str "Document to insert: " doc))
@@ -373,21 +367,24 @@
   [storage index out parsed]
   (try
     (log/log-info (str "Processing UPDATE in table: " (:table parsed)))
-    (let [where-conditions (:where parsed)
+    (let [table-name (:table parsed)
+          where-conditions (:where parsed)
           updates (try
                     (reduce-kv
                      (fn [m k v]
-                       (assoc m (keyword k) (str/replace v #"['\"]" "")))
+                       (assoc m (keyword k) (str/replace v #"[\'\\\"]" "")))
                      {}
                      (:updates parsed))
                     (catch Exception e
                       (log/log-error (str "Error processing update values: " (.getMessage e)))
                       {}))]
 
-      (if (and (seq where-conditions) (seq updates))
-        (let [_ (log/log-info (str "Searching for documents matching: " where-conditions))
-              all-docs (storage/get-documents-by-prefix storage "")
-              matching-docs (operators/apply-where-conditions all-docs where-conditions)
+      (if (and (seq where-conditions) (seq updates) (seq table-name))
+        (let [_ (log/log-info (str "Searching for documents in table " table-name " matching: " where-conditions))
+              ; Get documents for the specific table first
+              table-docs (get-all-documents-for-table storage table-name)
+              ; Apply WHERE conditions to the table documents
+              matching-docs (operators/apply-where-conditions table-docs where-conditions)
               update-count (atom 0)]
 
           (if (seq matching-docs)
@@ -411,10 +408,11 @@
               (messages/send-command-complete out "UPDATE" 0))))
 
         (do
-          (log/log-warn "Invalid UPDATE query - missing WHERE clause or invalid update values")
-          (let [error-msg (if (seq where-conditions)
-                            "UPDATE failed: No valid values to update"
-                            "UPDATE without WHERE clause is not supported. Please specify conditions.")]
+          (log/log-warn "Invalid UPDATE query - missing WHERE clause, table name, or invalid update values")
+          (let [error-msg (cond
+                            (not (seq table-name)) "UPDATE failed: Table name is missing."
+                            (not (seq where-conditions)) "UPDATE without WHERE clause is not supported. Please specify conditions."
+                            :else "UPDATE failed: No valid values to update")]
             (log/log-error error-msg)
             (messages/send-error-response out error-msg)
             (messages/send-command-complete out "UPDATE" 0)))))
@@ -429,20 +427,48 @@
 (defn handle-delete-case
   "Handles the DELETE case of an SQL query"
   [storage index out parsed]
-  (let [id (when (seq (:where parsed))
-             (str/replace (get-in parsed [:where 0 :value]) #"['\"]" ""))]
-    (if id
-      (let [_ (log/log-info (str "Deleting document with ID: " id))
-            deleted (handle-delete storage id)
-            _ (when (and deleted index)
-                (index/delete-document index id))]
-        (log/log-info (str "Document " (if deleted "deleted successfully" "not found")))
-        (messages/send-command-complete out "DELETE" (if deleted 1 0)))
-      (do
-        (log/log-warn "Attempt to DELETE without WHERE clause was rejected")
-        (let [error-msg "DELETE without WHERE clause is not supported. Use WHERE id='value' to specify which document to delete."]
-          (log/log-error error-msg)
-          (messages/send-error-response out error-msg))))))
+  (try
+    (let [table-name (:table parsed)
+          where-conditions (:where parsed)
+          ;; Currently assumes WHERE clause is simple `id = 'value'`
+          id (when (and (seq where-conditions)
+                        (= (count where-conditions) 1)
+                        (= (get-in where-conditions [0 :field]) "id")
+                        (= (get-in where-conditions [0 :op]) "="))
+               (str/replace (get-in where-conditions [0 :value]) #"[\'\\\"]" ""))]
+
+      (if (and id (seq table-name))
+        (if-let [doc-to-delete (storage/get-document storage id)]
+          (if (= (:_table doc-to-delete) table-name)
+            (let [_ (log/log-info (str "Deleting document with ID: " id " from table " table-name))
+                  deleted (handle-delete storage id)
+                  _ (when (and deleted index)
+                      (index/delete-document index id))]
+              (log/log-info (str "Document " (if deleted "deleted successfully" "deletion failed")))
+              (messages/send-command-complete out "DELETE" (if deleted 1 0)))
+            (do ; Document found but belongs to a different table
+              (log/log-warn (str "Attempt to DELETE document " id " rejected: Document belongs to table " (:_table doc-to-delete) ", not " table-name))
+              (messages/send-error-response out (str "Document not found in table " table-name))
+              (messages/send-command-complete out "DELETE" 0)))
+          (do ; Document ID not found
+            (log/log-info (str "Document with ID: " id " not found for deletion."))
+            (messages/send-command-complete out "DELETE" 0))) ; Report 0 rows deleted
+        (do
+          (log/log-warn "Invalid DELETE query - requires table name and simple 'WHERE id = ...' clause.")
+          (let [error-msg (cond
+                            (not (seq table-name)) "DELETE failed: Table name is missing."
+                            (not id) "DELETE requires a 'WHERE id = ...' clause."
+                            :else "Invalid DELETE statement.")]
+            (log/log-error error-msg)
+            (messages/send-error-response out error-msg)
+            (messages/send-command-complete out "DELETE" 0)))))
+    (catch Exception e
+      (let [sw (java.io.StringWriter.)
+            pw (java.io.PrintWriter. sw)]
+        (.printStackTrace e pw)
+        (log/log-error (str "Error processing DELETE: " (.getMessage e) "\n" (.toString sw))))
+      (messages/send-error-response out (str "Error processing DELETE: " (.getMessage e)))
+      (messages/send-command-complete out "DELETE" 0))))
 
 (defn handle-query
   "Handles an SQL query.
