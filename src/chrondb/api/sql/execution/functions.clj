@@ -42,11 +42,17 @@
           numeric-values (keep (fn [v]
                                  (try
                                    (if (string? v)
-                                     (if-let [numeric-part (second (re-find #".*:(\d+)$" v))]
-                                       (Double/parseDouble numeric-part)
-                                       (if (re-matches #"^\d+$" v)
-                                         (Double/parseDouble v)
-                                         nil))
+                                     ; Handle both plain IDs and prefixed IDs
+                                     (cond
+                                       ; Try to extract numeric part from prefixed IDs like "user:1"
+                                       (re-find #".*:(\d+)$" v)
+                                       (Double/parseDouble (second (re-find #".*:(\d+)$" v)))
+
+                                       ; Try to parse as plain numeric ID
+                                       (re-matches #"^\d+(\.\d+)?$" v)
+                                       (Double/parseDouble v)
+
+                                       :else nil)
                                      (when (number? v) v))
                                    (catch Exception _
                                      nil)))

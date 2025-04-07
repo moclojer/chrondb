@@ -348,8 +348,7 @@
 
     (let [config-map (config/load-config)
           branch-name (get-in config-map [:git :default-branch])
-          head-id (.resolve repository (str branch-name "^{commit}"))
-          table-prefix (str table-name ":")]
+          head-id (.resolve repository (str branch-name "^{commit}"))]
 
       (log/log-debug (str "Searching documents for table: " table-name))
       (when head-id
@@ -369,7 +368,7 @@
                           content (String. (.getBytes object-loader) "UTF-8")]
                       (try
                         (let [doc (json/read-str content :key-fn keyword)]
-                          (when (str/starts-with? (:id doc) table-prefix)
+                          (when (= (:_table doc) table-name)
                             (log/log-debug (str "Found table document with ID: " (:id doc)))
                             (swap! results conj doc)))
                         (catch Exception e
