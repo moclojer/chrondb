@@ -2,7 +2,6 @@
   (:require [chrondb.storage.protocol :as storage]
             [chrondb.storage.git :as git]
             [chrondb.index.lucene :as lucene]
-            [chrondb.index.protocol :as index]
             [chrondb.util.logging :as log]
             [clojure.string :as str]))
 
@@ -23,20 +22,20 @@
    - table-fields: Fields that identify this table (ex: [:name :email] for users)
    Returns:
    - Number of migrated documents"
-  [storage index table-name table-fields]
+  [storage _index table-name _table-fields]
   (log/log-info (str "Starting ID migration for table: " table-name))
 
   (let [all-docs (storage/get-documents-by-prefix storage "")
         ; Filters documents that seem to belong to this table based on fields
-        table-docs (filter (fn [doc]
-                             (and (not (str/includes? (:id doc) (str table-name ":")))
-                                  (every? #(contains? doc %) table-fields)))
+        table-docs (filter (fn [_doc]
+                             ; Currently not doing anything since we disabled the migration logic
+                             false)
                            all-docs)
         migrated-count (atom 0)]
 
     (log/log-info (str "Found " (count table-docs) " documents to migrate"))
 
-    (doseq [doc table-docs]
+    (doseq [_doc table-docs]
       ; Body removed as migration logic is obsolete and caused errors
       nil)
 
