@@ -65,8 +65,12 @@
    - query: The search query string
    Returns: HTTP response with search results"
   [index query]
+  ;; TODO: Allow specifying the search field via query parameter?
+  ;; TODO: Allow specifying the branch via query parameter?
+  (let [default-field "content" ; Campo padrão para busca via API REST
+        default-branch "main"]   ; Branch padrão para busca via API REST
   (response/response
-   {:results (index/search index query)}))
+     {:results (index/search index default-field query default-branch)})))
 
 (defn create-routes
   "Creates the API routes for ChronDB.
@@ -81,4 +85,4 @@
    (GET "/api/v1/get/:id" [id] (handle-get storage id))
    (DELETE "/api/v1/delete/:id" [id] (handle-delete storage index id))
    (GET "/api/v1/search" [q] (handle-search index q))
-   (route/not-found (response/not-found {:error "Not Found"})))) 
+   (route/not-found (response/not-found {:error "Not Found"}))))

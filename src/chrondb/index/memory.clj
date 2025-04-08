@@ -2,7 +2,8 @@
   "In-memory implementation of the Index protocol.
    This implementation stores documents in memory and provides basic search capabilities."
   (:require [chrondb.index.protocol :as protocol]
-            [clojure.string :as str])
+            [clojure.string :as str]
+            [chrondb.util.logging :as log])
   (:import [java.util.concurrent ConcurrentHashMap]))
 
 (defn- document-matches?
@@ -26,9 +27,20 @@
     (.remove data id)
     nil)
 
-  (search [_ query]
-    (let [all-docs (map #(.get data %) (.keySet data))]
-      (filter #(document-matches? % query) all-docs))))
+  (search [this field query-string branch]
+    (log/log-warn (str "MemoryIndex search called (field: " field ", query: " query-string ", branch: " branch "). Basic string matching performed, not full FTS."))
+    (let [all-docs (seq (.values data))
+          query-lower (str/lower-case query-string)]
+      (filter
+       (fn [doc]
+         (some (fn [[k v]]
+                 (when (string? v)
+                   (cond
+                     (= (name k) field) (str/includes? (str/lower-case v) query-lower)
+                     (= field "content") (str/includes? (str/lower-case v) query-lower)
+                     :else false)))
+               doc))
+       all-docs))))
 
 (defn create-memory-index
   "Creates a new in-memory index.

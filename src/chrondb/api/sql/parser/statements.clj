@@ -31,12 +31,15 @@
                            (str/join " " (subvec tokens (inc from-index)
                                                  (or where-index group-index order-index limit-index (count tokens)))))
                          nil)
-        ;; Parse schema.table format
+        ;; Parse schema.table format and remove semicolons and extra spaces
         [schema table-name] (when raw-table-spec
-                              (let [parts (str/split raw-table-spec #"\.")]
+                              (let [cleaned-spec (-> raw-table-spec
+                                                     (str/replace #";$" "")
+                                                     (str/trim))
+                                    parts (str/split cleaned-spec #"\.")]
                                 (if (= (count parts) 2)
-                                  [(first parts) (second parts)]
-                                  [nil raw-table-spec])))
+                                  [(first parts) (str/trim (second parts))]
+                                  [nil cleaned-spec])))
         where-condition (clauses/parse-where-condition tokens where-index where-end)
         group-by (clauses/parse-group-by tokens group-index group-end)
         order-by (clauses/parse-order-by tokens order-index order-end)
@@ -64,12 +67,15 @@
         values-index (tokenizer/find-token-index tokens "values")
         raw-table-spec (when (and into-index (> into-index 0))
                          (nth tokens (inc into-index)))
-        ;; Parse schema.table format
+        ;; Parse schema.table format and remove semicolons and extra spaces
         [schema table-name] (when raw-table-spec
-                              (let [parts (str/split raw-table-spec #"\.")]
+                              (let [cleaned-spec (-> raw-table-spec
+                                                     (str/replace #";$" "")
+                                                     (str/trim))
+                                    parts (str/split cleaned-spec #"\.")]
                                 (if (= (count parts) 2)
-                                  [(first parts) (second parts)]
-                                  [nil raw-table-spec])))
+                                  [(first parts) (str/trim (second parts))]
+                                  [nil cleaned-spec])))
 
        ;; Parse column names if provided
         columns-start (+ into-index 2)  ;; after INTO table (
@@ -115,12 +121,15 @@
    Returns: A map representing the parsed query with fields :type, :table, :updates and :where"
   [tokens]
   (let [raw-table-spec (second tokens)
-        ;; Parse schema.table format
+        ;; Parse schema.table format and remove semicolons and extra spaces
         [schema table-name] (when raw-table-spec
-                              (let [parts (str/split raw-table-spec #"\.")]
+                              (let [cleaned-spec (-> raw-table-spec
+                                                     (str/replace #";$" "")
+                                                     (str/trim))
+                                    parts (str/split cleaned-spec #"\.")]
                                 (if (= (count parts) 2)
-                                  [(first parts) (second parts)]
-                                  [nil raw-table-spec])))
+                                  [(first parts) (str/trim (second parts))]
+                                  [nil cleaned-spec])))
         set-index (tokenizer/find-token-index tokens "set")
         where-index (tokenizer/find-token-index tokens "where")
 
@@ -163,12 +172,15 @@
         where-index (tokenizer/find-token-index tokens "where")
         raw-table-spec (when (and from-index (< from-index (count tokens)))
                          (nth tokens (inc from-index)))
-        ;; Parse schema.table format
+        ;; Parse schema.table format and remove semicolons and extra spaces
         [schema table-name] (when raw-table-spec
-                              (let [parts (str/split raw-table-spec #"\.")]
+                              (let [cleaned-spec (-> raw-table-spec
+                                                     (str/replace #";$" "")
+                                                     (str/trim))
+                                    parts (str/split cleaned-spec #"\.")]
                                 (if (= (count parts) 2)
-                                  [(first parts) (second parts)]
-                                  [nil raw-table-spec])))
+                                  [(first parts) (str/trim (second parts))]
+                                  [nil cleaned-spec])))
         where-condition (when where-index
                           (clauses/parse-where-condition tokens where-index (count tokens)))]
 

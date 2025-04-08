@@ -83,98 +83,155 @@
     (= schema "public") "main"           ;; Map public schema to main branch
     :else schema))                       ;; Otherwise use schema name as branch name
 
+;; Definição da função fts-condition? para verificar se uma condição é de busca full-text
+(defn fts-condition?
+  "Checks if a WHERE condition is a Full-Text Search (FTS) condition.
+   Parameters:
+   - condition: A WHERE condition map
+   Returns: true if it's an FTS condition, false otherwise"
+  [condition]
+  (and (map? condition)
+       (= (:type condition) :fts-match)))
+
 (defn handle-select
-  "Handles a SELECT query.
+  "Handles a SELECT query, incorporating FTS via the index.
    Parameters:
    - storage: The storage implementation
-   - query: The parsed query
-   Returns: A sequence of result documents"
-  [storage query]
+   - index: The index implementation (optional for FTS)
+   - query: The parsed SELECT query map
+   Returns: A sequence of matching documents"
+  [storage index query]
   (try
-    (let [where-condition (:where query)
-          group-by (:group-by query)
+    (let [branch-name (normalize-schema-to-branch (:schema query))
+          table-name (when (:table query) (str/trim (:table query)))  ;; Trim extra spaces
+          std-conditions (remove fts-condition? (:where query)) ;; Handle standard conditions
+          fts-conditions (filter fts-condition? (:where query)) ;; Handle full-text search
           order-by (:order-by query)
+          group-by (:group-by query)
           limit (:limit query)
-          table-name (:table query)
-          schema (:schema query)
-          branch-name (normalize-schema-to-branch schema)
 
-         ;; Detailed logs for debugging
-          _ (log/log-info (str "Executing SELECT on table: " table-name
-                               (when schema (str " in schema: " schema))
-                               " (branch: " branch-name ")"))
+          ;; --- Initial Document Retrieval ---
+          ;; Retrieve documents: optimization for ID-based lookup vs. full table scan
+          initial-docs (if (and (seq fts-conditions) (map? (first fts-conditions)))
+                        ;; If using full-text search, handle through the index
+                         (let [first-fts (first fts-conditions)
+                               _ (log/log-info (str "Using index for FTS search in table '" table-name "'"))
+                               fts-field (:field first-fts)
+                               ;; Modificar o campo para usar o campo _fts para busca de texto completo
+                               search-field (if (str/ends-with? fts-field "_fts")
+                                              fts-field
+                                              (str fts-field "_fts"))
+                               _ (log/log-info (str "Using FTS field: " search-field " (original: " fts-field ")"))
+                               fts-value (:value first-fts)
+                               _ (log/log-info (str "Raw FTS value: " fts-value))
+                               ;; Extract search term from the to_tsquery function and add wildcards
+                               clean-value (cond
+                                             ;; For to_tsquery('term')
+                                             (re-find #"to_tsquery" fts-value)
+                                             (let [matches (re-find #"to_tsquery\s*\(\s*['\"]([^'\"]+)['\"]" fts-value)]
+                                               (log/log-info (str "Regex matches: " (pr-str matches)))
+                                               (if (and matches (> (count matches) 1))
+                                                 ;; Normalize term - remove accents, extra spaces and convert to lowercase
+                                                 (let [term (-> (second matches)
+                                                                (str/trim)
+                                                                (str/lower-case)
+                                                                (java.text.Normalizer/normalize java.text.Normalizer$Form/NFD)
+                                                                (str/replace #"[\p{InCombiningDiacriticalMarks}]" ""))]
+                                                   (log/log-info (str "Normalized term without accents: '" term "'"))
+                                                   ;; If term is very short, consider it as part of a word
+                                                   (if (< (count term) 4)
+                                                     (str "*" term "*")
+                                                     ;; For normal terms, search for exact term or prefix
+                                                     (str term "*")))
+                                                 fts-value))
 
-         ;; Retrieve documents
-          condition-by-id? (and where-condition
-                                (seq where-condition)
-                                (= (count where-condition) 1)
-                                (get-in where-condition [0 :field])
-                                (= (get-in where-condition [0 :field]) "id")
-                                (= (get-in where-condition [0 :op]) "="))
+                                             ;; For other cases
+                                             :else fts-value)
+                               _ (log/log-info (str "Modified search term with wildcards: '" clean-value "'"))
+                               doc-ids (if index
+                                         (do
+                                           (log/log-info (str "Using " (type index) " for fulltext search on field: " search-field ", term: '" clean-value "'"))
+                                           (index/search index search-field clean-value branch-name))
+                                         [])
+                               _ (log/log-info (str "FTS search found " (count doc-ids) " document IDs: " (pr-str doc-ids)))
 
-          ;; Instead of creating a temporary storage, directly use the branch parameter
-          all-docs (if condition-by-id?
-                     (let [id (str/replace (get-in where-condition [0 :value]) #"['\"]" "")]
-                       (if-let [doc (storage/get-document storage id branch-name)]
-                         [doc]
-                         []))
-                     (if (seq table-name)
-                       (storage/get-documents-by-table storage table-name branch-name)
-                       (storage/get-documents-by-prefix storage "" branch-name)))
+                               ;; Recuperar os documentos completos a partir dos IDs
+                               docs (if (seq doc-ids)
+                                      (do
+                                        (log/log-info "Retrieving full documents from storage using IDs")
+                                        (filter some? (map #(storage/get-document storage % branch-name) doc-ids)))
+                                      [])
+                               _ (log/log-info (str "Retrieved " (count docs) " full documents from IDs"))]
 
-          _ (log/log-info (str "Total documents retrieved: " (count all-docs)))
+                           ;; Filter by table if table is specified
+                           (if (seq table-name)
+                             (do
+                               (log/log-info (str "Filtering " (count docs) " documents by table: '" table-name "'"))
+                               (let [filtered (filter #(= (:_table %) table-name) docs)]
+                                 (log/log-info (str "After table filtering: " (count filtered) " documents"))
+                                 filtered))
+                             docs))
 
-         ;; Apply WHERE filters
-          filtered-docs (if where-condition
-                          (let [result (operators/apply-where-conditions all-docs where-condition)]
-                            (log/log-info (str "After WHERE filtering: " (count result) " documents, IDs: " (mapv :id result)))
+                        ;; Standard query processing path - check if ID condition exists for optimization
+                         (let [first-std (first std-conditions)
+                               condition-by-id? (and (= (count std-conditions) 1)
+                                                     (map? first-std)
+                                                     (= (:field first-std) "id")
+                                                     (= (:op first-std) "="))]
+                           (if condition-by-id?
+                             (let [id (str/replace (:value first-std) #"['\"]" "")]
+                               (log/log-info (str "Retrieving document by specific ID: " id))
+                               (if-let [doc (storage/get-document storage id branch-name)]
+                                 [doc]
+                                 []))
+                             (do
+                               (log/log-info (str "Retrieving all documents for table '" table-name "' in branch '" branch-name "' (pre-filtering)"))
+                               (if (seq table-name)
+                                 (storage/get-documents-by-table storage table-name branch-name)
+                                 (storage/get-documents-by-prefix storage "" branch-name))))))
+
+          _ (log/log-info (str "Initial documents count before standard filtering: " (count initial-docs)))
+
+         ;; Apply standard WHERE filters (if any) to the potentially pre-filtered set
+          filtered-docs (if (seq std-conditions)
+                          (let [;; If we retrieved by ID already, std-conditions might be redundant
+                                ;; but applying again is safer unless explicitly handled.
+                                result (operators/apply-where-conditions initial-docs std-conditions)]
+                            (log/log-info (str "After standard WHERE filtering: " (count result) " documents, IDs: " (mapv :id result)))
                             result)
-                          all-docs)
+                          initial-docs)
 
-         ;; Group and process documents
+         ;; --- Grouping, Processing, Sorting, Limiting (Same as before) ---
           processed-docs (if (seq group-by)
-                          ;; If there's a GROUP BY, group and process
                            (let [grouped-docs (operators/group-docs-by filtered-docs group-by)
                                  _ (log/log-info (str "After grouping: " (count grouped-docs) " groups"))]
                              (process-groups grouped-docs query))
-                          ;; If there's no GROUP BY, don't group - process each document directly
                            (do
                              (log/log-info "No grouping: processing documents directly")
-                            ;; When there's no GROUP BY, we simply take the filtered documents
-                            ;; and apply column projection to each one
                              (mapv (fn [doc]
                                      (let [columns (:columns query)]
-                                      ;; For each document, select columns according to the query
                                        (if (= 1 (count columns))
                                          (let [col (first columns)]
                                            (if (= :all (:type col))
-                                            ;; If it's SELECT *, keep the document as is
                                              doc
-                                            ;; Otherwise, select only the specific column
                                              {(keyword (:column col)) (get doc (keyword (:column col)))}))
-                                        ;; If there are multiple columns, select each one
                                          (reduce (fn [acc col]
                                                    (if (= :all (:type col))
-                                                    ;; If one of the columns is *, keep everything
                                                      (merge acc doc)
-                                                    ;; Otherwise, add only the specific column
                                                      (assoc acc (keyword (:column col))
                                                             (get doc (keyword (:column col))))))
                                                  {}
                                                  columns))))
                                    filtered-docs)))
 
-          _ (log/log-info (str "After processing: " (count processed-docs) " documents"))
+          _ (log/log-info (str "After processing/projection: " (count processed-docs) " documents"))
 
-         ;; Sort and limit results
           sorted-results (operators/sort-docs-by processed-docs order-by)
           _ (log/log-info (str "After sorting: " (count sorted-results) " documents"))
 
           limited-results (operators/apply-limit sorted-results limit)
           _ (log/log-info (str "After applying limit: " (count limited-results) " documents"))
-          _ (log/log-info (str "Final documents: " (mapv :id limited-results)))
-
-          _ (log/log-info (str "Returning " (count limited-results) " results"))]
+          _ (log/log-info (str "Final documents returned: " (mapv :id limited-results)))]
 
       (or limited-results []))
     (catch Exception e
@@ -215,9 +272,9 @@
 
 (defn handle-select-case
   "Handles the SELECT case of an SQL query"
-  [storage out parsed]
+  [storage index out parsed]
   (log/log-info (str "Starting handle-select-case with parsed: " parsed))
-  (let [results (handle-select storage parsed)
+  (let [results (handle-select storage index parsed)
         columns-def (:columns parsed)
         is-count-star-query? (and (= 1 (count columns-def))
                                   (= :aggregate-function (:type (first columns-def)))
@@ -264,9 +321,7 @@
                 ;; Execute aggregate function directly
                 agg-result (functions/execute-aggregate-function
                             agg-function
-                            (if (= agg-field "*")
-                              results
-                              results)
+                            results
                             agg-field)
                 _ (log/log-info (str "Aggregate result: " agg-result))]
 
@@ -280,19 +335,19 @@
               columns (try
                         (->> (keys (first results))
                              (filter #(not= % :_table)) ; Exclude :_table
-                             (mapv #(if (keyword? %)
-                                      (name %)
-                                      (str %))))
+                             (mapv #(if (keyword? %) (name %) (str %))))
                         (catch Exception e
                           (log/log-error (str "Erro ao extrair nomes de colunas: " (.getMessage e)))
-                          ["resultado"]))]
+                          (when-let [first-res (first results)] ; Tenta pegar chaves do primeiro resultado se houver
+                            (mapv name (keys first-res)))
+                          []))] ; Fallback para vazio se não houver resultados ou erro
           (log/log-info (str "Sending column description: " columns))
           (messages/send-row-description out columns)
           (doseq [row results]
-            (log/log-info (str "Sending row: " (:id row)))
+            (log/log-info (str "Sending row: " (:id row "N/A")))
             ;; Map values according to the filtered columns
             (let [values (map #(let [val (get row (if (string? %) (keyword %) %))]
-                                 (if (nil? val) "" (str val)))
+                                 (if (nil? val) "" (str val))) ; Trata nil como string vazia
                               columns)] ; Use the filtered columns here
               (log/log-info (str "Values sent: " values))
               (messages/send-data-row out values)))
@@ -346,12 +401,10 @@
 
           ;; Check if ID is provided, otherwise generate one
           id-provided (if-let [id (:id doc-data)]
-                        ;; Use provided ID, but ensure it has table prefix if not already
-                        (if (str/includes? id ":")
-                          id
-                          (str table-name ":" id))
-                        ;; Generate a UUID if no ID provided
-                        (str table-name ":" (java.util.UUID/randomUUID)))
+                        ;; Use provided ID as is, without adding table prefix
+                        id
+                        ;; Generate a UUID if no ID provided, without table prefix
+                        (str (java.util.UUID/randomUUID)))
 
           ;; Create final document with table information
           doc (merge
@@ -363,7 +416,12 @@
           saved (storage/save-document storage doc branch-name)]
 
       (when index
-        (index/index-document index saved))
+        (log/log-info (str "Indexing document in Lucene: " (:id saved) ", index type: " (type index)))
+        (try
+          (index/index-document index saved)
+          (log/log-info "Document indexed successfully")
+          (catch Exception e
+            (log/log-error (str "Error indexing document: " (.getMessage e))))))
 
       (messages/send-command-complete out "INSERT" 1))
 
@@ -488,15 +546,22 @@
    Returns: nil"
   [storage index ^java.io.OutputStream out sql]
   (log/log-info (str "Executing query: " sql))
-  (let [parsed (statements/parse-sql-query sql)
-        query-type (:type parsed)]
-    (if (= query-type :select)
-      (handle-select-case storage out parsed)
-      (if (= query-type :insert)
-        (handle-insert-case storage index out parsed)
-        (if (= query-type :update)
-          (handle-update-case storage index out parsed)
-          (if (= query-type :delete)
-            (handle-delete-case storage index out parsed)
-            (let [_ (messages/send-error-response out (str "Unknown command: " sql))]
-              (messages/send-command-complete out "UNKNOWN" 0))))))))
+  (try
+    (let [parsed (statements/parse-sql-query sql)
+          query-type (:type parsed)]
+      (log/log-info (str "Parsed query type: " query-type ", Details: " parsed))
+      (case query-type
+        :select (handle-select-case storage index out parsed)
+        :insert (handle-insert-case storage index out parsed)
+        :update (handle-update-case storage index out parsed)
+        :delete (handle-delete-case storage index out parsed)
+        ;; Default case for unknown or invalid query types
+        (do (log/log-error (str "Unknown or invalid query type: " query-type " for SQL: " sql))
+            (messages/send-error-response out (str "Unknown or invalid command: " sql))
+            (messages/send-command-complete out "UNKNOWN" 0))))
+    (catch Exception e
+      (let [sw (java.io.StringWriter.)
+            pw (java.io.PrintWriter. sw)]
+        (.printStackTrace e pw)
+        (log/log-error (str "Error handling query: " sql " - Error: " (.getMessage e) "\n" (.toString sw))))
+      (messages/send-error-response out (str "Error processing query: " (.getMessage e))))))

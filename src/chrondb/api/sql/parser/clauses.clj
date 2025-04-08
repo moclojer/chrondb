@@ -2,7 +2,8 @@
   "Functions for parsing specific SQL clauses (WHERE, GROUP BY, etc.)"
   (:require [clojure.string :as str]
             [chrondb.api.sql.protocol.constants :as constants]
-            [chrondb.api.sql.parser.tokenizer :as tokenizer]))
+            [chrondb.api.sql.parser.tokenizer :as tokenizer]
+            [chrondb.util.logging :as log]))
 
 (defn parse-select-columns
   "Parses the column list of a SELECT query.
@@ -60,32 +61,88 @@
                                   :column token}))))))))
 
 (defn parse-where-condition
-  "Parses a WHERE clause.
+  "Parses a WHERE clause, recognizing standard operators, FTS_MATCH, and @@ to_tsquery.
    Parameters:
    - tokens: The sequence of query tokens
    - where-index: The index of the WHERE keyword
-   - end-index: The index where the parsing should end
-   Returns: A sequence of condition specifications"
+   - end-index: The index marking the END of the WHERE clause tokens (exclusive).
+   Returns: A sequence of condition specifications, including :type key."
   [tokens where-index end-index]
   (if (or (nil? where-index) (>= where-index end-index))
     nil
     (let [where-tokens (subvec tokens (inc where-index) end-index)]
+      (log/log-info (str "Parsing WHERE tokens: " (pr-str where-tokens)))
       (loop [remaining where-tokens
              conditions []]
-        (if (< (count remaining) 3)
+        (if (empty? remaining)
           conditions
-          (let [field (first remaining)
-                op (str/lower-case (second remaining))
-                value (nth remaining 2)]
-            (if (constants/COMPARISON_OPERATORS op)
-              (let [condition {:field field, :op op, :value value}]
-                (if (> (count remaining) 3)
-                  (let [next-token (str/lower-case (nth remaining 3))]
-                    (if (constants/LOGICAL_OPERATORS next-token)
-                      (recur (drop 4 remaining) (conj conditions condition))
-                      (conj conditions condition)))
-                  (conj conditions condition)))
-              conditions)))))))
+          (let [token1 (first remaining)]
+            (cond
+              ;; Check for logical operators (AND/OR) - should be preceded by a condition
+              (and (constants/LOGICAL_OPERATORS (str/lower-case token1))
+                   (seq conditions))
+              (recur (rest remaining) conditions) ; Skip AND/OR for now, assuming implicit AND
+
+              ;; Check for FTS_MATCH(field, query)
+              (and (= (str/lower-case token1) "fts_match")
+                   (>= (count remaining) 6) ; FTS_MATCH ( field , query )
+                   (= (second remaining) "(")
+                   (= (nth remaining 3) ",")
+                   (= (nth remaining 5) ")"))
+              (let [field-name (nth remaining 2)
+                    query-val (nth remaining 4)
+                    condition {:type :fts-match :field field-name :query query-val}]
+                (log/log-info (str "Found FTS_MATCH condition: " (pr-str condition)))
+                (recur (drop 6 remaining) (conj conditions condition)))
+
+              ;; Check for field @@ to_tsquery('query')
+              (and (>= (count remaining) 4) ; Mínimo: field @@ to_tsquery(
+                   (= (second remaining) "@@"))
+              (let [field-name token1
+                    remaining-tokens (drop 2 remaining) ; Avançar além do @@
+                    to_tsquery-prefix (first remaining-tokens)]
+                (if (and (str/starts-with? (str/lower-case to_tsquery-prefix) "to_tsquery"))
+                  (let [;; Encontrar todos os tokens até fechar o parêntese
+                        to_tsquery-tokens (take-while #(not= ")" %) (rest remaining-tokens))
+                        end-paren-pos (+ (count to_tsquery-tokens) 1) ; +1 para o próprio to_tsquery
+
+                        ;; Extrair a string da consulta - procurar entre aspas simples ou duplas
+                        query-str (str/join " " to_tsquery-tokens)
+                        _ (log/log-info (str "to_tsquery raw: " query-str))
+                        quoted-match (re-find #"['\"]([^'\"]+)['\"]" query-str)
+                        query-val (if (and quoted-match (> (count quoted-match) 1))
+                                    (second quoted-match)
+                                    ;; Fallback para o caso de não encontrar aspas
+                                    query-str)
+
+                        ;; Construir a condition com o query real e o value completo para referência
+                        condition {:type :fts-match
+                                   :field field-name
+                                   :value (str "to_tsquery('" query-val "')")
+                                   :query query-val}]
+                    (log/log-info (str "Found to_tsquery condition: " (pr-str condition)))
+                    (recur (drop (+ 2 end-paren-pos) remaining) (conj conditions condition)))
+                  ;; Não é to_tsquery
+                  (do (log/log-warn (str "Operador @@ seguido de algo diferente de to_tsquery: " to_tsquery-prefix))
+                      (recur (rest remaining) conditions))))
+
+              ;; Check for standard condition (field op value)
+              (>= (count remaining) 3)
+              (let [field token1 ; Corrected: use token1 as field
+                    op (str/lower-case (second remaining))
+                    value (nth remaining 2)]
+                (if (constants/COMPARISON_OPERATORS op)
+                  (let [condition {:type :standard :field field :op op :value value}]
+                    (log/log-info (str "Found standard condition: " (pr-str condition)))
+                    (recur (drop 3 remaining) (conj conditions condition)))
+                  ;; Not a standard operator after field, maybe invalid syntax?
+                  (do (log/log-warn (str "Sintaxe WHERE inválida perto de: " field ", op: " op))
+                      (recur (rest remaining) conditions)))) ; Skip first token
+
+              ;; Not enough tokens for any valid condition or invalid start
+              :else
+              (do (log/log-warn (str "Token inesperado na cláusula WHERE: " token1))
+                  (recur (rest remaining) conditions)))))))))
 
 (defn parse-group-by
   "Parses a GROUP BY clause.
