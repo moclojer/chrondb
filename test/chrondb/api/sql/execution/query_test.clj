@@ -1,7 +1,23 @@
 (ns chrondb.api.sql.execution.query-test
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [chrondb.api.sql.execution.query :as query]
-            [chrondb.storage.protocol :as storage-protocol]))
+            [chrondb.storage.protocol :as storage-protocol]
+            [chrondb.storage.memory :as memory]
+            [chrondb.index.memory :as memory-index]))
+
+;; Helper functions for testing
+(defn create-test-resources []
+  {:storage (memory/create-memory-storage)
+   :index (memory-index/create-memory-index)})
+
+(defn prepare-test-data [storage]
+  (doseq [id ["user:1" "user:2" "user:3"]]
+    (let [doc {:id id
+               :_table "user"
+               :name (str "User " (last id))
+               :age (+ 25 (Integer/parseInt (str (last id))))
+               :active (odd? (Integer/parseInt (str (last id))))}]
+      (storage-protocol/save-document storage doc nil))))
 
 ;; Define a mock storage implementation
 (defn create-mock-storage []
@@ -15,7 +31,13 @@
       (get-document [_ id]
         (get @documents id))
 
+      (get-document [_ id _branch]
+        (get @documents id))
+
       (get-documents-by-prefix [_ prefix]
+        (filter (fn [[k _]] (.startsWith k prefix)) @documents))
+
+      (get-documents-by-prefix [_ prefix _branch]
         (filter (fn [[k _]] (.startsWith k prefix)) @documents))
 
       (get-documents-by-table [_ table-name]
@@ -24,9 +46,30 @@
              (map second)
              (into [])))
 
+      (get-documents-by-table [_ table-name _branch]
+        (->> @documents
+             (filter (fn [[k _]] (.startsWith k (str table-name ":"))))
+             (map second)
+             (into [])))
+
       (save-document [_ doc]
         (swap! documents assoc (:id doc) doc)
-        doc))))
+        doc)
+
+      (save-document [_ doc _branch]
+        (swap! documents assoc (:id doc) doc)
+        doc)
+
+      (delete-document [_ id]
+        (swap! documents dissoc id)
+        true)
+
+      (delete-document [_ id _branch]
+        (swap! documents dissoc id)
+        true)
+
+      (close [_]
+        nil))))
 
 ;; Define a dynamic var for the test storage
 (def ^:dynamic *test-storage* nil)
@@ -177,3 +220,40 @@
         (is (= 1 (count results)))
         (is (= 31 (:age (first results))))
         (is (= false (:active (first results))))))))
+
+(deftest test-handle-schema-branch-mapping
+  (testing "Schema to branch mapping for SQL queries"
+    ;; Test with different schemas through handle-select function
+    (let [storage *test-storage*] ;; Use the test mock storage
+      ;; Test with no schema (should use 'main' branch)
+      (let [query {:type :select
+                   :table "user"
+                   :columns [{:type :all}]
+                   :schema nil
+                   :where nil
+                   :order-by nil
+                   :limit nil}
+            results (query/handle-select storage query)]
+        (is (pos? (count results)) "Query without schema should return results from the default branch"))
+
+      ;; Test with 'public' schema (should use 'main' branch)
+      (let [query {:type :select
+                   :table "user"
+                   :columns [{:type :all}]
+                   :schema "public"
+                   :where nil
+                   :order-by nil
+                   :limit nil}
+            results (query/handle-select storage query)]
+        (is (pos? (count results)) "Query with 'public' schema should return results from the 'main' branch"))
+
+      ;; Test with 'main' schema (should use 'main' branch)
+      (let [query {:type :select
+                   :table "user"
+                   :columns [{:type :all}]
+                   :schema "main"
+                   :where nil
+                   :order-by nil
+                   :limit nil}
+            results (query/handle-select storage query)]
+        (is (pos? (count results)) "Query with 'main' schema should return results from the 'main' branch")))))

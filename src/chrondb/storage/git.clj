@@ -217,12 +217,17 @@
       (str/replace "@" "_AT_")
       (str/replace " " "_SPACE_")))
 
+(defn- get-table-path
+  "Get the encoded path for a table directory"
+  [table-name]
+  (encode-path table-name))
+
 (defn- get-file-path
   "Get the file path for a document ID, with proper encoding.
    Organizes documents in table directories as per documentation.
    Ensures the path is valid for JGit by not starting with a slash."
   ([data-dir id]
-    ; Backward compatibility - extract table from ID if in old format
+   ; Backward compatibility - extract table from ID if in old format
    (let [parts (str/split (or id "") #":")
          table-name (if (> (count parts) 1)
                       (first parts)
@@ -230,7 +235,7 @@
      (get-file-path data-dir id table-name)))
   ([data-dir id table-name]
    (let [encoded-id (encode-path id)
-         encoded-table (encode-path (or table-name "default"))]
+         encoded-table (get-table-path table-name)]
      (if (str/blank? data-dir)
        (str encoded-table "/" encoded-id ".json")
        (str data-dir
@@ -241,10 +246,10 @@
 (defn- get-document-path
   "Find the document path by searching through all table directories.
    Returns the full path if found, nil otherwise."
-  [repository id]
+  [repository id & [branch]]
   (when repository
     (let [config-map (config/load-config)
-          branch-name (get-in config-map [:git :default-branch])
+          branch-name (or branch (get-in config-map [:git :default-branch]))
           head-id (.resolve repository (str branch-name "^{commit}"))]
       (when head-id
         (let [tree-walk (TreeWalk. repository)
@@ -268,6 +273,9 @@
 (defrecord GitStorage [repository data-dir]
   protocol/Storage
   (save-document [_ document]
+    (protocol/save-document _ document nil))
+
+  (save-document [_ document branch]
     (when-not document
       (throw (Exception. "Document cannot be nil")))
     (when-not repository
@@ -279,10 +287,11 @@
           doc-path (if table-name
                      (get-file-path data-dir (:id document) table-name)
                      (get-file-path data-dir (:id document)))
-          doc-content (json/write-str document)]
+          doc-content (json/write-str document)
+          branch-name (or branch (get-in config-map [:git :default-branch]))]
 
       (commit-virtual (Git/wrap repository)
-                      (get-in config-map [:git :default-branch])
+                      branch-name
                       doc-path
                       doc-content
                       "Save document"
@@ -294,16 +303,19 @@
       document))
 
   (get-document [_ id]
+    (protocol/get-document _ id nil))
+
+  (get-document [_ id branch]
     (when-not repository
       (throw (Exception. "Repository is closed")))
 
     (let [config-map (config/load-config)
-          ; Usar somente o ID, o caminho será encontrado pelo get-document-path
-          doc-path (get-document-path repository id)
-          branch-name (get-in config-map [:git :default-branch])
+          branch-name (or branch (get-in config-map [:git :default-branch]))
+          ; Only use ID, path will be found by get-document-path
+          doc-path (get-document-path repository id branch-name)
           head-id (.resolve repository (str branch-name "^{commit}"))]
 
-      (when (and head-id doc-path)
+      (when doc-path
         (let [tree-walk (TreeWalk. repository)
               rev-walk (RevWalk. repository)]
           (try
@@ -324,122 +336,112 @@
               (.close rev-walk)))))))
 
   (get-documents-by-prefix [_ prefix]
+    (protocol/get-documents-by-prefix _ prefix nil))
+
+  (get-documents-by-prefix [_ prefix branch]
     (when-not repository
       (throw (Exception. "Repository is closed")))
 
     (let [config-map (config/load-config)
-          branch-name (get-in config-map [:git :default-branch])
+          branch-name (or branch (get-in config-map [:git :default-branch]))
           head-id (.resolve repository (str branch-name "^{commit}"))
           encoded-prefix (when (seq prefix) (encode-path prefix))]
 
-      (log/log-debug (str "Searching documents with prefix: " prefix))
-      (log/log-debug (str "Encoded prefix for search: " encoded-prefix))
-      (when head-id
+      (log/log-info (str "Searching documents with prefix: '" prefix "' (encoded: '" encoded-prefix "') in branch: " branch-name))
+
+      (if head-id
         (let [tree-walk (TreeWalk. repository)
               rev-walk (RevWalk. repository)]
           (try
             (.addTree tree-walk (.parseTree rev-walk head-id))
             (.setRecursive tree-walk true)
+            (when (seq encoded-prefix)
+              (log/log-info "Setting filter for JSON files")
+              (.setFilter tree-walk (org.eclipse.jgit.treewalk.filter.PathSuffixFilter/create ".json")))
 
-            (let [results (atom [])]
-              (while (.next tree-walk)
-                (let [path (.getPathString tree-walk)]
-                  (log/log-debug (str "Examining path: " path))
-                  (when (and (.endsWith path ".json")
-                             (or (empty? prefix)
-                                 (and (seq encoded-prefix) (.startsWith path encoded-prefix))
-                                 (let [decoded-path (-> path
-                                                        (str/replace #"\.json$" "")
-                                                        (str/replace "_COLON_" ":")
-                                                        (str/replace "_SLASH_" "/")
-                                                        (str/replace "_QMARK_" "?")
-                                                        (str/replace "_STAR_" "*")
-                                                        (str/replace "_BSLASH_" "\\")
-                                                        (str/replace "_LT_" "<")
-                                                        (str/replace "_GT_" ">")
-                                                        (str/replace "_PIPE_" "|")
-                                                        (str/replace "_QUOTE_" "\"")
-                                                        (str/replace "_PERCENT_" "%")
-                                                        (str/replace "_HASH_" "#")
-                                                        (str/replace "_AMP_" "&")
-                                                        (str/replace "_EQ_" "=")
-                                                        (str/replace "_PLUS_" "+")
-                                                        (str/replace "_AT_" "@")
-                                                        (str/replace "_SPACE_" " "))]
-                                   (log/log-debug (str "Decoded path: " decoded-path))
-                                   (log/log-debug (str "Checking if starts with prefix: " prefix))
-                                   (log/log-debug (str "Prefix check result: " (.startsWith decoded-path prefix)))
-                                   (.startsWith decoded-path prefix))))
-                    (let [object-id (.getObjectId tree-walk 0)
-                          object-loader (.open repository object-id)
-                          content (String. (.getBytes object-loader) "UTF-8")]
-                      (try
-                        (let [doc (json/read-str content :key-fn keyword)]
-                          (log/log-debug (str "Found document with ID: " (:id doc)))
-                          (swap! results conj doc))
-                        (catch Exception e
-                          (log/log-warn "Failed to read document:" path (.getMessage e))))))))
-
-              (log/log-debug (str "Found " (count @results) " documents with prefix: " prefix))
-              @results)
+            (loop [results []]
+              (if (.next tree-walk)
+                (let [path (.getPathString tree-walk)
+                      _ (log/log-info (str "Found file: " path))
+                      object-id (.getObjectId tree-walk 0)
+                      object-loader (.open repository object-id)
+                      content (String. (.getBytes object-loader) "UTF-8")
+                      doc (json/read-str content :key-fn keyword)]
+                  (if (or (empty? encoded-prefix)
+                           ;; If we have a prefix, check if the path contains it
+                          (.contains path encoded-prefix))
+                    (do
+                      (log/log-info (str "Document matched prefix: " (:id doc)))
+                      (recur (conj results doc)))
+                    (do
+                      (log/log-info (str "Document did not match prefix: " path))
+                      (recur results))))
+                (do
+                  (log/log-info (str "Finished search, found " (count results) " documents with prefix: " prefix))
+                  results)))
             (finally
               (.close tree-walk)
-              (.close rev-walk)))))))
+              (.close rev-walk))))
+        [])))
 
   (get-documents-by-table [_ table-name]
+    (protocol/get-documents-by-table _ table-name nil))
+
+  (get-documents-by-table [_ table-name branch]
     (when-not repository
       (throw (Exception. "Repository is closed")))
 
     (let [config-map (config/load-config)
-          branch-name (get-in config-map [:git :default-branch])
+          branch-name (or branch (get-in config-map [:git :default-branch]))
           head-id (.resolve repository (str branch-name "^{commit}"))
-          encoded-table (encode-path table-name)
-          table-path-prefix (if (str/blank? data-dir)
-                              encoded-table
-                              (str data-dir
-                                   (if (str/ends-with? data-dir "/") "" "/")
-                                   encoded-table))]
+          encoded-table (encode-path table-name)]
 
-      (log/log-debug (str "Searching documents for table: " table-name))
-      (log/log-debug (str "Table path prefix: " table-path-prefix))
+      (log/log-info (str "Searching for documents in table: " table-name " (encoded as: " encoded-table ") in branch: " branch-name))
 
-      (when head-id
+      (if head-id
         (let [tree-walk (TreeWalk. repository)
               rev-walk (RevWalk. repository)]
           (try
             (.addTree tree-walk (.parseTree rev-walk head-id))
             (.setRecursive tree-walk true)
 
-            (let [results (atom [])]
-              (while (.next tree-walk)
-                (let [path (.getPathString tree-walk)]
-                  (log/log-debug (str "Examining path: " path))
-                  ;; Check if the path starts with the table path prefix and is a JSON file
-                  (when (and (.endsWith path ".json")
-                             (.startsWith path (str table-path-prefix "/")))
-                    (let [object-id (.getObjectId tree-walk 0)
-                          object-loader (.open repository object-id)
-                          content (String. (.getBytes object-loader) "UTF-8")]
-                      (try
-                        (let [doc (json/read-str content :key-fn keyword)]
-                          (log/log-debug (str "Found table document with ID: " (:id doc)))
-                          (swap! results conj doc))
-                        (catch Exception e
-                          (log/log-warn "Failed to read document:" path (.getMessage e))))))))
+            ;; Usar um filtro de sufixo para encontrar todos os arquivos JSON
+            (.setFilter tree-walk (org.eclipse.jgit.treewalk.filter.PathSuffixFilter/create ".json"))
 
-              (log/log-debug (str "Found " (count @results) " documents for table: " table-name))
-              @results)
+            (loop [results []]
+              (if (.next tree-walk)
+                (let [path (.getPathString tree-walk)
+                      _ (log/log-info (str "Found file: " path))
+                      object-id (.getObjectId tree-walk 0)
+                      object-loader (.open repository object-id)
+                      content (String. (.getBytes object-loader) "UTF-8")
+                      doc (json/read-str content :key-fn keyword)]
+                  ;; Verificar se o documento pertence à tabela correta
+                  (if (= (:_table doc) table-name)
+                    (do
+                      (log/log-info (str "Document belongs to table " table-name ": " (:id doc)))
+                      (recur (conj results doc)))
+                    (do
+                      (log/log-info (str "Document does not belong to table " table-name ": " (:id doc)))
+                      (recur results))))
+                (do
+                  (log/log-info (str "Finished search, found " (count results) " documents for table: " table-name))
+                  results)))
             (finally
               (.close tree-walk)
-              (.close rev-walk)))))))
+              (.close rev-walk))))
+        [])))
 
-  (delete-document [this id]
+  (delete-document [_ id]
+    (protocol/delete-document _ id nil))
+
+  (delete-document [_ id branch]
     (when-not repository
       (throw (Exception. "Repository is closed")))
 
     (let [config-map (config/load-config)
-          ;; First we need to find the document to get its table
-          doc (protocol/get-document this id)]
+          branch-name (or branch (get-in config-map [:git :default-branch]))
+          doc (protocol/get-document _ id branch-name)]
 
       (if doc
         (let [table-name (:_table doc)
@@ -448,7 +450,6 @@
                          (get-file-path data-dir id table-name)
                          (get-file-path data-dir id))
               git (Git/wrap repository)
-              branch-name (get-in config-map [:git :default-branch])
               head-id (.resolve repository (str branch-name "^{commit}"))]
 
           (when head-id
