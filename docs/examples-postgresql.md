@@ -178,6 +178,84 @@ SELECT * FROM user
 WHERE roles::jsonb ? 'admin';
 ```
 
+## Full-Text Search with to_tsquery
+
+ChronDB supports PostgreSQL-style full-text search using the familiar `@@` operator and `to_tsquery` function syntax. This allows you to perform efficient text searches across your documents with a PostgreSQL-compatible syntax.
+
+### FTS Syntax
+
+```sql
+-- Basic full-text search using to_tsquery
+SELECT * FROM products
+WHERE name @@ to_tsquery('laptop');
+
+-- Search for multiple words
+SELECT * FROM articles
+WHERE content @@ to_tsquery('database AND performance');
+
+-- Search with wildcards
+SELECT * FROM documents
+WHERE description @@ to_tsquery('cloud*');
+```
+
+### How It Works
+
+When you use the `field @@ to_tsquery('term')` syntax:
+
+1. ChronDB parses the query and recognizes it as a full-text search condition
+2. The search term is normalized (lowercase, accent removal)
+3. If the term is short (less than 4 characters), wildcards are automatically added
+4. The query is then passed to the underlying index (Lucene) for efficient search
+5. Results are filtered to only include matches from the specified collection/table
+
+### FTS Field Optimization
+
+For better full-text search performance, you can create specialized FTS fields with the `_fts` suffix:
+
+```sql
+-- Insert a document with a dedicated FTS field
+INSERT INTO articles (id, title, content, content_fts)
+VALUES ('article:1', 'Introduction to Databases', 'Long article text...', 'optimized searchable content');
+
+-- Search using the dedicated FTS field
+SELECT * FROM articles
+WHERE content_fts @@ to_tsquery('database');
+```
+
+When an indexed field ends with `_fts`, ChronDB will use it specifically for full-text search operations.
+
+### Comparison with FTS_MATCH
+
+ChronDB also supports the `FTS_MATCH` function for backward compatibility:
+
+```sql
+-- Traditional FTS_MATCH syntax
+SELECT * FROM products
+WHERE FTS_MATCH(name, 'laptop');
+
+-- Equivalent to_tsquery syntax
+SELECT * FROM products
+WHERE name @@ to_tsquery('laptop');
+```
+
+The `to_tsquery` approach is recommended as it:
+- Follows standard PostgreSQL syntax
+- Provides better compatibility with existing PostgreSQL tools
+- Supports the same normalization and text processing features
+
+### Index Implementation Details
+
+Full-text search operations are powered by:
+- Lucene index for efficient text search (when enabled in configuration)
+- Automatic text normalization and accent handling
+- Wildcard prefix matching for better search results
+- Fallback to basic string matching with MemoryIndex implementation
+
+For optimal performance:
+- Enable the Lucene index in your configuration
+- Use dedicated FTS fields with the `_fts` suffix for frequently searched content
+- Utilize more specific search terms to reduce result sets
+
 ## Examples with JavaScript (node-postgres)
 
 The following examples use the [node-postgres](https://node-postgres.com/) package, a popular PostgreSQL client for Node.js.
