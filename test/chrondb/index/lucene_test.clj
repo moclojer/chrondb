@@ -26,7 +26,7 @@
       (index/index-document *test-index* doc)
       (let [results (index/search *test-index* "name" "John" "main")]
         (is (= 1 (count results)))
-        (is (= doc (first results))))))
+        (is (= "user:1" (first results))))))
 
   (testing "Remove document"
     (let [doc {:id "user:1" :name "John Doe" :age 30 :email "john@example.com"}]
@@ -45,14 +45,14 @@
       (index/index-document *test-index* doc2)
       (let [results (index/search *test-index* "name" "Update" "main")]
         (is (= 1 (count results)))
-        (is (= doc2 (first results))))))
+        (is (= "user:1" (first results))))))
 
   (testing "Index with nil values"
     (let [doc {:id "user:1" :name nil :age 30}]
       (index/index-document *test-index* doc)
       (let [results (index/search *test-index* "age" "30" "main")]
         (is (= 1 (count results)))
-        (is (= doc (first results))))))
+        (is (= "user:1" (first results))))))
 
   (testing "Search with empty query"
     (let [doc {:id "user:1" :name "John Doe" :age 30}]
@@ -65,3 +65,86 @@
       (index/index-document *test-index* doc)
       (let [results (index/search *test-index* "name" "NonExistent" "main")]
         (is (empty? results))))))
+
+(deftest test-full-text-search-capabilities
+  (testing "Search with accented characters"
+    (let [doc {:id "user:1" :name "José García" :city "São Paulo"}]
+      (index/index-document *test-index* doc)
+      ;; Should find with or without accents
+      (let [results1 (index/search *test-index* "name" "José" "main")
+            results2 (index/search *test-index* "name" "Jose" "main")
+            results3 (index/search *test-index* "city" "Sao" "main")]
+        (is (= 1 (count results1)))
+        (is (= 1 (count results2)))
+        (is (= 1 (count results3)))
+        (is (= "user:1" (first results1)))
+        (is (= "user:1" (first results2)))
+        (is (= "user:1" (first results3))))))
+
+  (testing "Search with wildcard queries"
+    (let [doc1 {:id "user:1" :name "John Smith" :title "Developer"}
+          doc2 {:id "user:2" :name "Jane Smith" :title "Designer"}
+          doc3 {:id "user:3" :name "Robert Johnson" :title "Developer Advocate"}]
+      (index/index-document *test-index* doc1)
+      (index/index-document *test-index* doc2)
+      (index/index-document *test-index* doc3)
+
+      ;; Test prefix search (automatically adds * to end)
+      (let [results1 (index/search *test-index* "name" "Jo" "main")]
+        (is (= 2 (count results1)))
+        (is (contains? (set results1) "user:1"))
+        (is (contains? (set results1) "user:3")))
+
+      ;; Test infix search (with wildcards)
+      (let [results2 (index/search *test-index* "title" "Dev*" "main")]
+        (is (= 2 (count results2)))
+        (is (contains? (set results2) "user:1"))
+        (is (contains? (set results2) "user:3"))))))
+
+(deftest test-search-with-custom-fields
+  (testing "Search with FTS-optimized fields"
+    (let [doc {:id "user:1"
+               :name "John Smith"
+               :description "Senior Software Engineer with 10+ years experience"
+               :description_fts "custom searchable text"}]
+      (index/index-document *test-index* doc)
+
+      ;; Standard field search
+      (let [results1 (index/search *test-index* "description" "Software Engineer" "main")]
+        (is (= 1 (count results1)))
+        (is (= "user:1" (first results1))))
+
+      ;; Dedicated FTS field search
+      (let [results2 (index/search *test-index* "description_fts" "custom" "main")]
+        (is (= 1 (count results2)))
+        (is (= "user:1" (first results2)))))))
+
+(deftest test-index-error-conditions
+  (testing "Handle exceptions during indexing"
+    ;; Close the writer to force an error in the next operation
+    (.close (.writer *test-index*))
+
+    ;; Should handle error gracefully when writer is closed
+    (let [doc {:id "test:error" :name "Error Test"}
+          result (index/index-document *test-index* doc)]
+      (is (nil? result))))
+
+  (testing "Handle exceptions during deletion"
+    ;; Already closed the writer in previous test
+    (let [result (index/delete-document *test-index* "test:error")]
+      (is (false? result)))))
+
+(deftest test-create-lucene-index
+  (testing "Create index with invalid directory"
+    (let [invalid-dir "/nonexistent/path/that/cannot/be/created"
+          index (lucene/create-lucene-index invalid-dir)]
+      (is (nil? index)))))
+
+(deftest test-search-with-reader-unavailable
+  (testing "Search when reader is nil"
+    ;; Create a scenario where reader is nil
+    (reset! (.reader-atom *test-index*) nil)
+
+    ;; Should handle gracefully
+    (let [results (index/search *test-index* "name" "test" "main")]
+      (is (empty? results)))))
