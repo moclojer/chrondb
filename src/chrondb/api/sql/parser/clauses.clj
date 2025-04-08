@@ -101,7 +101,7 @@
               (let [field-name token1
                     remaining-tokens (drop 2 remaining) ; Avançar além do @@
                     to_tsquery-prefix (first remaining-tokens)]
-                (if (and (str/starts-with? (str/lower-case to_tsquery-prefix) "to_tsquery"))
+                (if (str/starts-with? (str/lower-case to_tsquery-prefix) "to_tsquery")
                   (let [;; Encontrar todos os tokens até fechar o parêntese
                         to_tsquery-tokens (take-while #(not= ")" %) (rest remaining-tokens))
                         end-paren-pos (+ (count to_tsquery-tokens) 1) ; +1 para o próprio to_tsquery

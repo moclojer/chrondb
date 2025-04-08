@@ -89,7 +89,7 @@
                  :where nil
                  :order-by nil
                  :limit nil}
-          results (query/handle-select *test-storage* query)]
+          results (query/handle-select *test-storage* nil query)]
       (is (= 4 (count results)))
       (is (= #{"user:1" "user:2" "user:3" "user:4"}
              (set (map :id results)))))))
@@ -102,7 +102,7 @@
                  :where [{:field "age" :op ">" :value "28"}]
                  :order-by nil
                  :limit nil}
-          results (query/handle-select *test-storage* query)]
+          results (query/handle-select *test-storage* nil query)]
       (is (= 2 (count results)))
       (is (= #{"user:1" "user:3"}
              (set (map :id results)))))))
@@ -115,7 +115,7 @@
                  :where nil
                  :order-by [{:column "age" :direction :desc}]
                  :limit nil}
-          results (query/handle-select *test-storage* query)]
+          results (query/handle-select *test-storage* nil query)]
       (is (= 4 (count results)))
       (is (= ["user:3" "user:1" "user:4" "user:2"]
              (map :id results))))))
@@ -128,7 +128,7 @@
                  :where nil
                  :order-by [{:column "age" :direction :desc}]
                  :limit 2}
-          results (query/handle-select *test-storage* query)]
+          results (query/handle-select *test-storage* nil query)]
       (is (= 2 (count results)))
       (is (= ["user:3" "user:1"]
              (map :id results))))))
@@ -142,7 +142,7 @@
                  :where nil
                  :order-by nil
                  :limit nil}
-          results (query/handle-select *test-storage* query)]
+          results (query/handle-select *test-storage* nil query)]
       (is (= 4 (count results)))
       (is (every? #(= #{:name :age} (set (keys %))) results)))))
 
@@ -154,7 +154,7 @@
                  :where [{:field "id" :op "=" :value "user:1"}]
                  :order-by nil
                  :limit nil}
-          results (query/handle-select *test-storage* query)]
+          results (query/handle-select *test-storage* nil query)]
       (is (= 1 (count results)))
       (is (= "user:1" (:id (first results)))))))
 
@@ -168,7 +168,7 @@
                  :group-by [{:column "dept"}]
                  :order-by nil
                  :limit nil}
-          results (query/handle-select *test-storage* query)
+          results (query/handle-select *test-storage* nil query)
           results-without-nulls (filter #(some? (:dept %)) results)]
 
       ;; Check that we have IT and HR departments (filtering out any null dept entries)
@@ -196,7 +196,7 @@
                    :where [{:field "id" :op "=" :value "user:5"}]
                    :order-by nil
                    :limit nil}
-            results (query/handle-select *test-storage* query)]
+            results (query/handle-select *test-storage* nil query)]
         (is (= 1 (count results)))
         (is (= "user:5" (:id (first results))))))))
 
@@ -216,7 +216,7 @@
                    :where [{:field "id" :op "=" :value "user:1"}]
                    :order-by nil
                    :limit nil}
-            results (query/handle-select *test-storage* query)]
+            results (query/handle-select *test-storage* nil query)]
         (is (= 1 (count results)))
         (is (= 31 (:age (first results))))
         (is (= false (:active (first results))))))))
@@ -233,7 +233,7 @@
                    :where nil
                    :order-by nil
                    :limit nil}
-            results (query/handle-select storage query)]
+            results (query/handle-select storage nil query)]
         (is (pos? (count results)) "Query without schema should return results from the default branch"))
 
       ;; Test with 'public' schema (should use 'main' branch)
@@ -244,7 +244,7 @@
                    :where nil
                    :order-by nil
                    :limit nil}
-            results (query/handle-select storage query)]
+            results (query/handle-select storage nil query)]
         (is (pos? (count results)) "Query with 'public' schema should return results from the 'main' branch"))
 
       ;; Test with 'main' schema (should use 'main' branch)
@@ -255,5 +255,5 @@
                    :where nil
                    :order-by nil
                    :limit nil}
-            results (query/handle-select storage query)]
+            results (query/handle-select storage nil query)]
         (is (pos? (count results)) "Query with 'main' schema should return results from the 'main' branch")))))

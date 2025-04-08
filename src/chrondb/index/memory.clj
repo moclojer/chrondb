@@ -6,15 +6,16 @@
             [chrondb.util.logging :as log])
   (:import [java.util.concurrent ConcurrentHashMap]))
 
-(defn- document-matches?
-  "Checks if a document matches the given query string.
+;; This function is currently unused
+#_(defn- document-matches?
+    "Checks if a document matches the given query string.
    Simple implementation that checks if any field contains the query string."
-  [doc query]
-  (let [query-lower (str/lower-case query)]
-    (some (fn [[_ v]]
-            (and (string? v)
-                 (str/includes? (str/lower-case v) query-lower)))
-          doc)))
+    [doc query]
+    (let [query-lower (str/lower-case query)]
+      (some (fn [[_ v]]
+              (and (string? v)
+                   (str/includes? (str/lower-case v) query-lower)))
+            doc)))
 
 (defrecord MemoryIndex [^ConcurrentHashMap data]
   protocol/Index
@@ -27,7 +28,7 @@
     (.remove data id)
     nil)
 
-  (search [this field query-string branch]
+  (search [_ field query-string branch]
     (log/log-warn (str "MemoryIndex search called (field: " field ", query: " query-string ", branch: " branch "). Basic string matching performed, not full FTS."))
     (let [all-docs (seq (.values data))
           query-lower (str/lower-case query-string)]
