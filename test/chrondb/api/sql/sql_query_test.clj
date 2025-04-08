@@ -103,7 +103,7 @@
                       :where nil
                       :order-by nil
                       :limit nil}
-              results (query/handle-select storage parsed)]
+              results (query/handle-select storage nil parsed)]
           ;; Only verify that results exist, without assuming a specific count
           (is (pos? (count results)))
           (is (some? (first results))))))))

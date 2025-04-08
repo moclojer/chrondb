@@ -24,4 +24,4 @@
 
 (defn handle-search [index query]
   {:status 200
-   :body (index/search index query)}) 
+   :body (index/search index "name" query "main")})

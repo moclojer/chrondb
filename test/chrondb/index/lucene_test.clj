@@ -24,17 +24,17 @@
   (testing "Index and search document"
     (let [doc {:id "user:1" :name "John Doe" :age 30 :email "john@example.com"}]
       (index/index-document *test-index* doc)
-      (let [results (index/search *test-index* "John")]
+      (let [results (index/search *test-index* "name" "John" "main")]
         (is (= 1 (count results)))
         (is (= doc (first results))))))
-  
+
   (testing "Remove document"
     (let [doc {:id "user:1" :name "John Doe" :age 30 :email "john@example.com"}]
       (index/index-document *test-index* doc)
-      (let [before-remove (index/search *test-index* "John")]
+      (let [before-remove (index/search *test-index* "name" "John" "main")]
         (is (= 1 (count before-remove)))
         (index/delete-document *test-index* (:id doc))
-        (let [after-remove (index/search *test-index* "John")]
+        (let [after-remove (index/search *test-index* "name" "John" "main")]
           (is (empty? after-remove)))))))
 
 (deftest test-index-edge-cases
@@ -43,25 +43,25 @@
           doc2 {:id "user:1" :name "Update Test" :age 31}]
       (index/index-document *test-index* doc1)
       (index/index-document *test-index* doc2)
-      (let [results (index/search *test-index* "Update")]
+      (let [results (index/search *test-index* "name" "Update" "main")]
         (is (= 1 (count results)))
         (is (= doc2 (first results))))))
-  
+
   (testing "Index with nil values"
     (let [doc {:id "user:1" :name nil :age 30}]
       (index/index-document *test-index* doc)
-      (let [results (index/search *test-index* "30")]
+      (let [results (index/search *test-index* "age" "30" "main")]
         (is (= 1 (count results)))
         (is (= doc (first results))))))
-  
+
   (testing "Search with empty query"
     (let [doc {:id "user:1" :name "John Doe" :age 30}]
       (index/index-document *test-index* doc)
-      (let [results (index/search *test-index* "")]
+      (let [results (index/search *test-index* "name" "" "main")]
         (is (empty? results)))))
-  
+
   (testing "Search with non-existent term"
     (let [doc {:id "user:1" :name "John Doe" :age 30}]
       (index/index-document *test-index* doc)
-      (let [results (index/search *test-index* "NonExistent")]
-        (is (empty? results)))))) 
+      (let [results (index/search *test-index* "name" "NonExistent" "main")]
+        (is (empty? results))))))
