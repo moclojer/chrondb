@@ -47,10 +47,20 @@
 (defrecord MemoryStorage [^ConcurrentHashMap data]
   protocol/Storage
   (save-document [_ doc] (save-document-memory data doc))
+  (save-document [_ doc _branch] (save-document-memory data doc))
+
   (get-document [_ id] (get-document-memory data id))
+  (get-document [_ id _branch] (get-document-memory data id))
+
   (delete-document [_ id] (delete-document-memory data id))
+  (delete-document [_ id _branch] (delete-document-memory data id))
+
   (get-documents-by-prefix [_ prefix] (get-documents-by-prefix-memory data prefix))
+  (get-documents-by-prefix [_ prefix _branch] (get-documents-by-prefix-memory data prefix))
+
   (get-documents-by-table [_ table-name] (get-documents-by-table-memory data table-name))
+  (get-documents-by-table [_ table-name _branch] (get-documents-by-table-memory data table-name))
+
   (close [_]
     (close-memory-storage data)
     nil))
