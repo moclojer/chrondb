@@ -12,7 +12,7 @@
   [doc condition]
   (let [field-val (get doc (keyword (:field condition)))
         cond-val (str/replace (:value condition) #"['\"]" "")
-        operator (:op condition)]
+        operator (str/lower-case (:op condition))]
     (case operator
       "=" (= (str field-val) cond-val)
       "!=" (not= (str field-val) cond-val)
@@ -21,7 +21,7 @@
       "<" (< (compare (str field-val) cond-val) 0)
       ">=" (>= (compare (str field-val) cond-val) 0)
       "<=" (<= (compare (str field-val) cond-val) 0)
-      "like" (re-find (re-pattern (str/replace cond-val #"%" ".*")) (str field-val))
+      "like" (re-find (re-pattern (str "(?i)" (str/replace cond-val #"%" ".*"))) (str field-val))
       ;; Default case
       (do
         (log/log-warn (str "Unsupported operator: " operator))
@@ -41,21 +41,24 @@
        (every?
         (fn [condition]
           (let [field (keyword (:field condition))
-                operator (:op condition)
+                operator (str/lower-case (:op condition))
                 value (str/replace (:value condition) #"['\"]" "")
                 doc-value (str (get document field ""))]
 
             (case operator
               "=" (= doc-value value)
               "!=" (not= doc-value value)
+              "<>" (not= doc-value value)
               ">" (> (compare doc-value value) 0)
               ">=" (>= (compare doc-value value) 0)
               "<" (< (compare doc-value value) 0)
               "<=" (<= (compare doc-value value) 0)
-              "LIKE" (let [pattern (str/replace value "%" ".*")]
-                       (boolean (re-find (re-pattern pattern) doc-value)))
+              "like" (let [pattern (str/replace value "%" ".*")]
+                       (boolean (re-find (re-pattern (str "(?i)" pattern)) doc-value)))
               ;; Default: not matching
-              false)))
+              (do
+                (log/log-warn (str "Unsupported operator in where condition: " operator))
+                false))))
         conditions))
      docs)))
 
