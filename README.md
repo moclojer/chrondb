@@ -40,6 +40,27 @@ Understand how and when changes were made. **chrondb** stores all history, and l
 - **table:** directory added on _git_ repository
 - **field struct:** json (document) - will be persisted in a file and indexed in _lucene_
 
+### Storage Structure
+
+Documents are stored in a directory structure that follows these rules:
+
+- Each table is a directory in the Git repository
+- Documents belonging to a table are stored as JSON files inside that table's directory
+- Document IDs are used as filenames (with proper encoding for special characters)
+- Each document contains a `_table` field that identifies which table it belongs to
+
+For example, a document with ID `123` in the `user` table would be stored at:
+
+```
+user/123.json
+```
+
+If a data directory is configured, the path would be:
+
+```
+{data-dir}/user/123.json
+```
+
 ## Running
 
 ChronDB can be run using the Clojure CLI with various options to customize its behavior.

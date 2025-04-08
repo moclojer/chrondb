@@ -219,12 +219,51 @@
 
 (defn- get-file-path
   "Get the file path for a document ID, with proper encoding.
+   Organizes documents in table directories as per documentation.
    Ensures the path is valid for JGit by not starting with a slash."
-  [data-dir id]
-  (let [encoded-id (encode-path id)]
-    (if (str/blank? data-dir)
-      (str encoded-id ".json")
-      (str data-dir (if (str/ends-with? data-dir "/") "" "/") encoded-id ".json"))))
+  ([data-dir id]
+    ; Backward compatibility - extract table from ID if in old format
+   (let [parts (str/split (or id "") #":")
+         table-name (if (> (count parts) 1)
+                      (first parts)
+                      "default")]
+     (get-file-path data-dir id table-name)))
+  ([data-dir id table-name]
+   (let [encoded-id (encode-path id)
+         encoded-table (encode-path (or table-name "default"))]
+     (if (str/blank? data-dir)
+       (str encoded-table "/" encoded-id ".json")
+       (str data-dir
+            (if (str/ends-with? data-dir "/") "" "/")
+            encoded-table "/"
+            encoded-id ".json")))))
+
+(defn- get-document-path
+  "Find the document path by searching through all table directories.
+   Returns the full path if found, nil otherwise."
+  [repository id]
+  (when repository
+    (let [config-map (config/load-config)
+          branch-name (get-in config-map [:git :default-branch])
+          head-id (.resolve repository (str branch-name "^{commit}"))]
+      (when head-id
+        (let [tree-walk (TreeWalk. repository)
+              rev-walk (RevWalk. repository)]
+          (try
+            (.addTree tree-walk (.parseTree rev-walk head-id))
+            (.setRecursive tree-walk true)
+            ;; Look for .json files with the document ID
+            (let [encoded-id (encode-path id)
+                  found-path (atom nil)]
+              (while (and (.next tree-walk) (nil? @found-path))
+                (let [path (.getPathString tree-walk)]
+                  (when (and (.endsWith path ".json")
+                             (.contains path (str encoded-id ".json")))
+                    (reset! found-path path))))
+              @found-path)
+            (finally
+              (.close tree-walk)
+              (.close rev-walk))))))))
 
 (defrecord GitStorage [repository data-dir]
   protocol/Storage
@@ -235,7 +274,11 @@
       (throw (Exception. "Repository is closed")))
 
     (let [config-map (config/load-config)
-          doc-path (get-file-path data-dir (:id document))
+          ; Use table from document if available, otherwise extract from ID
+          table-name (:_table document)
+          doc-path (if table-name
+                     (get-file-path data-dir (:id document) table-name)
+                     (get-file-path data-dir (:id document)))
           doc-content (json/write-str document)]
 
       (commit-virtual (Git/wrap repository)
@@ -255,11 +298,12 @@
       (throw (Exception. "Repository is closed")))
 
     (let [config-map (config/load-config)
-          doc-path (get-file-path data-dir id)
+          ; Usar somente o ID, o caminho será encontrado pelo get-document-path
+          doc-path (get-document-path repository id)
           branch-name (get-in config-map [:git :default-branch])
           head-id (.resolve repository (str branch-name "^{commit}"))]
 
-      (when head-id
+      (when (and head-id doc-path)
         (let [tree-walk (TreeWalk. repository)
               rev-walk (RevWalk. repository)]
           (try
@@ -348,9 +392,17 @@
 
     (let [config-map (config/load-config)
           branch-name (get-in config-map [:git :default-branch])
-          head-id (.resolve repository (str branch-name "^{commit}"))]
+          head-id (.resolve repository (str branch-name "^{commit}"))
+          encoded-table (encode-path table-name)
+          table-path-prefix (if (str/blank? data-dir)
+                              encoded-table
+                              (str data-dir
+                                   (if (str/ends-with? data-dir "/") "" "/")
+                                   encoded-table))]
 
       (log/log-debug (str "Searching documents for table: " table-name))
+      (log/log-debug (str "Table path prefix: " table-path-prefix))
+
       (when head-id
         (let [tree-walk (TreeWalk. repository)
               rev-walk (RevWalk. repository)]
@@ -362,15 +414,16 @@
               (while (.next tree-walk)
                 (let [path (.getPathString tree-walk)]
                   (log/log-debug (str "Examining path: " path))
-                  (when (.endsWith path ".json")
+                  ;; Check if the path starts with the table path prefix and is a JSON file
+                  (when (and (.endsWith path ".json")
+                             (.startsWith path (str table-path-prefix "/")))
                     (let [object-id (.getObjectId tree-walk 0)
                           object-loader (.open repository object-id)
                           content (String. (.getBytes object-loader) "UTF-8")]
                       (try
                         (let [doc (json/read-str content :key-fn keyword)]
-                          (when (= (:_table doc) table-name)
-                            (log/log-debug (str "Found table document with ID: " (:id doc)))
-                            (swap! results conj doc)))
+                          (log/log-debug (str "Found table document with ID: " (:id doc)))
+                          (swap! results conj doc))
                         (catch Exception e
                           (log/log-warn "Failed to read document:" path (.getMessage e))))))))
 
@@ -380,41 +433,51 @@
               (.close tree-walk)
               (.close rev-walk)))))))
 
-  (delete-document [_ id]
+  (delete-document [this id]
     (when-not repository
       (throw (Exception. "Repository is closed")))
 
     (let [config-map (config/load-config)
-          doc-path (get-file-path data-dir id)
-          git (Git/wrap repository)
-          branch-name (get-in config-map [:git :default-branch])
-          head-id (.resolve repository (str branch-name "^{commit}"))]
+          ;; First we need to find the document to get its table
+          doc (protocol/get-document this id)]
 
-      (when head-id
-        (let [tree-walk (TreeWalk. repository)
-              rev-walk (RevWalk. repository)]
-          (try
-            (.addTree tree-walk (.parseTree rev-walk head-id))
-            (.setRecursive tree-walk true)
-            (.setFilter tree-walk (org.eclipse.jgit.treewalk.filter.PathFilter/create doc-path))
+      (if doc
+        (let [table-name (:_table doc)
+              ; Use table-name if available, otherwise use simple version
+              doc-path (if table-name
+                         (get-file-path data-dir id table-name)
+                         (get-file-path data-dir id))
+              git (Git/wrap repository)
+              branch-name (get-in config-map [:git :default-branch])
+              head-id (.resolve repository (str branch-name "^{commit}"))]
 
-            (if (.next tree-walk)
-              (do
-                (commit-virtual git
-                                branch-name
-                                doc-path
-                                nil
-                                "Delete document"
-                                (get-in config-map [:git :committer-name])
-                                (get-in config-map [:git :committer-email]))
+          (when head-id
+            (let [tree-walk (TreeWalk. repository)
+                  rev-walk (RevWalk. repository)]
+              (try
+                (.addTree tree-walk (.parseTree rev-walk head-id))
+                (.setRecursive tree-walk true)
+                (.setFilter tree-walk (org.eclipse.jgit.treewalk.filter.PathFilter/create doc-path))
 
-                (push-changes git config-map)
+                (if (.next tree-walk)
+                  (do
+                    (commit-virtual git
+                                    branch-name
+                                    doc-path
+                                    nil
+                                    "Delete document"
+                                    (get-in config-map [:git :committer-name])
+                                    (get-in config-map [:git :committer-email]))
 
-                true)
-              false)
-            (finally
-              (.close tree-walk)
-              (.close rev-walk)))))))
+                    (push-changes git config-map)
+
+                    true)
+                  false)
+                (finally
+                  (.close tree-walk)
+                  (.close rev-walk))))))
+        ;; Document not found, return false
+        false)))
 
   (close [_]
     (when repository
