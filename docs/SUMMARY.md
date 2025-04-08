@@ -10,6 +10,7 @@
   * [REST API](examples-rest.md)
   * [Redis Protocol](examples-redis.md)
   * [PostgreSQL Protocol](examples-postgresql.md)
+  * [Full-Text Search with `to_tsquery`](examples-postgresql.md#full-text-search-with-to_tsquery)
 * [Data Model](data-model.md)
 * [Version Control Features](version-control.md)
 * [Performance and Scalability](performance.md)
