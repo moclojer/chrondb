@@ -180,7 +180,7 @@
           doc {:id "test:1" :name "Test" :value 42}]
 
       ;; Test save with forced file error
-      (with-redefs [spit (fn [_ _] (throw (Exception. "File error")))]
+      (with-redefs [git/commit-virtual (fn [& args] (throw (Exception. "Commit error")))]
         (is (thrown? Exception (protocol/save-document storage doc))))
 
       ;; Test get with non-existent ID
