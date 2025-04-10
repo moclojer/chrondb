@@ -258,3 +258,143 @@
                    :limit nil}
             results (query/handle-select storage nil query)]
         (is (pos? (count results)) "Query with 'main' schema should return results from the 'main' branch")))))
+
+(deftest test-handle-select-with-inner-join
+  (testing "SELECT with INNER JOIN"
+    ;; In our test data:
+    ;; - user:3 has dept="IT"
+    ;; - user:4 has dept="HR"
+    ;; - product:1 is assigned to dept="IT" (will be added)
+    ;; - product:2 is assigned to dept="HR" (will be added)
+
+    ;; Add department field to products
+    (storage-protocol/save-document *test-storage*
+                                    (assoc (storage-protocol/get-document *test-storage* "product:1")
+                                           :dept "IT"))
+    (storage-protocol/save-document *test-storage*
+                                    (assoc (storage-protocol/get-document *test-storage* "product:2")
+                                           :dept "HR"))
+
+    ;; Query to join users and products by department
+    (let [query {:type :select
+                 :table "user"
+                 :columns [{:type :column :column "user.name"}
+                           {:type :column :column "user.dept"}
+                           {:type :column :column "product.name"}
+                           {:type :column :column "product.price"}]
+                 :where nil
+                 :join {:table "product"
+                        :type :inner
+                        :on {:left-table "user"
+                             :left-field "dept"
+                             :right-table "product"
+                             :right-field "dept"}}
+                 :order-by [{:column "user.name" :direction :asc}]
+                 :limit nil}
+          results (query/handle-select *test-storage* nil query)]
+
+      ;; We should have two matches (Charlie-IT-Laptop and Diana-HR-Phone)
+      (is (= 2 (count results)) "Should return two rows from the join")
+
+      ;; Check the structure of the first result
+      (let [first-result (first results)]
+        (is (contains? first-result :user.name) "Result should contain user.name field")
+        (is (contains? first-result :user.dept) "Result should contain user.dept field")
+        (is (contains? first-result :product.name) "Result should contain product.name field")
+        (is (contains? first-result :product.price) "Result should contain product.price field"))
+
+      ;; Verify Charlie is joined with Laptop
+      (let [charlie-join (first (filter #(= (:user.name %) "Charlie") results))]
+        (is (= "IT" (:user.dept charlie-join)) "Charlie should be in IT department")
+        (is (= "Laptop" (:product.name charlie-join)) "IT department should be joined with Laptop"))
+
+      ;; Verify Diana is joined with Phone
+      (let [diana-join (first (filter #(= (:user.name %) "Diana") results))]
+        (is (= "HR" (:user.dept diana-join)) "Diana should be in HR department")
+        (is (= "Phone" (:product.name diana-join)) "HR department should be joined with Phone")))))
+
+(deftest test-handle-select-with-inner-join-and-where
+  (testing "SELECT with INNER JOIN and WHERE clause"
+    ;; Ensure we have the join test data set up
+    (storage-protocol/save-document *test-storage*
+                                    (assoc (storage-protocol/get-document *test-storage* "product:1")
+                                           :dept "IT"))
+    (storage-protocol/save-document *test-storage*
+                                    (assoc (storage-protocol/get-document *test-storage* "product:2")
+                                           :dept "HR"))
+
+    ;; Query to join users and products by department, filtering for IT department only
+    (let [query {:type :select
+                 :table "user"
+                 :columns [{:type :column :column "user.name"}
+                           {:type :column :column "user.dept"}
+                           {:type :column :column "product.name"}
+                           {:type :column :column "product.price"}]
+                 :where [{:field "user.dept" :op "=" :value "IT"}]
+                 :join {:table "product"
+                        :type :inner
+                        :on {:left-table "user"
+                             :left-field "dept"
+                             :right-table "product"
+                             :right-field "dept"}}
+                 :order-by nil
+                 :limit nil}
+          results (query/handle-select *test-storage* nil query)]
+
+      ;; We should have only one match (Charlie-IT-Laptop)
+      (is (= 1 (count results)) "Should return only one row from the join with WHERE filter")
+
+      ;; Verify Charlie is joined with Laptop
+      (let [charlie-join (first results)]
+        (is (= "Charlie" (:user.name charlie-join)) "Result should be for Charlie")
+        (is (= "IT" (:user.dept charlie-join)) "Charlie should be in IT department")
+        (is (= "Laptop" (:product.name charlie-join)) "IT department should be joined with Laptop")
+        (is (= 1200 (:product.price charlie-join)) "Laptop should have price 1200")))))
+
+(deftest test-handle-select-with-complex-join
+  (testing "SELECT with JOIN and complex conditions"
+    ;; Add more test data for complex join
+    (storage-protocol/save-document *test-storage*
+                                    {:id "order:1"
+                                     :user_id "user:1"
+                                     :product_id "product:1"
+                                     :quantity 2
+                                     :_table "order"})
+    (storage-protocol/save-document *test-storage*
+                                    {:id "order:2"
+                                     :user_id "user:2"
+                                     :product_id "product:2"
+                                     :quantity 1
+                                     :_table "order"})
+
+    ;; Query that joins users with their orders
+    (let [query {:type :select
+                 :table "user"
+                 :columns [{:type :column :column "user.name"}
+                           {:type :column :column "order.quantity"}
+                           {:type :column :column "order.product_id"}]
+                 :where nil
+                 :join {:table "order"
+                        :type :inner
+                        :on {:left-table "user"
+                             :left-field "id"
+                             :right-table "order"
+                             :right-field "user_id"}}
+                 :order-by [{:column "user.name" :direction :asc}]
+                 :limit nil}
+          results (query/handle-select *test-storage* nil query)]
+
+      ;; Should have two orders
+      (is (= 2 (count results)) "Should return two rows from the user-order join")
+
+      ;; Alice should have ordered product:1
+      (let [alice-order (first (filter #(= (:user.name %) "Alice") results))]
+        (is (some? alice-order) "Alice should have an order")
+        (is (= 2 (:order.quantity alice-order)) "Alice should have ordered 2 units")
+        (is (= "product:1" (:order.product_id alice-order)) "Alice should have ordered product:1"))
+
+      ;; Bob should have ordered product:2
+      (let [bob-order (first (filter #(= (:user.name %) "Bob") results))]
+        (is (some? bob-order) "Bob should have an order")
+        (is (= 1 (:order.quantity bob-order)) "Bob should have ordered 1 unit")
+        (is (= "product:2" (:order.product_id bob-order)) "Bob should have ordered product:2")))))
