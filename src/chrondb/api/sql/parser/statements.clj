@@ -21,6 +21,11 @@
                                       (< (inc inner-idx) (count tokens))
                                       (= (str/lower-case (nth tokens (inc inner-idx))) "join"))
                              inner-idx))
+        left-join-index (let [left-idx (tokenizer/find-token-index tokens "left")]
+                          (when (and left-idx
+                                     (< (inc left-idx) (count tokens))
+                                     (= (str/lower-case (nth tokens (inc left-idx))) "join"))
+                            left-idx))
 
         ;; Determine where clauses end
         where-end (or group-index order-index limit-index (count tokens))
@@ -49,7 +54,8 @@
 
         ;; Parse join information if present
         join-start-idx (or join-index
-                           (when inner-join-index (inc inner-join-index)))
+                           (when inner-join-index (inc inner-join-index))
+                           (when left-join-index (inc left-join-index)))
 
         join-info (when join-start-idx
                     (let [on-idx (tokenizer/find-token-index-from tokens "on" (inc join-start-idx))
@@ -67,7 +73,10 @@
                           on-clause-end (or where-index group-index order-index limit-index (count tokens))
                           on-condition (when (and on-clause-start (< on-clause-start on-clause-end))
                                          (clauses/parse-join-condition tokens on-clause-start on-clause-end))]
-                      {:type (if inner-join-index :inner-join :join)
+                      {:type (cond
+                               inner-join-index :inner-join
+                               left-join-index :left
+                               :else :join)
                        :schema join-schema
                        :table join-table
                        :on on-condition}))
