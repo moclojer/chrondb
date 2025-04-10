@@ -8,38 +8,70 @@
   "Parses a SQL SELECT query.
    Parameters:
    - tokens: The sequence of query tokens
-   Returns: A map representing the parsed query with fields :type, :columns, :table, :where, :group-by, :order-by and :limit"
+   Returns: A map representing the parsed query with fields for :type, :columns, :table etc."
   [tokens]
   (let [from-index (tokenizer/find-token-index tokens "from")
         where-index (tokenizer/find-token-index tokens "where")
         group-index (tokenizer/find-token-index tokens "group")
         order-index (tokenizer/find-token-index tokens "order")
         limit-index (tokenizer/find-token-index tokens "limit")
+        join-index (tokenizer/find-token-index tokens "join")
+        inner-join-index (let [inner-idx (tokenizer/find-token-index tokens "inner")]
+                           (when (and inner-idx
+                                      (< (inc inner-idx) (count tokens))
+                                      (= (str/lower-case (nth tokens (inc inner-idx))) "join"))
+                             inner-idx))
 
-       ;; Determine indices for each clause
+        ;; Determine where clauses end
         where-end (or group-index order-index limit-index (count tokens))
         group-end (or order-index limit-index (count tokens))
         order-end (or limit-index (count tokens))
 
-       ;; Parse each clause
+        ;; Parse each clause
         columns (if from-index
                   (clauses/parse-select-columns tokens from-index)
                   [])
-        raw-table-spec (if (and from-index (> from-index 0))
-                         (if (and where-index (> where-index (inc from-index)))
-                           (nth tokens (inc from-index))
-                           (str/join " " (subvec tokens (inc from-index)
-                                                 (or where-index group-index order-index limit-index (count tokens)))))
-                         nil)
-        ;; Parse schema.table format and remove semicolons and extra spaces
-        [schema table-name] (when raw-table-spec
-                              (let [cleaned-spec (-> raw-table-spec
+
+        ;; Handle base table (from clause)
+        base-table-idx (when from-index (inc from-index))
+        raw-base-table (when (and from-index base-table-idx (< base-table-idx (count tokens)))
+                         (nth tokens base-table-idx))
+
+        ;; Parse schema.table format for base table
+        [schema base-table] (when raw-base-table
+                              (let [cleaned-spec (-> raw-base-table
                                                      (str/replace #";$" "")
                                                      (str/trim))
                                     parts (str/split cleaned-spec #"\.")]
                                 (if (= (count parts) 2)
                                   [(first parts) (str/trim (second parts))]
                                   [nil cleaned-spec])))
+
+        ;; Parse join information if present
+        join-start-idx (or join-index
+                           (when inner-join-index (inc inner-join-index)))
+
+        join-info (when join-start-idx
+                    (let [on-idx (tokenizer/find-token-index-from tokens "on" (inc join-start-idx))
+                          join-table-raw (when (and join-start-idx on-idx (< (inc join-start-idx) on-idx))
+                                           (nth tokens (inc join-start-idx)))
+                          [join-schema join-table] (when join-table-raw
+                                                     (let [cleaned-spec (-> join-table-raw
+                                                                            (str/replace #";$" "")
+                                                                            (str/trim))
+                                                           parts (str/split cleaned-spec #"\.")]
+                                                       (if (= (count parts) 2)
+                                                         [(first parts) (str/trim (second parts))]
+                                                         [nil cleaned-spec])))
+                          on-clause-start (when on-idx (inc on-idx))
+                          on-clause-end (or where-index group-index order-index limit-index (count tokens))
+                          on-condition (when (and on-clause-start (< on-clause-start on-clause-end))
+                                         (clauses/parse-join-condition tokens on-clause-start on-clause-end))]
+                      {:type (if inner-join-index :inner-join :join)
+                       :schema join-schema
+                       :table join-table
+                       :on on-condition}))
+
         where-condition (clauses/parse-where-condition tokens where-index where-end)
         group-by (clauses/parse-group-by tokens group-index group-end)
         order-by (clauses/parse-order-by tokens order-index order-end)
@@ -51,7 +83,8 @@
     {:type :select
      :columns columns
      :schema schema
-     :table table-name
+     :table base-table
+     :join join-info
      :where where-condition
      :group-by group-by
      :order-by order-by

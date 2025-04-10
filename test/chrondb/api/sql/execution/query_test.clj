@@ -155,8 +155,8 @@
                  :order-by nil
                  :limit nil}
           results (query/handle-select *test-storage* nil query)]
-      (is (= 1 (count results)))
-      (is (= "user:1" (:id (first results)))))))
+      (is (= 1 (count results)) "Should return exactly one result")
+      (is (= "user:1" (:id (first results))) "Result ID should match the queried ID"))))
 
 (deftest test-handle-select-with-group-by
   (testing "SELECT with GROUP BY"
@@ -187,8 +187,9 @@
 (deftest test-handle-insert
   (testing "INSERT query"
     (let [new-doc {:id "user:5" :name "Eve" :age 40 :active true}
-          result (query/handle-insert *test-storage* new-doc)]
-      (is (= new-doc result))
+          result (query/handle-insert *test-storage* new-doc)
+          expected-doc (assoc new-doc :_table "user")]
+      (is (= expected-doc result))
       ;; Verify the document was added to storage
       (let [query {:type :select
                    :table "user"
@@ -204,10 +205,10 @@
   (testing "UPDATE query"
     (let [updates {:age 31 :active false}
           result (query/handle-update *test-storage* "user:1" updates)]
-      (is (= "user:1" (:id result)))
-      (is (= 31 (:age result)))
-      (is (= false (:active result)))
-      (is (= "Alice" (:name result)))
+      (is (= "user:1" (:id result)) "Updated document should have the correct ID")
+      (is (= 31 (:age result)) "Age should be updated to the new value")
+      (is (= false (:active result)) "Active field should be updated to the new value")
+      (is (= "Alice" (:name result)) "Name field should remain unchanged")
 
       ;; Verify the document was updated in storage
       (let [query {:type :select
@@ -217,9 +218,9 @@
                    :order-by nil
                    :limit nil}
             results (query/handle-select *test-storage* nil query)]
-        (is (= 1 (count results)))
-        (is (= 31 (:age (first results))))
-        (is (= false (:active (first results))))))))
+        (is (= 1 (count results)) "Should return exactly one result")
+        (is (= 31 (:age (first results))) "Age in stored document should match the updated value")
+        (is (= false (:active (first results))) "Active field in stored document should match the updated value")))))
 
 (deftest test-handle-schema-branch-mapping
   (testing "Schema to branch mapping for SQL queries"

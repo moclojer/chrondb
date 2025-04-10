@@ -66,7 +66,7 @@
   protocol/Index
   (index-document [_ doc]
     (try
-      (log/log-info "Indexing document" {:id (:id doc) :branch (:branch doc)})
+      #_(log/log-info "Indexing document" {:id (:id doc) :branch (:branch doc)})
       (let [lucene-doc (create-lucene-doc doc nil)]
         (.addDocument writer lucene-doc)
         (.commit writer)

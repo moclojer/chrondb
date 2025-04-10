@@ -84,3 +84,20 @@
          (filter (fn [[_ token]] (keyword-set token)))
          (first)
          (first))))
+
+(defn find-token-index-from
+  "Finds the index of the first token that matches the provided keyword,
+   starting from a specific index in the token sequence.
+   Parameters:
+   - tokens: The sequence of tokens to search
+   - keyword: The keyword to search for
+   - start-index: The index to start the search from
+   Returns: The index of the first matching token, or nil if not found"
+  [tokens keyword start-index]
+  (let [keyword-lower (str/lower-case keyword)]
+    (->> tokens
+         (drop start-index)
+         (map-indexed (fn [idx token] [(+ idx start-index) (str/lower-case token)]))
+         (filter (fn [[_ token]] (= token keyword-lower)))
+         (first)
+         (first))))
