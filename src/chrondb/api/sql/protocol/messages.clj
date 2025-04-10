@@ -1,34 +1,56 @@
 (ns chrondb.api.sql.protocol.messages
-  "PostgreSQL frontend/backend protocol message handling"
-  (:require [chrondb.util.logging :as log]
-            [chrondb.api.sql.protocol.constants :as constants])
-  (:import [java.nio ByteBuffer]
-           [java.nio.charset StandardCharsets]
-           [java.io OutputStream InputStream]))
+  "Functions for handling PostgreSQL protocol messages.
+   Defines data structures and encoding/decoding for the protocol messages."
+  (:require [chrondb.api.sql.protocol.constants :as constants]
+            [chrondb.util.logging :as log])
+  (:import [java.io InputStream OutputStream]
+           [java.nio ByteBuffer]
+           [java.nio.charset StandardCharsets]))
 
 ;; Helper for writing messages to the stream
 (defn write-message
   "Write a message to the output stream.
    Parameters:
-   - out: The output stream to write to
-   - type: The message type (single byte)
-   - body: The message body (byte array)
+   - out: The output stream
+   - type: The message type character
+   - body: The message body (string or byte array)
    Returns: nil"
   [^OutputStream out type body]
   (try
-    (let [length (+ 4 (count body))]  ;; 4 bytes for length field + body length
+    (let [is-byte-array (instance? (Class/forName "[B") body)
+          body-bytes (if is-byte-array
+                       ^bytes body
+                       (.getBytes (str body) StandardCharsets/UTF_8))
+          length-int (+ 4 (if is-byte-array
+                            (alength ^bytes body-bytes)
+                            (count body-bytes)))]
       ;; Message type
       (.write out (int type))
-      ;; Message length (4 bytes, big-endian)
-      (.write out (bit-shift-right (bit-and length 0xFF000000) 24))
-      (.write out (bit-shift-right (bit-and length 0x00FF0000) 16))
-      (.write out (bit-shift-right (bit-and length 0x0000FF00) 8))
-      (.write out (bit-and length 0x000000FF))
+      ;; Message length (int32)
+      (if (not= type constants/PG_STARTUP_MESSAGE)
+        (do
+          ;; Normal message: 1 byte type + 4 bytes length + body
+          (.write out (bit-and (bit-shift-right length-int 24) 0xFF))
+          (.write out (bit-and (bit-shift-right length-int 16) 0xFF))
+          (.write out (bit-and (bit-shift-right length-int 8) 0xFF))
+          (.write out (bit-and length-int 0xFF)))
+        (do
+          ;; Startup message: only 4 bytes length + body (no type byte)
+          (.write out (bit-and (bit-shift-right length-int 24) 0xFF))
+          (.write out (bit-and (bit-shift-right length-int 16) 0xFF))
+          (.write out (bit-and (bit-shift-right length-int 8) 0xFF))
+          (.write out (bit-and length-int 0xFF))))
       ;; Message body
-      (.write out body)
+      (if is-byte-array
+        (.write out ^bytes body-bytes)
+        (.write out body-bytes))
       (.flush out))
+    (catch java.net.SocketException e
+      (log/log-warn (str "Socket error while writing message of type: " (when type (char type)) " - " (.getMessage e)))
+      nil)
     (catch Exception e
-      (log/log-error (str "Error writing message: " (.getMessage e))))))
+      (log/log-error (str "Error writing message: " (.getMessage e) " for type: " (when type (char type))))
+      nil)))
 
 ;; Reading functions
 (defn read-byte
@@ -130,12 +152,14 @@
   (let [buffer (ByteBuffer/allocate 1024)  ;; Aumentar para 1KB, suficiente para a maioria das mensagens de erro
         ;; Add error fields
         _ (.put buffer (byte (int \S)))  ;; Severity field
-        _ (.put buffer (.getBytes "ERROR" StandardCharsets/UTF_8))
+        severity-bytes (.getBytes "ERROR" StandardCharsets/UTF_8)
+        _ (.put buffer severity-bytes)
         _ (.put buffer (byte 0))  ;; Null terminator
 
         ;; Message field
         _ (.put buffer (byte (int \M)))  ;; Message field
-        _ (.put buffer (.getBytes message StandardCharsets/UTF_8))
+        message-bytes (.getBytes message StandardCharsets/UTF_8)
+        _ (.put buffer message-bytes)
         _ (.put buffer (byte 0))  ;; Null terminator
 
         ;; Final null terminator for the entire message
@@ -157,12 +181,14 @@
   (let [buffer (ByteBuffer/allocate 1024)
         ;; Add notice fields
         _ (.put buffer (byte (int \S)))  ;; Severity field
-        _ (.put buffer (.getBytes "NOTICE" StandardCharsets/UTF_8))
+        severity-bytes (.getBytes "NOTICE" StandardCharsets/UTF_8)
+        _ (.put buffer severity-bytes)
         _ (.put buffer (byte 0))  ;; Null terminator
 
         ;; Message field
         _ (.put buffer (byte (int \M)))  ;; Message field
-        _ (.put buffer (.getBytes message StandardCharsets/UTF_8))
+        message-bytes (.getBytes message StandardCharsets/UTF_8)
+        _ (.put buffer message-bytes)
         _ (.put buffer (byte 0))  ;; Null terminator
 
         ;; Final null terminator for the entire message
@@ -234,8 +260,9 @@
     ;; For each column
     (doseq [column columns]
       ;; Column name
-      (.put buffer (.getBytes (or column "") StandardCharsets/UTF_8))
-      (.put buffer (byte 0))  ;; Null terminator
+      (let [column-bytes (.getBytes (or column "") StandardCharsets/UTF_8)]
+        (.put buffer column-bytes)
+        (.put buffer (byte 0)))  ;; Null terminator
 
       ;; Table OID (0 = not part of a specific table)
       (.putInt buffer 0)
@@ -243,7 +270,7 @@
       ;; Column attribute number within the table (0 = not from a table)
       (.putShort buffer (short 0))
 
-      ;; Data type OID (23 = INT4)
+      ;; Data type OID (25 = TEXT)
       (.putInt buffer 25)  ;; 25 = TEXT
 
       ;; Data type size (4 bytes for INT4)
@@ -267,43 +294,50 @@
       (write-message out constants/PG_ROW_DESCRIPTION message-body))))
 
 (defn send-data-row
-  "Sends a data row message.
+  "Send a message of type DataRow.
    Parameters:
    - out: The output stream
    - values: A list of column values
    Returns: nil"
   [^OutputStream out values]
-  (let [buffer (ByteBuffer/allocate (+ 2 (* (count values) 256)))]  ;; Estimated size
-    ;; Number of values in the row
-    (.putShort buffer (short (count values)))
-
+  (let [buf (ByteBuffer/allocate constants/MAX_BUFFER_SIZE)]
+    ;; Number of values
+    (.putShort buf (short (count values)))
     ;; For each value
     (doseq [value values]
       (if (nil? value)
-        ;; For NULL values, write a length of -1
-        (.putInt buffer -1)
-        ;; For non-NULL, write the value's length and then the value itself
+        ;; NULL value
+        (.putInt buf -1)
+        ;; Non-NULL value
         (let [bytes (try
-                      ;; Try to check if it's binary data, safely handle ClassNotFound
-                      (if (instance? (Class/forName "[B") value)
-                        value
-                        (.getBytes (str value) "UTF-8"))
-                      (catch ClassNotFoundException _
-                        ;; Fall back to string conversion in test environments
-                        (.getBytes (str value) "UTF-8")))]
-          (.putInt buffer (count bytes))
-          (.put buffer bytes))))
-
-    ;; Reset buffer position for reading
-    (.flip buffer)
-
+                      (cond
+                        ;; Handle byte arrays directly
+                        (instance? (Class/forName "[B") value) value
+                        ;; Numbers should be converted to string first
+                        (instance? Number value) (.getBytes (str value) StandardCharsets/UTF_8)
+                        ;; Handle strings
+                        (string? value) (.getBytes (str value) StandardCharsets/UTF_8)
+                        ;; Handle other types by converting to string first
+                        :else (.getBytes (str value) StandardCharsets/UTF_8))
+                      (catch Throwable _
+                        (.getBytes (str value) StandardCharsets/UTF_8)))
+              length (if (instance? (Class/forName "[B") bytes)
+                       (alength ^bytes bytes)
+                       (count bytes))]
+          (.putInt buf length)
+          (if (instance? (Class/forName "[B") bytes)
+            (.put buf ^bytes bytes)
+            ;; If bytes is not a byte array (which shouldn't happen but just in case)
+            (let [stringBytes (.getBytes (str bytes) StandardCharsets/UTF_8)]
+              (.put buf stringBytes))))))
+    ;; Reset position for reading
+    (.flip buf)
     ;; Create byte array from buffer
-    (let [size (.remaining buffer)
-          message-body (byte-array size)]
-      (.get buffer message-body)
-
-      ;; Send the data row
-      (write-message out constants/PG_DATA_ROW message-body))))
+    (let [body-size (.remaining buf)
+          body (byte-array body-size)]
+      (.get buf body 0 body-size)
+      ;; Send message
+      (write-message out constants/PG_DATA_ROW body))))
 
 (defn send-ready-for-query
   "Sends a ready for query message.

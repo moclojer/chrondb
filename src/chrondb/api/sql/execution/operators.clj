@@ -49,10 +49,46 @@
               "=" (= doc-value value)
               "!=" (not= doc-value value)
               "<>" (not= doc-value value)
-              ">" (> (compare doc-value value) 0)
-              ">=" (>= (compare doc-value value) 0)
-              "<" (< (compare doc-value value) 0)
-              "<=" (<= (compare doc-value value) 0)
+              ">" (try
+                    ;; Try to convert both sides to numbers if they look like numbers
+                    (if (and (re-matches #"-?\d+(\.\d+)?" value)
+                             (re-matches #"-?\d+(\.\d+)?" doc-value))
+                      (> (Double/parseDouble doc-value) (Double/parseDouble value))
+                      ;; Fall back to string comparison if they're not numeric
+                      (> (compare doc-value value) 0))
+                    (catch Exception e
+                      (log/log-warn (str "Error in numeric comparison: " (.getMessage e)))
+                      (> (compare doc-value value) 0)))
+              ">=" (try
+                     ;; Try to convert both sides to numbers if they look like numbers
+                     (if (and (re-matches #"-?\d+(\.\d+)?" value)
+                              (re-matches #"-?\d+(\.\d+)?" doc-value))
+                       (>= (Double/parseDouble doc-value) (Double/parseDouble value))
+                       ;; Fall back to string comparison if they're not numeric
+                       (>= (compare doc-value value) 0))
+                     (catch Exception e
+                       (log/log-warn (str "Error in numeric comparison: " (.getMessage e)))
+                       (>= (compare doc-value value) 0)))
+              "<" (try
+                    ;; Try to convert both sides to numbers if they look like numbers
+                    (if (and (re-matches #"-?\d+(\.\d+)?" value)
+                             (re-matches #"-?\d+(\.\d+)?" doc-value))
+                      (< (Double/parseDouble doc-value) (Double/parseDouble value))
+                      ;; Fall back to string comparison if they're not numeric
+                      (< (compare doc-value value) 0))
+                    (catch Exception e
+                      (log/log-warn (str "Error in numeric comparison: " (.getMessage e)))
+                      (< (compare doc-value value) 0)))
+              "<=" (try
+                     ;; Try to convert both sides to numbers if they look like numbers
+                     (if (and (re-matches #"-?\d+(\.\d+)?" value)
+                              (re-matches #"-?\d+(\.\d+)?" doc-value))
+                       (<= (Double/parseDouble doc-value) (Double/parseDouble value))
+                       ;; Fall back to string comparison if they're not numeric
+                       (<= (compare doc-value value) 0))
+                     (catch Exception e
+                       (log/log-warn (str "Error in numeric comparison: " (.getMessage e)))
+                       (<= (compare doc-value value) 0)))
               "like" (let [pattern (str/replace value "%" ".*")]
                        (boolean (re-find (re-pattern (str "(?i)" pattern)) doc-value)))
               ;; Default: not matching

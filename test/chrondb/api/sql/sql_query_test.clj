@@ -15,8 +15,17 @@
      :string-writer sw
      :output-stream (proxy [java.io.OutputStream] []
                       (write
-                        ([b] (.write bw (String. (byte-array [b]))))
-                        ([b off len] (.write bw (String. b off len))))
+                        ([b]
+                         (if (instance? (Class/forName "[B") b)
+                           ;; Handle byte array input
+                           (.write bw (String. ^bytes b))
+                           ;; Handle single byte input
+                           (.write bw (String. (byte-array [b])))))
+                        ([b off len]
+                         ;; Make sure we handle byte arrays properly
+                         (if (instance? (Class/forName "[B") b)
+                           (.write bw (String. ^bytes b off len))
+                           (throw (IllegalArgumentException. "Expected byte array but got: " (type b))))))
                       (flush [] (.flush bw)))}))
 
 (defn get-writer-output [writer-map]

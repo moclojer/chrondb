@@ -20,7 +20,7 @@
           server (sql/start-sql-server storage index port)]
       (try
         ;; Insert document via storage API
-        (storage-protocol/save-document storage {:id "unique-test-doc-123" :column1 123})
+        (storage-protocol/save-document storage {:id "unique-test-doc-123" :column1 123 :_table "doc"})
 
         ;; Query via PG2
         (let [config {:host "localhost"

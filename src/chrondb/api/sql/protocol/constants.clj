@@ -4,6 +4,9 @@
 ;; Protocol Versions
 (def PG_PROTOCOL_VERSION 196608)  ;; Protocol version 3.0
 
+;; Buffer size
+(def MAX_BUFFER_SIZE 8192)  ;; 8KB buffer size for message construction
+
 ;; Message Types
 (def PG_ERROR_RESPONSE (byte (int \E)))
 (def PG_NOTICE_RESPONSE (byte (int \N)))  ;; Added for welcome messages
@@ -14,6 +17,7 @@
 (def PG_AUTHENTICATION_OK (byte (int \R)))
 (def PG_PARAMETER_STATUS (byte (int \S)))
 (def PG_BACKEND_KEY_DATA (byte (int \K)))
+(def PG_STARTUP_MESSAGE nil)  ;; Special case - startup message has no type byte
 
 ;; Constants for the SQL Parser
 (def RESERVED_WORDS #{"select" "from" "where" "group" "by" "order" "having"

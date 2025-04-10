@@ -398,3 +398,220 @@
         (is (some? bob-order) "Bob should have an order")
         (is (= 1 (:order.quantity bob-order)) "Bob should have ordered 1 unit")
         (is (= "product:2" (:order.product_id bob-order)) "Bob should have ordered product:2")))))
+
+(deftest test-handle-select-with-left-join
+  (testing "SELECT with LEFT JOIN"
+    ;; Ensure we have the join test data set up
+    (storage-protocol/save-document *test-storage*
+                                    (assoc (storage-protocol/get-document *test-storage* "product:1")
+                                           :dept "IT"))
+    (storage-protocol/save-document *test-storage*
+                                    (assoc (storage-protocol/get-document *test-storage* "product:2")
+                                           :dept "HR"))
+
+    ;; Add a user with a department that has no matching product
+    (storage-protocol/save-document *test-storage*
+                                    {:id "user:5"
+                                     :name "Eric"
+                                     :age 45
+                                     :active true
+                                     :dept "Finance"
+                                     :_table "user"})  ;; Add _table explicitly
+
+    ;; Query to left join users and products by department
+    (let [query {:type :select
+                 :table "user"
+                 :columns [{:type :column :column "user.name"}
+                           {:type :column :column "user.dept"}
+                           {:type :column :column "product.name"}
+                           {:type :column :column "product.price"}]
+                 :where nil
+                 :join {:table "product"
+                        :type :left
+                        :on {:left-table "user"
+                             :left-field "dept"
+                             :right-table "product"
+                             :right-field "dept"}}
+                 :order-by [{:column "user.name" :direction :asc}]
+                 :limit nil}
+          results (query/handle-select *test-storage* nil query)]
+
+      ;; We should have five results - 2 (Alice, Bob) without dept, 2 (Charlie-IT, Diana-HR) with matching dept, 1 (Eric-Finance) with unmatched dept
+      (is (= 5 (count results)) "Should return all users from left table regardless of matches")
+
+      ;; Check results with matching departments
+      ;; Charlie (IT) should match with Laptop
+      (let [charlie-join (first (filter #(= (:user.name %) "Charlie") results))]
+        (is (some? charlie-join) "Charlie should be in results")
+        (is (= "IT" (:user.dept charlie-join)) "Charlie should be in IT department")
+        (is (= "Laptop" (:product.name charlie-join)) "IT department should be joined with Laptop")
+        (is (= 1200 (:product.price charlie-join)) "Laptop price should be 1200"))
+
+      ;; Diana (HR) should match with Phone
+      (let [diana-join (first (filter #(= (:user.name %) "Diana") results))]
+        (is (some? diana-join) "Diana should be in results")
+        (is (= "HR" (:user.dept diana-join)) "Diana should be in HR department")
+        (is (= "Phone" (:product.name diana-join)) "HR department should be joined with Phone")
+        (is (= 800 (:product.price diana-join)) "Phone price should be 800"))
+
+      ;; Eric (Finance) should have null product fields
+      (let [eric-join (first (filter #(= (:user.name %) "Eric") results))]
+        (is (some? eric-join) "Eric should be in results even without matching product")
+        (is (= "Finance" (:user.dept eric-join)) "Eric should be in Finance department")
+        (is (nil? (:product.name eric-join)) "Product name should be nil for Finance department")
+        (is (nil? (:product.price eric-join)) "Product price should be nil for Finance department"))
+
+      ;; Alice and Bob (no dept) should also have null product fields
+      (let [alice-join (first (filter #(= (:user.name %) "Alice") results))]
+        (is (some? alice-join) "Alice should be in results even without department")
+        (is (nil? (:user.dept alice-join)) "Alice should not have a department")
+        (is (nil? (:product.name alice-join)) "Product name should be nil for Alice")
+        (is (nil? (:product.price alice-join)) "Product price should be nil for Alice")))))
+
+(deftest test-handle-select-with-left-join-and-where
+  (testing "SELECT with LEFT JOIN and WHERE clause on left table"
+    ;; Ensure we have the join test data set up
+    (storage-protocol/save-document *test-storage*
+                                    (assoc (storage-protocol/get-document *test-storage* "product:1")
+                                           :dept "IT"))
+    (storage-protocol/save-document *test-storage*
+                                    (assoc (storage-protocol/get-document *test-storage* "product:2")
+                                           :dept "HR"))
+    (storage-protocol/save-document *test-storage*
+                                    {:id "user:5"
+                                     :name "Eric"
+                                     :age 45
+                                     :active true
+                                     :dept "Finance"})
+
+    ;; Query with LEFT JOIN and WHERE clause on the left table only
+    (let [query {:type :select
+                 :table "user"
+                 :columns [{:type :column :column "user.name"}
+                           {:type :column :column "user.dept"}
+                           {:type :column :column "product.name"}]
+                 :where [{:field "user.age" :op ">" :value "40"}]  ;; Only users over 40 (Eric)
+                 :join {:table "product"
+                        :type :left
+                        :on {:left-table "user"
+                             :left-field "dept"
+                             :right-table "product"
+                             :right-field "dept"}}
+                 :order-by nil
+                 :limit nil}
+          results (query/handle-select *test-storage* nil query)]
+
+      ;; Only Eric should match the WHERE condition
+      (is (= 1 (count results)) "Should return only users matching the WHERE condition")
+
+      ;; Verify Eric's record
+      (let [eric-join (first results)]
+        (is (= "Eric" (:user.name eric-join)) "Result should be for Eric")
+        (is (= "Finance" (:user.dept eric-join)) "Eric should be in Finance department")
+        (is (nil? (:product.name eric-join)) "Product name should be nil since no matching product"))))
+
+  (testing "SELECT with LEFT JOIN and WHERE clause that spans both tables"
+    ;; Ensure we have the join test data set up - same as above
+
+    ;; Query with LEFT JOIN and WHERE clause referencing the right table
+    (let [query {:type :select
+                 :table "user"
+                 :columns [{:type :column :column "user.name"}
+                           {:type :column :column "user.dept"}
+                           {:type :column :column "product.name"}
+                           {:type :column :column "product.price"}]
+                 :where [{:field "product.price" :op ">" :value "1000"}]  ;; Only products with price > 1000
+                 :join {:table "product"
+                        :type :left
+                        :on {:left-table "user"
+                             :left-field "dept"
+                             :right-table "product"
+                             :right-field "dept"}}
+                 :order-by nil
+                 :limit nil}
+          _ (println "Query with product.price > 1000:" (pr-str query))
+          results (query/handle-select *test-storage* nil query)
+          _ (println "Results from query:" (pr-str results))]
+
+      ;; Only Charlie (matched with Laptop price 1200) should be returned
+      (is (= 1 (count results)) "Should return only rows where right table matches WHERE condition")
+
+      ;; Verify Charlie's record
+      (when (pos? (count results))
+        (let [charlie-join (first results)]
+          (is (= "Charlie" (:user.name charlie-join)) "Result should be for Charlie")
+          (is (= "IT" (:user.dept charlie-join)) "Charlie should be in IT department")
+          (is (= "Laptop" (:product.name charlie-join)) "Product should be Laptop")
+          (is (= 1200 (:product.price charlie-join)) "Laptop price should be 1200"))))))
+
+(deftest test-handle-select-with-multi-table-left-join
+  (testing "SELECT with complex multi-table LEFT JOIN"
+    ;; Add order data
+    (storage-protocol/save-document *test-storage*
+                                    {:id "order:1"
+                                     :user_id "user:1"  ;; Alice
+                                     :product_id "product:1"  ;; Laptop
+                                     :quantity 2
+                                     :status "shipped"
+                                     :_table "order"})
+    (storage-protocol/save-document *test-storage*
+                                    {:id "order:2"
+                                     :user_id "user:2"  ;; Bob
+                                     :product_id "product:2"  ;; Phone
+                                     :quantity 1
+                                     :status "delivered"
+                                     :_table "order"})
+
+    ;; Add users with no orders
+    (let [frank-user {:id "user:6"
+                      :name "Frank"
+                      :age 50
+                      :active true
+                      :_table "user"}
+          saved-frank (storage-protocol/save-document *test-storage* frank-user)]
+      (println "Debug - Frank saved as:" saved-frank)
+      (println "Debug - All users:" (mapv :id (storage-protocol/get-documents-by-table *test-storage* "user"))))
+
+    ;; Query users LEFT JOIN orders
+    (let [query {:type :select
+                 :table "user"
+                 :columns [{:type :column :column "user.name"}
+                           {:type :column :column "order.id"}
+                           {:type :column :column "order.status"}]
+                 :where nil
+                 :join {:table "order"
+                        :type :left
+                        :on {:left-table "user"
+                             :left-field "id"
+                             :right-table "order"
+                             :right-field "user_id"}}
+                 :order-by [{:column "user.name" :direction :asc}]
+                 :limit nil}
+          results (query/handle-select *test-storage* nil query)]
+
+      ;; We should have all users (5), but only 2 with orders
+      (is (= 5 (count results)) "Should return all users regardless of having orders")
+
+      ;; Verify Alice has an order
+      (let [alice-join (first (filter #(= (:user.name %) "Alice") results))]
+        (is (some? alice-join) "Alice should be in results")
+        (is (= "order:1" (:order.id alice-join)) "Alice should have order:1")
+        (is (= "shipped" (:order.status alice-join)) "Alice's order should be shipped"))
+
+      ;; Verify Bob has an order
+      (let [bob-join (first (filter #(= (:user.name %) "Bob") results))]
+        (is (some? bob-join) "Bob should be in results")
+        (is (= "order:2" (:order.id bob-join)) "Bob should have order:2")
+        (is (= "delivered" (:order.status bob-join)) "Bob's order should be delivered"))
+
+      ;; Verify Charlie has no order
+      (let [charlie-join (first (filter #(= (:user.name %) "Charlie") results))]
+        (is (some? charlie-join) "Charlie should be in results even without orders")
+        (is (nil? (:order.id charlie-join)) "Charlie should have no order ID")
+        (is (nil? (:order.status charlie-join)) "Charlie should have no order status"))
+
+      ;; Verify Frank has no order
+      (let [frank-join (first (filter #(= (:user.name %) "Frank") results))]
+        (is (some? frank-join) "Frank should be in results even without orders")
+        (is (nil? (:order.id frank-join)) "Frank should have no order ID")
+        (is (nil? (:order.status frank-join)) "Frank should have no order status")))))
