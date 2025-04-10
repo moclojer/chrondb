@@ -193,3 +193,24 @@
                            (conj clauses {:column column, :direction :asc}))))
                 (recur [] (conj clauses {:column (first remaining), :direction :asc}))))))
         nil))))
+
+(defn parse-join-condition
+  "Parses a JOIN ON condition from a query.
+   Parameters:
+   - tokens: The sequence of query tokens
+   - start-index: The index to start parsing from (after the ON keyword)
+   - end-index: The index marking the end of the ON clause
+   Returns: A map representing the join condition with :left-table, :left-field, :right-table, :right-field"
+  [tokens start-index end-index]
+  (when (and start-index (< start-index end-index))
+    (let [condition-tokens (subvec tokens start-index end-index)
+          condition-str (str/join " " condition-tokens)
+          equals-pattern #"([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)\s*=\s*([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)"
+          matcher (re-find equals-pattern condition-str)]
+
+      (when (and matcher (= (count matcher) 5))
+        (let [[_ left-table left-field right-table right-field] matcher]
+          {:left-table left-table
+           :left-field left-field
+           :right-table right-table
+           :right-field right-field})))))

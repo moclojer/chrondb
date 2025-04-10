@@ -283,8 +283,14 @@
         ;; For NULL values, write a length of -1
         (.putInt buffer -1)
         ;; For non-NULL, write the value's length and then the value itself
-        (let [str-value (str value)
-              bytes (.getBytes str-value "UTF-8")]
+        (let [bytes (try
+                      ;; Try to check if it's binary data, safely handle ClassNotFound
+                      (if (instance? (Class/forName "[B") value)
+                        value
+                        (.getBytes (str value) "UTF-8"))
+                      (catch ClassNotFoundException _
+                        ;; Fall back to string conversion in test environments
+                        (.getBytes (str value) "UTF-8")))]
           (.putInt buffer (count bytes))
           (.put buffer bytes))))
 
