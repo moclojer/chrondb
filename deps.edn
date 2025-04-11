@@ -21,6 +21,14 @@
                                      com.github.igrishaev/pg2-core        {:mvn/version "0.1.35"}}
                        :exec-fn cognitect.test-runner.api/test
                        :main-opts ["-m" "cognitect.test-runner"]}
+             :benchmark {:extra-paths ["test"]
+                         :extra-deps {io.github.cognitect-labs/test-runner {:git/tag "v0.5.1" :git/sha "dfb30dd"}
+                                      redis.clients/jedis                  {:mvn/version "5.1.0"}
+                                      com.github.igrishaev/pg2-core        {:mvn/version "0.1.35"}}
+                         :exec-fn cognitect.test-runner.api/test
+                         :exec-args {:include ["benchmark"]}
+                         :main-opts ["-m" "cognitect.test-runner"
+                                     "-i" "benchmark"]}
              :test-non-external-protocol {:extra-paths ["test"]
                                           :extra-deps {org.clojure/tools.namespace   {:mvn/version "1.4.4"}
                                                        redis.clients/jedis           {:mvn/version "5.1.0"}
