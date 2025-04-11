@@ -2,7 +2,6 @@ name: SQL Protocol Benchmark
 
 on:
   workflow_dispatch: # Allow manual execution
-  push:
   pull_request:
 
 jobs:
