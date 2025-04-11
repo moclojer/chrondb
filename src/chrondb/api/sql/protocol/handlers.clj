@@ -28,22 +28,22 @@
           message-bytes (byte-array content-length)
           bytes-read (.read in message-bytes 0 content-length)
 
-          ;; Obter o texto da consulta SQL (ignorando o byte nulo final)
+          ;; Get the SQL query text (ignoring the null byte at the end)
           query-text (String. message-bytes 0 (dec bytes-read) "UTF-8")]
 
-      (log/log-info (str "Executando consulta SQL: " query-text))
+      (log/log-info (str "Executing SQL query: " query-text))
 
-      ;; Executar a consulta
+      ;; Execute the query
       (query/handle-query storage index out query-text)
 
-      ;; Indicar que estamos prontos para a próxima consulta
+      ;; Indicate that we're ready for the next query
       (messages/send-ready-for-query out \I))
     (catch Exception e
       (let [sw (java.io.StringWriter.)
             pw (java.io.PrintWriter. sw)]
         (.printStackTrace e pw)
-        (log/log-error (str "Erro ao executar consulta: " (.getMessage e) "\n" (.toString sw))))
-      (messages/send-error-response out (str "Erro ao executar consulta: " (.getMessage e)))
+        (log/log-error (str "Error executing query: " (.getMessage e) "\n" (.toString sw))))
+      (messages/send-error-response out (str "Error executing query: " (.getMessage e)))
       (messages/send-ready-for-query out \E))))
 
 (defn handle-message
@@ -62,13 +62,13 @@
       81 (handle-query-message storage index in out message-type)
       ;; 'X' = Terminate
       88 (do
-           (log/log-info "Cliente solicitou encerramento")
-           ;; Não envie uma resposta aqui, apenas retorne
+           (log/log-info "Client requested termination")
+           ;; Don't send a response here, just return
            nil)
-      ;; Outros tipos de mensagem não suportados
+      ;; Other unsupported message types
       (do
-        (log/log-info (str "Comando não suportado: " (char message-type)))
-        ;; Leia e descarte o resto da mensagem
+        (log/log-info (str "Unsupported command: " (char message-type)))
+        ;; Read and discard the rest of the message
         (let [length-bytes (byte-array 4)
               _ (.read in length-bytes)
               length (-> (bit-and (aget length-bytes 0) 0xFF) (bit-shift-left 24)
@@ -78,18 +78,18 @@
               content-length (- length 4)
               discard-buffer (byte-array content-length)]
           (.read in discard-buffer))
-        (messages/send-error-response out (str "Comando não suportado: " (char message-type)))
+        (messages/send-error-response out (str "Unsupported command: " (char message-type)))
         (messages/send-ready-for-query out \I)))
     (catch Exception e
       (let [sw (java.io.StringWriter.)
             pw (java.io.PrintWriter. sw)]
         (.printStackTrace e pw)
-        (log/log-error (str "Erro ao processar mensagem: " (.getMessage e) "\n" (.toString sw))))
+        (log/log-error (str "Error processing message: " (.getMessage e) "\n" (.toString sw))))
       (try
-        (messages/send-error-response out (str "Erro interno do servidor: " (.getMessage e)))
+        (messages/send-error-response out (str "Internal server error: " (.getMessage e)))
         (messages/send-ready-for-query out \E)
         (catch Exception e2
-          (log/log-error (str "Erro ao enviar resposta de erro: " (.getMessage e2))))))))
+          (log/log-error (str "Error sending error response: " (.getMessage e2))))))))
 
 (defn handle-client
   "Handles a client socket.

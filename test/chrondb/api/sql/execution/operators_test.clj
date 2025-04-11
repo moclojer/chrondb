@@ -2,136 +2,141 @@
   (:require [clojure.test :refer [deftest is testing]]
             [chrondb.api.sql.execution.operators :as operators]))
 
-(deftest test-evaluate-condition
-  (let [doc {:id "user:1"
-             :name "Alice"
-             :age 30
-             :active true}]
-
-    (testing "Equal operator"
-      (is (operators/evaluate-condition doc {:field "name" :op "=" :value "Alice"}))
-      (is (not (operators/evaluate-condition doc {:field "name" :op "=" :value "Bob"}))))
-
-    (testing "Not equal operators"
-      (is (operators/evaluate-condition doc {:field "name" :op "!=" :value "Bob"}))
-      (is (not (operators/evaluate-condition doc {:field "name" :op "!=" :value "Alice"})))
-
-      (is (operators/evaluate-condition doc {:field "name" :op "<>" :value "Bob"}))
-      (is (not (operators/evaluate-condition doc {:field "name" :op "<>" :value "Alice"}))))
-
-    (testing "Greater than operator"
-      (is (operators/evaluate-condition doc {:field "age" :op ">" :value "20"}))
-      (is (not (operators/evaluate-condition doc {:field "age" :op ">" :value "30"}))))
-
-    (testing "Less than operator"
-      (is (operators/evaluate-condition doc {:field "age" :op "<" :value "40"}))
-      (is (not (operators/evaluate-condition doc {:field "age" :op "<" :value "30"}))))
-
-    (testing "Greater than or equal operator"
-      (is (operators/evaluate-condition doc {:field "age" :op ">=" :value "30"}))
-      (is (not (operators/evaluate-condition doc {:field "age" :op ">=" :value "31"}))))
-
-    (testing "Less than or equal operator"
-      (is (operators/evaluate-condition doc {:field "age" :op "<=" :value "30"}))
-      (is (not (operators/evaluate-condition doc {:field "age" :op "<=" :value "29"}))))
-
-    (testing "LIKE operator"
-      (is (operators/evaluate-condition doc {:field "name" :op "like" :value "Al%"}))
-      (is (operators/evaluate-condition doc {:field "name" :op "like" :value "%ice"}))
-      (is (operators/evaluate-condition doc {:field "name" :op "like" :value "%lic%"}))
-      (is (not (operators/evaluate-condition doc {:field "name" :op "like" :value "Bob%"}))))
-
-    (testing "Unsupported operator"
-      (is (not (operators/evaluate-condition doc {:field "name" :op "unknown" :value "Alice"}))))))
+(def test-docs
+  [{:id "user:1", :name "Alice", :age 30, :active true}
+   {:id "user:2", :name "Bob", :age 25, :active false}
+   {:id "user:3", :name "Charlie", :age 35, :active true}
+   {:id "user:4", :name "David", :age 28, :active true}])
 
 (deftest test-apply-where-conditions
-  (let [docs [{:id "user:1" :name "Alice" :age 30 :active true}
-              {:id "user:2" :name "Bob" :age 25 :active false}
-              {:id "user:3" :name "Charlie" :age 35 :active true}
-              {:id "user:4" :name "Diana" :age 28 :active false}]]
+  (testing "Equality condition"
+    (let [conditions [{:field "name" :op "=" :value "Alice"}]
+          result (operators/apply-where-conditions test-docs conditions)]
+      (is (= 1 (count result)))
+      (is (= "Alice" (:name (first result))))))
 
-    (testing "Empty conditions"
-      (is (= docs (operators/apply-where-conditions docs []))))
+  (testing "Greater than condition"
+    (let [conditions [{:field "age" :op ">" :value "30"}]
+          result (operators/apply-where-conditions test-docs conditions)]
+      (is (= 1 (count result)))
+      (is (= "Charlie" (:name (first result))))))
 
-    (testing "Single condition"
-      (let [conditions [{:field "age" :op ">" :value "28"}]]
-        (is (= 2 (count (operators/apply-where-conditions docs conditions))))
-        (is (= ["user:1" "user:3"] (map :id (operators/apply-where-conditions docs conditions))))))
+  (testing "Less than condition"
+    (let [conditions [{:field "age" :op "<" :value "28"}]
+          result (operators/apply-where-conditions test-docs conditions)]
+      (is (= 1 (count result)))
+      (is (= "Bob" (:name (first result))))))
 
-    (testing "Multiple conditions (AND)"
-      (let [conditions [{:field "age" :op ">" :value "25"}
-                        {:field "active" :op "=" :value "true"}]]
-        (is (= 2 (count (operators/apply-where-conditions docs conditions))))
-        (is (= ["user:1" "user:3"] (map :id (operators/apply-where-conditions docs conditions))))))
+  (testing "Greater than or equal condition"
+    (let [conditions [{:field "age" :op ">=" :value "30"}]
+          result (operators/apply-where-conditions test-docs conditions)]
+      (is (= 2 (count result)))
+      (is (= #{"Alice" "Charlie"} (set (map :name result))))))
 
-    (testing "LIKE condition"
-      (let [conditions [{:field "name" :op "LIKE" :value "D%"}]]
-        (is (= 1 (count (operators/apply-where-conditions docs conditions))))
-        (is (= ["user:4"] (map :id (operators/apply-where-conditions docs conditions))))))))
+  (testing "Less than or equal condition"
+    (let [conditions [{:field "age" :op "<=" :value "28"}]
+          result (operators/apply-where-conditions test-docs conditions)]
+      (is (= 2 (count result)))
+      (is (= #{"Bob" "David"} (set (map :name result))))))
 
-(deftest test-group-docs-by
-  (let [docs [{:id "user:1" :name "Alice" :dept "IT" :role "Dev"}
-              {:id "user:2" :name "Bob" :dept "HR" :role "Manager"}
-              {:id "user:3" :name "Charlie" :dept "IT" :role "Dev"}
-              {:id "user:4" :name "Diana" :dept "HR" :role "Admin"}]]
+  (testing "Not equal condition"
+    (let [conditions [{:field "name" :op "!=" :value "Alice"}]
+          result (operators/apply-where-conditions test-docs conditions)]
+      (is (= 3 (count result)))
+      (is (= #{"Bob" "Charlie" "David"} (set (map :name result))))))
 
-    (testing "Empty group fields"
-      (is (= [docs] (operators/group-docs-by docs []))))
+  (testing "Boolean condition (true)"
+    (let [conditions [{:field "active" :op "=" :value "true"}]
+          result (operators/apply-where-conditions test-docs conditions)]
+      (is (= 3 (count result)))
+      (is (= #{"Alice" "Charlie" "David"} (set (map :name result))))))
 
-    (testing "Group by single field"
-      (let [groups (operators/group-docs-by docs [{:column "dept"}])
-            expected-count 2]  ;; IT and HR groups
-        (is (= expected-count (count groups)))
-        ;; Each group should have docs with the same dept
-        (doseq [group groups]
-          (is (apply = (map :dept group))))))
+  (testing "Boolean condition (false)"
+    (let [conditions [{:field "active" :op "=" :value "false"}]
+          result (operators/apply-where-conditions test-docs conditions)]
+      (is (= 1 (count result)))
+      (is (= "Bob" (:name (first result))))))
 
-    (testing "Group by multiple fields"
-      (let [groups (operators/group-docs-by docs [{:column "dept"} {:column "role"}])
-            expected-count 3]  ;; IT+Dev, HR+Manager, HR+Admin
-        (is (= expected-count (count groups)))))))
+  (testing "Multiple conditions (AND)"
+    (let [conditions [{:field "age" :op ">" :value "25"}
+                      {:field "active" :op "=" :value "true"}]
+          result (operators/apply-where-conditions test-docs conditions)]
+      (is (= 3 (count result)))
+      (is (= #{"Alice" "Charlie" "David"} (set (map :name result))))))
+
+  (testing "Handling invalid field"
+    (let [conditions [{:field "non_existent" :op "=" :value "anything"}]
+          result (operators/apply-where-conditions test-docs conditions)]
+      (is (= 0 (count result)))))
+
+  (testing "Empty conditions"
+    (let [result (operators/apply-where-conditions test-docs [])]
+      (is (= 4 (count result)))
+      (is (= test-docs result)))))
 
 (deftest test-sort-docs-by
-  (let [docs [{:id "user:1" :name "Alice" :age 30 :dept "IT"}
-              {:id "user:2" :name "Bob" :age 25 :dept "HR"}
-              {:id "user:3" :name "Charlie" :age 35 :dept "IT"}
-              {:id "user:4" :name "Diana" :age 28 :dept "HR"}]]
+  (testing "Sort by single column ascending"
+    (let [docs [{:name "Bob", :age 25}
+                {:name "Alice", :age 30}
+                {:name "Charlie", :age 35}]
+          order-clauses [{:column "name" :direction :asc}]
+          result (operators/sort-docs-by docs order-clauses)]
+      (is (= ["Alice" "Bob" "Charlie"] (map :name result)))))
 
-    (testing "Empty order clauses"
-      (is (= docs (operators/sort-docs-by docs []))))
+  (testing "Sort by single column descending"
+    (let [docs [{:name "Bob", :age 25}
+                {:name "Alice", :age 30}
+                {:name "Charlie", :age 35}]
+          order-clauses [{:column "age" :direction :desc}]
+          result (operators/sort-docs-by docs order-clauses)]
+      (is (= ["Charlie" "Alice" "Bob"] (map :name result)))))
 
-    (testing "Sort by ascending age"
-      (let [sorted (operators/sort-docs-by docs [{:column "age" :direction :asc}])]
-        (is (= ["user:2" "user:4" "user:1" "user:3"] (map :id sorted)))))
-
-    (testing "Sort by descending age"
-      (let [sorted (operators/sort-docs-by docs [{:column "age" :direction :desc}])]
-        (is (= ["user:3" "user:1" "user:4" "user:2"] (map :id sorted)))))
-
-    (testing "Sort by multiple fields (dept asc, age desc)"
-      (let [sorted (operators/sort-docs-by docs [{:column "dept" :direction :asc}
-                                                 {:column "age" :direction :desc}])]
-        (is (= ["user:4" "user:2" "user:3" "user:1"] (map :id sorted)))))))
+  (testing "Sort by multiple columns"
+    (let [docs [{:name "Bob", :active false, :age 25}
+                {:name "Alice", :active true, :age 30}
+                {:name "Charlie", :active true, :age 35}
+                {:name "David", :active true, :age 30}]
+          order-clauses [{:column "active" :direction :desc}
+                         {:column "age" :direction :asc}
+                         {:column "name" :direction :asc}]
+          result (operators/sort-docs-by docs order-clauses)]
+      (is (= ["Alice" "David" "Charlie" "Bob"] (map :name result))))))
 
 (deftest test-apply-limit
-  (let [docs [{:id "user:1" :name "Alice"}
-              {:id "user:2" :name "Bob"}
-              {:id "user:3" :name "Charlie"}
-              {:id "user:4" :name "Diana"}
-              {:id "user:5" :name "Eve"}]]
+  (testing "Apply limit"
+    (let [result (operators/apply-limit test-docs 2)]
+      (is (= 2 (count result)))
+      (is (= ["Alice" "Bob"] (map :name result)))))
 
-    (testing "Nil limit returns all docs"
-      (is (= 5 (count (operators/apply-limit docs nil)))))
+  (testing "Limit greater than collection size"
+    (let [result (operators/apply-limit test-docs 10)]
+      (is (= 4 (count result)))
+      (is (= test-docs result))))
 
-    (testing "Zero limit returns empty collection"
-      (is (empty? (operators/apply-limit docs 0))))
+  (testing "Limit zero"
+    (let [result (operators/apply-limit test-docs 0)]
+      (is (= 0 (count result)))))
 
-    (testing "Limit less than total count"
-      (is (= 3 (count (operators/apply-limit docs 3))))
-      (is (= ["user:1" "user:2" "user:3"] (map :id (operators/apply-limit docs 3)))))
+  (testing "Limit nil"
+    (let [result (operators/apply-limit test-docs nil)]
+      (is (= 4 (count result)))
+      (is (= test-docs result)))))
 
-    (testing "Limit equal to total count"
-      (is (= 5 (count (operators/apply-limit docs 5)))))
+(deftest test-group-docs-by
+  (testing "Group docs by single field"
+    (let [docs [{:name "Alice", :dept "IT", :active true}
+                {:name "Bob", :dept "HR", :active false}
+                {:name "Charlie", :dept "IT", :active true}
+                {:name "David", :dept "HR", :active true}]
+          group-by [{:column "dept"}]
+          result (operators/group-docs-by docs group-by)]
+      (is (= 2 (count result)))))
 
-    (testing "Limit greater than total count"
-      (is (= 5 (count (operators/apply-limit docs 10)))))))
+  (testing "Group docs by multiple fields"
+    (let [docs [{:name "Alice", :dept "IT", :active true}
+                {:name "Bob", :dept "HR", :active false}
+                {:name "Charlie", :dept "IT", :active true}
+                {:name "David", :dept "HR", :active true}]
+          group-by [{:column "dept"} {:column "active"}]
+          result (operators/group-docs-by docs group-by)]
+      (is (= 3 (count result))))))

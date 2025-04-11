@@ -20,9 +20,9 @@
           _ (log/log-info (str "Formatted aggregate result: " col-name " = " safe-result))]
       {(keyword col-name) safe-result})
     (catch Exception e
-      (log/log-error (str "Erro ao processar resultado de agregação: " (.getMessage e)
+      (log/log-error (str "Error processing aggregation result: " (.getMessage e)
                           "\n" (.printStackTrace e)))
-      {:error "Erro ao processar resultado de agregação"})))
+      {:error "Error processing aggregation result"})))
 
 (defn execute-aggregate-function
   "Executes an aggregate function on a collection of documents.
@@ -85,7 +85,7 @@
           (log/log-warn (str "Unsupported aggregate function: " function))
           nil)))
     (catch Exception e
-      (log/log-error (str "Erro ao executar função de agregação: " (.getMessage e)))
+      (log/log-error (str "Error executing aggregation function: " (.getMessage e)))
       (let [sw (java.io.StringWriter.)
             pw (java.io.PrintWriter. sw)]
         (.printStackTrace e pw)

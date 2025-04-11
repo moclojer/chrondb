@@ -16,7 +16,7 @@
       (let [num (Integer/parseInt id)
             doc {:id id
                  :_table table-name
-                 :nome (str "Item " num)
-                 :valor (* num 10)
-                 :ativo (odd? num)}]
+                 :name (str "Item " num)
+                 :value (* num 10)
+                 :active (odd? num)}]
         (storage/save-document storage doc)))))

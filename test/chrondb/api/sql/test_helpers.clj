@@ -18,3 +18,17 @@
 (defn create-test-resources []
   {:storage (memory/create-memory-storage)
    :index (memory-index/create-memory-index)})
+
+;; Helper functions for string I/O testing
+(defn create-string-reader [s]
+  (java.io.BufferedReader. (java.io.StringReader. s)))
+
+(defn create-string-writer []
+  (let [sw (java.io.StringWriter.)
+        bw (java.io.BufferedWriter. sw)]
+    {:writer bw
+     :string-writer sw}))
+
+(defn get-writer-output [writer-map]
+  (.flush (:writer writer-map))
+  (str (.getBuffer (:string-writer writer-map))))
