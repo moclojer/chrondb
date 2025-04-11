@@ -80,49 +80,62 @@
 
       (log/log-info "Created additional tables for JOIN tests"))))
 
+(defn- calculate-tps [operations-count elapsed-ms]
+  (/ (* operations-count 1000.0) elapsed-ms))
+
 (defn- run-select-benchmark []
   (let [out (java.io.ByteArrayOutputStream.)
+        operations-count 1000
         start-time (System/currentTimeMillis)]
     (query/handle-query *test-storage* *test-index* out "SELECT * FROM benchmark_items LIMIT 1000")
-    (let [elapsed (- (System/currentTimeMillis) start-time)]
-      (log/log-info (format "SELECT 1000 items completed in %d ms" elapsed))
-      elapsed)))
+    (let [elapsed (- (System/currentTimeMillis) start-time)
+          tps (calculate-tps operations-count elapsed)]
+      (log/log-info (format "SELECT 1000 items completed in %d ms (%.2f TPS)" elapsed tps))
+      {:elapsed elapsed :tps tps})))
 
 (defn- run-search-benchmark []
   (let [out (java.io.ByteArrayOutputStream.)
+        operations-count 100
         search-term (str "%" (fixtures/generate-random-string 5) "%")
         query (str "SELECT * FROM benchmark_items WHERE description LIKE '" search-term "' LIMIT 100")
         start-time (System/currentTimeMillis)]
     (query/handle-query *test-storage* *test-index* out query)
-    (let [elapsed (- (System/currentTimeMillis) start-time)]
-      (log/log-info (format "Search query completed in %d ms" elapsed))
-      elapsed)))
+    (let [elapsed (- (System/currentTimeMillis) start-time)
+          tps (calculate-tps operations-count elapsed)]
+      (log/log-info (format "Search query completed in %d ms (%.2f TPS)" elapsed tps))
+      {:elapsed elapsed :tps tps})))
 
 (defn- run-inner-join-benchmark []
   (let [out (java.io.ByteArrayOutputStream.)
+        operations-count 100
         start-time (System/currentTimeMillis)
         query (str "SELECT o.id, u.name, i.title FROM orders o "
                    "INNER JOIN users u ON o.user_id = u.id "
                    "INNER JOIN benchmark_items i ON o.item_id = i.id "
                    "LIMIT 100")]
     (query/handle-query *test-storage* *test-index* out query)
-    (let [elapsed (- (System/currentTimeMillis) start-time)]
-      (log/log-info (format "INNER JOIN query completed in %d ms" elapsed))
-      elapsed)))
+    (let [elapsed (- (System/currentTimeMillis) start-time)
+          tps (calculate-tps operations-count elapsed)]
+      (log/log-info (format "INNER JOIN query completed in %d ms (%.2f TPS)" elapsed tps))
+      {:elapsed elapsed :tps tps})))
 
 (defn- run-left-join-benchmark []
   (let [out (java.io.ByteArrayOutputStream.)
+        operations-count 100
         start-time (System/currentTimeMillis)
         query (str "SELECT u.id, u.name, o.id, o.order_date FROM users u "
                    "LEFT JOIN orders o ON u.id = o.user_id "
                    "LIMIT 100")]
     (query/handle-query *test-storage* *test-index* out query)
-    (let [elapsed (- (System/currentTimeMillis) start-time)]
-      (log/log-info (format "LEFT JOIN query completed in %d ms" elapsed))
-      elapsed)))
+    (let [elapsed (- (System/currentTimeMillis) start-time)
+          tps (calculate-tps operations-count elapsed)]
+      (log/log-info (format "LEFT JOIN query completed in %d ms (%.2f TPS)" elapsed tps))
+      {:elapsed elapsed :tps tps})))
 
 (defn- run-insert-benchmark [num-inserts]
   (let [out (java.io.ByteArrayOutputStream.)
+        operations-count num-inserts
+        total-start-time (System/currentTimeMillis)
         insert-times (for [_ (range num-inserts)]
                        (let [id (str (UUID/randomUUID))
                              doc (fixtures/generate-large-document id "benchmark_items")
@@ -134,10 +147,28 @@
                              start-time (System/currentTimeMillis)]
                          (query/handle-query *test-storage* *test-index* out query)
                          (- (System/currentTimeMillis) start-time)))
-        total-time (reduce + insert-times)
-        avg-time (double (/ total-time (count insert-times)))]
-    (log/log-info (format "Average INSERT time: %.2f ms" avg-time))
-    avg-time))
+        total-time (- (System/currentTimeMillis) total-start-time)
+        avg-time (double (/ (reduce + insert-times) (count insert-times)))
+        tps (calculate-tps operations-count total-time)]
+    (log/log-info (format "Average INSERT time: %.2f ms (%.2f TPS)" avg-time tps))
+    {:avg-time avg-time :tps tps}))
+
+(defn- run-bulk-select-benchmark [num-queries]
+  (let [out (java.io.ByteArrayOutputStream.)
+        operations-count num-queries
+        total-start-time (System/currentTimeMillis)
+        query-times (for [_ (range num-queries)]
+                      (let [offset (rand-int (- num-test-docs 50))
+                            query (str "SELECT * FROM benchmark_items LIMIT 50 OFFSET " offset)
+                            start-time (System/currentTimeMillis)]
+                        (query/handle-query *test-storage* *test-index* out query)
+                        (- (System/currentTimeMillis) start-time)))
+        total-time (- (System/currentTimeMillis) total-start-time)
+        avg-time (double (/ (reduce + query-times) (count query-times)))
+        tps (calculate-tps operations-count total-time)]
+    (log/log-info (format "Bulk SELECT benchmark: %d queries, avg time: %.2f ms, total time: %d ms (%.2f TPS)"
+                          num-queries avg-time total-time tps))
+    {:avg-time avg-time :total-time total-time :tps tps}))
 
 (deftest ^:benchmark test-sql-performance
   (testing "SQL Benchmark with 1GB+ dataset"
@@ -148,18 +179,20 @@
 
     ;; Run benchmarks
     (log/log-info "Running SELECT benchmark...")
-    (let [select-time (run-select-benchmark)
-          search-time (run-search-benchmark)
-          inner-join-time (run-inner-join-benchmark)
-          left-join-time (run-left-join-benchmark)
-          insert-time (run-insert-benchmark 10)]
+    (let [select-result (run-select-benchmark)
+          search-result (run-search-benchmark)
+          inner-join-result (run-inner-join-benchmark)
+          left-join-result (run-left-join-benchmark)
+          insert-result (run-insert-benchmark 10)
+          bulk-select-result (run-bulk-select-benchmark 20)]
 
       (log/log-info "=== Benchmark Results ===")
-      (log/log-info (format "SELECT 1000 records: %d ms" select-time))
-      (log/log-info (format "SEARCH records: %d ms" search-time))
-      (log/log-info (format "INNER JOIN query: %d ms" inner-join-time))
-      (log/log-info (format "LEFT JOIN query: %d ms" left-join-time))
-      (log/log-info (format "Average INSERT time: %.2f ms" insert-time))
+      (log/log-info (format "SELECT 1000 records: %d ms (%.2f TPS)" (:elapsed select-result) (:tps select-result)))
+      (log/log-info (format "SEARCH records: %d ms (%.2f TPS)" (:elapsed search-result) (:tps search-result)))
+      (log/log-info (format "INNER JOIN query: %d ms (%.2f TPS)" (:elapsed inner-join-result) (:tps inner-join-result)))
+      (log/log-info (format "LEFT JOIN query: %d ms (%.2f TPS)" (:elapsed left-join-result) (:tps left-join-result)))
+      (log/log-info (format "Average INSERT time: %.2f ms (%.2f TPS)" (:avg-time insert-result) (:tps insert-result)))
+      (log/log-info (format "Bulk SELECT (20 queries): avg %.2f ms (%.2f TPS)" (:avg-time bulk-select-result) (:tps bulk-select-result)))
       (log/log-info "=== Benchmark Complete ===")
 
       ;; We're just reporting the results, not making assertions
