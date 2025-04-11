@@ -1,9 +1,6 @@
 (ns chrondb.benchmark.fixtures
   (:require [chrondb.storage.protocol :as storage]
-            [chrondb.index.protocol :as index]
-            [chrondb.test-helpers :as helper]
-            [clojure.java.io :as io]
-            [clojure.string :as str])
+            [chrondb.index.protocol :as index])
   (:import (java.util UUID)))
 
 (defn generate-random-string [length]
@@ -15,9 +12,9 @@
     (let [choice (rand-int 3)]
       (case choice
         0 (generate-random-string (+ 100 (rand-int 900)))
-        1 (into {} (for [i (range (+ 2 (rand-int 5)))]
-                     [(str "key" i) (generate-nested-data (inc depth) max-depth)]))
-        2 (into [] (for [i (range (+ 2 (rand-int 8)))]
+        1 (into {} (for [_ (range (+ 2 (rand-int 5)))]
+                     [(str "key" _) (generate-nested-data (inc depth) max-depth)]))
+        2 (into [] (for [_ (range (+ 2 (rand-int 8)))]
                      (generate-nested-data (inc depth) max-depth)))))))
 
 (defn generate-large-document [id table-name]
@@ -28,7 +25,7 @@
                    :description (generate-random-string (+ 200 (rand-int 800)))
                    :tags (into [] (take (+ 3 (rand-int 7))
                                         (repeatedly #(generate-random-string (+ 5 (rand-int 15))))))
-                   :metadata (into {} (for [i (range (+ 5 (rand-int 10)))]
+                   :metadata (into {} (for [_ (range (+ 5 (rand-int 10)))]
                                         [(str "meta_" (generate-random-string 8))
                                          (generate-nested-data 0 3)]))}]
     ;; Add additional data to reach desired size
@@ -45,7 +42,7 @@
     (loop [i 0
            total-size 0]
       (if (and (< i num-docs) (< total-size (* 1024 1024 1024))) ;; 1GB in bytes
-        (let [batch (for [j (range batch-size)
+        (let [batch (for [_ (range batch-size)
                           :let [doc-id (str (UUID/randomUUID))
                                 doc (generate-large-document doc-id table-name)
                                 doc-size (count (pr-str doc))]]
@@ -55,7 +52,7 @@
               new-size (+ total-size (reduce + 0 (map #(nth % 2) batch)))]
 
           ;; Store the batch of documents
-          (doseq [[id doc] (map vector batch-ids batch-docs)]
+          (doseq [[_ doc] (map vector batch-ids batch-docs)]
             (storage/save-document storage doc branch)
             (when index
               (index/index-document index doc)))
