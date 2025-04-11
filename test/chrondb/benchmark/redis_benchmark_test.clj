@@ -1,4 +1,4 @@
-(ns chrondb.api.redis.redis-benchmark-test
+(ns chrondb.benchmark.redis-benchmark-test
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [chrondb.api.redis.core :as redis]
             [chrondb.test-helpers :refer [with-test-data]])
