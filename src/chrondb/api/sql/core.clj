@@ -1,12 +1,11 @@
 (ns chrondb.api.sql.core
-  "SQL server implementation for ChronDB"
+  "Core API for SQL protocol implementation"
   (:require [chrondb.util.logging :as log]
             [chrondb.api.sql.connection.server :as server]))
 
 (defn- try-start-server
-  "Attempts to start a server on the given port.
-   If the port is in use, returns nil.
-   Returns: The server socket or nil if port is in use"
+  "Tenta iniciar um servidor na porta especificada.
+   Retorna nil se a porta estiver em uso."
   [storage index port]
   (try
     (server/start-sql-server storage index port)
@@ -15,12 +14,12 @@
       nil)))
 
 (defn start-sql-server
-  "Starts a SQL server for ChronDB.
-   Parameters:
-   - storage: The storage implementation
-   - index: The index implementation (optional)
-   - port: The port number to listen on (optional, default: 5432)
-   Returns: The server socket"
+  "Inicia um servidor SQL para ChronDB.
+   Parâmetros:
+   - storage: A implementação de armazenamento
+   - index: A implementação de índice (opcional)
+   - port: O número da porta para escutar (opcional, padrão: 5432)
+   Retorna: O objeto do servidor"
   ([storage]
    (start-sql-server storage nil 5432))
   ([storage index]
@@ -28,21 +27,21 @@
   ([storage index port]
    (log/log-info (str "Starting ChronDB SQL server on port " port))
    (if (zero? port)
-     ;; If port is 0, let the system choose an available port
+     ;; Se a porta for 0, deixe o sistema escolher uma porta disponível
      (server/start-sql-server storage index port)
-     ;; Otherwise, try the specified port, or fall back to a random port if that fails
+     ;; Caso contrário, tente a porta especificada ou recorra a uma porta aleatória
      (if-let [server (try-start-server storage index port)]
        server
-       ;; If the specified port is in use, try with port 0 (system-assigned)
+       ;; Se a porta especificada estiver em uso, tente com a porta 0 (atribuída pelo sistema)
        (do
          (log/log-info "Falling back to system-assigned port")
          (server/start-sql-server storage index 0))))))
 
 (defn stop-sql-server
-  "Stops the SQL server.
-   Parameters:
-   - server-socket: The server socket to close
-   Returns: nil"
-  [server-socket]
+  "Para o servidor SQL.
+   Parâmetros:
+   - server: O objeto do servidor a ser fechado
+   Retorna: nil"
+  [server]
   (log/log-info "Stopping ChronDB SQL server")
-  (server/stop-sql-server server-socket))
+  (server/stop-sql-server server))

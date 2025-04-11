@@ -238,7 +238,7 @@
    Returns: A map representing the parsed query"
   [sql]
   (let [tokens (tokenizer/tokenize-sql sql)
-        command (str/lower-case (first tokens))]
+        command (when (seq tokens) (str/lower-case (first tokens)))]
     (case command
       "select" (parse-select-query tokens)
       "insert" (parse-insert-query tokens)

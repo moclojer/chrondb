@@ -350,7 +350,7 @@
 
                                     right-prefixed-fields (map #(keyword (:field %)) right-table-conditions)
 
-                                   ;; Identificar documentos sem valores para a tabela secundária (valores nulos de LEFT JOIN)
+                                   ;; Identify documents without values for the secondary table (NULL values from LEFT JOIN)
                                     docs-without-right-fields (filter (fn [doc]
                                                                         (let [has-any-right-field (some #(contains? doc %) right-prefixed-fields)]
                                                                           (not has-any-right-field)))
@@ -367,18 +367,18 @@
                                     docs-matching-conditions (operators/apply-where-conditions docs-with-right-fields right-table-conditions)
                                     _ (log/log-info (str "Docs matching right conditions: " (count docs-matching-conditions)))
 
-                                   ;; Aplicar condições da tabela esquerda apenas aos documentos com correspondências na tabela direita
+                                   ;; Apply left table conditions only to documents with matches in the right table
                                     docs-with-left-conditions (if (seq left-table-conditions)
                                                                 (operators/apply-where-conditions docs-matching-conditions left-table-conditions)
                                                                 docs-matching-conditions)
                                     _ (log/log-info (str "Docs matching left conditions: " (count docs-with-left-conditions)))
 
-                                   ;; Aplicar condições da tabela esquerda aos documentos sem correspondências na tabela direita
+                                   ;; Apply left table conditions to documents without matches in the right table
                                     docs-without-right-filtered (if (seq left-table-conditions)
                                                                   (operators/apply-where-conditions docs-without-right-fields left-table-conditions)
                                                                   docs-without-right-fields)
 
-                                   ;; Combinar os resultados
+                                   ;; Combine the results
                                     final-filtered (concat docs-with-left-conditions docs-without-right-filtered)]
 
                                 final-filtered)
@@ -583,6 +583,8 @@
               (messages/send-data-row out values)))
           (messages/send-command-complete out "SELECT" (count results)))))
 
+    ;; Add ReadyForQuery message at the end of all SELECT operations
+    (messages/send-ready-for-query out \I)
     (log/log-info "SELECT query processing completed")))
 
 (defn handle-insert-case
@@ -655,6 +657,9 @@
 
       (messages/send-command-complete out "INSERT" 1)
 
+      ;; Send ReadyForQuery to finalize the response
+      (messages/send-ready-for-query out \I)
+
       ;; Return the saved document to support the test cases
       saved)
 
@@ -665,6 +670,9 @@
         (log/log-error (str "Error processing INSERT: " (.getMessage e) "\n" (.toString sw))))
       (messages/send-error-response out (str "Error processing INSERT: " (.getMessage e)))
       (messages/send-command-complete out "INSERT" 0)
+
+      ;; Send ReadyForQuery in error case
+      (messages/send-ready-for-query out \E)
       nil)))
 
 (defn handle-update-case
@@ -698,19 +706,22 @@
               (swap! update-count inc)))
 
           (log/log-info (str "Updated " @update-count " documents successfully"))
-          (messages/send-command-complete out "UPDATE" @update-count))
+          (messages/send-command-complete out "UPDATE" @update-count)
+          (messages/send-ready-for-query out \I))
 
         (do
           (log/log-warn "No documents found matching WHERE conditions")
           (messages/send-error-response out "No documents found matching WHERE conditions")
-          (messages/send-command-complete out "UPDATE" 0))))
+          (messages/send-command-complete out "UPDATE" 0)
+          (messages/send-ready-for-query out \I))))
     (catch Exception e
       (let [sw (java.io.StringWriter.)
             pw (java.io.PrintWriter. sw)]
         (.printStackTrace e pw)
         (log/log-error (str "Error processing UPDATE: " (.getMessage e) "\n" (.toString sw))))
       (messages/send-error-response out (str "Error processing UPDATE: " (.getMessage e)))
-      (messages/send-command-complete out "UPDATE" 0))))
+      (messages/send-command-complete out "UPDATE" 0)
+      (messages/send-ready-for-query out \E))))
 
 (defn handle-delete-case
   "Handles the DELETE case of an SQL query"
@@ -741,19 +752,23 @@
               (if deleted
                 (do
                   (log/log-info "Document deleted successfully")
-                  (messages/send-command-complete out "DELETE" 1))
+                  (messages/send-command-complete out "DELETE" 1)
+                  (messages/send-ready-for-query out \I))
                 (do
                   (log/log-error "Failed to delete document")
                   (messages/send-error-response out "Failed to delete document")
-                  (messages/send-command-complete out "DELETE" 0))))
+                  (messages/send-command-complete out "DELETE" 0)
+                  (messages/send-ready-for-query out \E))))
             (do
               (log/log-error (str "Document ID " id " does not belong to table " table-name))
               (messages/send-error-response out (str "Document ID " id " does not belong to table " table-name))
-              (messages/send-command-complete out "DELETE" 0)))
+              (messages/send-command-complete out "DELETE" 0)
+              (messages/send-ready-for-query out \E)))
           (do
             (log/log-error (str "Document with ID " id " not found"))
             (messages/send-error-response out (str "Document with ID " id " not found"))
-            (messages/send-command-complete out "DELETE" 0)))
+            (messages/send-command-complete out "DELETE" 0)
+            (messages/send-ready-for-query out \E)))
 
         (let [error-msg (cond
                           (not (seq table-name)) "DELETE failed: Table name is missing."
@@ -761,14 +776,16 @@
                           :else "Invalid DELETE statement.")]
           (log/log-error error-msg)
           (messages/send-error-response out error-msg)
-          (messages/send-command-complete out "DELETE" 0))))
+          (messages/send-command-complete out "DELETE" 0)
+          (messages/send-ready-for-query out \E))))
     (catch Exception e
       (let [sw (java.io.StringWriter.)
             pw (java.io.PrintWriter. sw)]
         (.printStackTrace e pw)
         (log/log-error (str "Error processing DELETE: " (.getMessage e) "\n" (.toString sw))))
       (messages/send-error-response out (str "Error processing DELETE: " (.getMessage e)))
-      (messages/send-command-complete out "DELETE" 0))))
+      (messages/send-command-complete out "DELETE" 0)
+      (messages/send-ready-for-query out \E))))
 
 (defn handle-query
   "Handles an SQL query.
@@ -792,10 +809,12 @@
         ;; Default case for unknown or invalid query types
         (do (log/log-error (str "Unknown or invalid query type: " query-type " for SQL: " sql))
             (messages/send-error-response out (str "Unknown or invalid command: " sql))
-            (messages/send-command-complete out "UNKNOWN" 0))))
+            (messages/send-command-complete out "UNKNOWN" 0)
+            (messages/send-ready-for-query out \I))))
     (catch Exception e
       (let [sw (java.io.StringWriter.)
             pw (java.io.PrintWriter. sw)]
         (.printStackTrace e pw)
         (log/log-error (str "Error handling query: " sql " - Error: " (.getMessage e) "\n" (.toString sw))))
-      (messages/send-error-response out (str "Error processing query: " (.getMessage e))))))
+      (messages/send-error-response out (str "Error processing query: " (.getMessage e)))
+      (messages/send-ready-for-query out \E))))
