@@ -6,8 +6,7 @@
   ["chrondb.api.redis.redis-test"
    "chrondb.api.redis.redis-integration-test"
    "chrondb.api.redis.redis-jedis-test"
-   "chrondb.api.redis.redis-list-test"
-   "chrondb.api.redis.redis-benchmark-test"])
+   "chrondb.api.redis.redis-list-test"])
 
 (defn ensure-processes-killed
   "Ensure all Java processes related to chrondb are killed."
