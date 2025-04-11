@@ -17,6 +17,7 @@
 target/
 data/
 test-*
+benchmark_results_*.txt
 
 # OS
 .DS_Store
