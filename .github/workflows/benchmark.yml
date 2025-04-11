@@ -32,24 +32,5 @@ jobs:
         id: run-benchmark
         run: |
           mkdir -p benchmark-results
-          ./scripts/run_benchmark.sh | tee benchmark-results/output.log
+          ./scripts/run_benchmark.sh
         continue-on-error: true # Continue the workflow even if the benchmark fails
-
-      - name: Copy benchmark result files
-        run: |
-          cp benchmark_results_*.txt benchmark-results/ || echo "No benchmark result files found"
-
-      - name: Upload benchmark results
-        uses: actions/upload-artifact@v3
-        with:
-          name: benchmark-results
-          path: benchmark-results
-          retention-days: 90 # Keep results for 90 days
-
-      - name: Summarize benchmark status
-        run: |
-          if [ ${{ steps.run-benchmark.outcome }} == 'success' ]; then
-            echo "✅ Benchmark completed successfully"
-          else
-            echo "⚠️ Benchmark completed with errors - check the logs for details"
-          fi
