@@ -35,15 +35,18 @@
              :test-redis-only {:extra-paths ["test"]
                                :extra-deps {org.clojure/tools.namespace {:mvn/version "1.4.4"}
                                             redis.clients/jedis         {:mvn/version "5.1.0"}}
-                               :main-opts ["-m" "chrondb.run-tests-redis-only"]}
+                               :exec-args {:exclude ["benchmark"]}
+                               :main-opts ["-m" "chrondb.run-tests-redis-only" "-e" "benchmark"]}
              :test-sql-only {:extra-paths ["test"]
                              :extra-deps {org.clojure/tools.namespace {:mvn/version "1.4.4"}
                                           com.github.igrishaev/pg2-core {:mvn/version "0.1.35"}}
-                             :main-opts ["-m" "chrondb.run-tests-sql-only"]}
+                             :exec-args {:exclude ["benchmark"]}
+                             :main-opts ["-m" "chrondb.run-tests-sql-only" "-e" "benchmark"]}
              :test-redis-sequential {:extra-paths ["test"]
                                      :extra-deps {org.clojure/tools.namespace {:mvn/version "1.4.4"}
                                                   redis.clients/jedis         {:mvn/version "5.1.0"}}
-                                     :main-opts ["-m" "chrondb.run-redis-tests-sequential"]}
+                                     :exec-args {:exclude ["benchmark"]}
+                                     :main-opts ["-m" "chrondb.run-redis-tests-sequential" "-e" "benchmark"]}
              :run     {:main-opts ["-m" "chrondb.core"]
                        :exec-fn chrondb.core/-main
                        :exec-args {}
