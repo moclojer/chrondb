@@ -53,6 +53,12 @@
             (recur (drop 2 args) (assoc result :namespace-regex (second args)))
             (recur (rest args) result))
 
+          ;; Opção para excluir testes por tag
+          (= arg "-e")
+          (if (second args)
+            (recur (drop 2 args) (assoc result :exclude-tags (second args)))
+            (recur (rest args) result))
+
           :else
           (recur (rest args) result))))))
 
@@ -90,17 +96,54 @@
     (catch Exception e
       (println "Warning: Failed to free port 6380:" (.getMessage e)))))
 
+(defn- get-test-vars
+  "Get all test vars in a namespace that don't have excluded tags"
+  [ns-sym exclude-tags-set]
+  (filter (fn [v]
+            (and (:test (meta v))
+                 (not (some #(get (meta v) %) exclude-tags-set))))
+          (vals (ns-publics ns-sym))))
+
+(defn- run-filtered-tests
+  "Run tests in a namespace with tags excluded"
+  [ns-sym exclude-tags-set]
+  (let [test-vars (get-test-vars ns-sym exclude-tags-set)
+        total-tests (count (filter :test (vals (ns-publics ns-sym))))
+        filtered-count (count test-vars)
+        excluded-count (- total-tests filtered-count)]
+    (println "Running" filtered-count "tests in" ns-sym
+             "(excluding" excluded-count "benchmark tests)")
+
+    ;; Configure a custom reporter to capture results
+    (let [results (atom {:test 0 :pass 0 :fail 0 :error 0})
+          report-orig test/report]
+
+      ;; Sobrescrever a função report para capturar resultados
+      (with-redefs [test/report (fn [m]
+                                  (when (#{:pass :fail :error} (:type m))
+                                    (swap! results update (:type m) inc))
+                                  (when (= :begin-test-var (:type m))
+                                    (swap! results update :test inc))
+                                  (report-orig m))]
+
+        ;; Execute os testes e retorne os resultados
+        (test/test-vars test-vars)
+        @results))))
+
 (defn run-tests-with-filter
   "Run tests with namespace filtering.
    Options:
    - :namespace-filter - Function to filter namespaces (required)
    - :namespace-regex - Additional regex to filter namespaces (optional)
+   - :exclude-tags - Tags to exclude from testing (optional)
    - :cleanup-fn - Function to run after each test (optional)
    - :description - Description of the test run (required)"
-  [& {:keys [namespace-filter namespace-regex cleanup-fn description]}]
+  [& {:keys [namespace-filter namespace-regex exclude-tags cleanup-fn description]}]
   (println description)
   (when namespace-regex
     (println "Using namespace regex filter:" namespace-regex))
+  (when exclude-tags
+    (println "Excluding tests with tags:" exclude-tags))
 
   ;; Find all test namespaces
   (let [all-namespaces (find/find-namespaces-in-dir (io/file "test"))
@@ -110,15 +153,23 @@
         filtered-namespaces (if namespace-regex
                               (filter #(re-find (re-pattern namespace-regex) (str %)) filtered-namespaces-1)
                               filtered-namespaces-1)
+        exclude-tags-set (when exclude-tags
+                           (into #{} (map keyword (.split exclude-tags ","))))
         results (atom {:test 0 :pass 0 :fail 0 :error 0})]
 
     (println "Found" (count filtered-namespaces) "test namespaces to run")
+    (when exclude-tags-set
+      (println "Will exclude tests with tags:" exclude-tags-set))
 
     ;; Require and run each namespace
     (doseq [ns-sym filtered-namespaces]
       (println "Testing" ns-sym)
       (require ns-sym)
-      (let [ns-result (test/run-tests ns-sym)]
+
+      ;; Run tests, filtering by tags if needed
+      (let [ns-result (if exclude-tags-set
+                        (run-filtered-tests ns-sym exclude-tags-set)
+                        (test/run-tests ns-sym))]
         (swap! results update :test + (:test ns-result 0))
         (swap! results update :pass + (:pass ns-result 0))
         (swap! results update :fail + (:fail ns-result 0))
@@ -151,6 +202,7 @@
         result (run-tests-with-filter
                 :namespace-filter namespace-filter
                 :namespace-regex (:namespace-regex opts)
+                :exclude-tags (:exclude-tags opts)
                 :cleanup-fn cleanup-fn
                 :description description)
         exit-code (if (= 0 (+ (:fail result 0) (:error result 0))) 0 1)]

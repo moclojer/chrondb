@@ -31,7 +31,7 @@
                                           :extra-deps {org.clojure/tools.namespace   {:mvn/version "1.4.4"}
                                                        redis.clients/jedis           {:mvn/version "5.1.0"}
                                                        com.github.igrishaev/pg2-core {:mvn/version "0.1.35"}}
-                                          :main-opts ["-m" "chrondb.run-tests-non-external-protocol"]}
+                                          :main-opts ["-m" "chrondb.run-tests-non-external-protocol" "-e" "benchmark"]}
              :test-redis-only {:extra-paths ["test"]
                                :extra-deps {org.clojure/tools.namespace {:mvn/version "1.4.4"}
                                             redis.clients/jedis         {:mvn/version "5.1.0"}}
