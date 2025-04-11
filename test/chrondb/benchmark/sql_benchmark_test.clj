@@ -14,7 +14,9 @@
 (def ^:dynamic *test-storage* nil)
 (def ^:dynamic *test-index* nil)
 (def ^:dynamic *test-conn* nil)
-(def num-test-docs 10000)  ;; Adjust to generate ~1GB of data
+(def num-test-docs 10000) ;; Adjust to generate ~1GB of data
+(def user-limit 1000)
+(def order-limit 2000)
 
 (defn- cleanup-test-env []
   (let [repo-dir (io/file benchmark-repo-path)
@@ -60,17 +62,17 @@
     (log/log-info "Creating additional tables for JOIN tests...")
     (let [out (java.io.ByteArrayOutputStream.)]
       ;; Generate users table
-      (doseq [idx (range 100)]
+      (doseq [idx (range user-limit)]
         (let [id (str (UUID/randomUUID))
               query (str "INSERT INTO users (id, name, email, age) VALUES ('"
                          id "', 'User " idx "', 'user" idx "@example.com', " (+ 20 (rand-int 40)) ")")]
           (query/handle-query *test-storage* *test-index* out query)))
 
       ;; Generate orders table with references to benchmark_items and users
-      (doseq [_ (range 200)]
+      (doseq [_ (range order-limit)]
         (let [id (str (UUID/randomUUID))
               item-index (rand-int num-test-docs)
-              user-index (rand-int 100)
+              user-index (rand-int user-limit)
               query (str "INSERT INTO orders (id, user_id, item_id, order_date, quantity) VALUES ('"
                          id "', 'user" user-index "', 'item" item-index "', '"
                          (+ 20220101 (rand-int 10000)) "', " (inc (rand-int 5)) ")")]
