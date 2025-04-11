@@ -1,16 +1,13 @@
 (ns chrondb.benchmark.sql-benchmark-test
-  (:require [clojure.test :refer :all]
+  (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [chrondb.storage.git :as git]
             [chrondb.index.lucene :as lucene]
-            [chrondb.api.sql.test-helpers :as sql-helpers]
             [chrondb.benchmark.fixtures :as fixtures]
-            [chrondb.storage.protocol :as storage]
             [chrondb.api.sql.execution.query :as query]
             [clojure.string :as str]
             [clojure.java.io :as io]
             [chrondb.util.logging :as log])
-  (:import (java.util UUID)
-           (java.io File)))
+  (:import (java.util UUID)))
 
 (def benchmark-repo-path "/tmp/chrondb-benchmark-repo")
 (def benchmark-index-path "/tmp/chrondb-benchmark-index")
@@ -63,14 +60,14 @@
     (log/log-info "Creating additional tables for JOIN tests...")
     (let [out (java.io.ByteArrayOutputStream.)]
       ;; Generate users table
-      (doseq [i (range 100)]
+      (doseq [idx (range 100)]
         (let [id (str (UUID/randomUUID))
               query (str "INSERT INTO users (id, name, email, age) VALUES ('"
-                         id "', 'User " i "', 'user" i "@example.com', " (+ 20 (rand-int 40)) ")")]
+                         id "', 'User " idx "', 'user" idx "@example.com', " (+ 20 (rand-int 40)) ")")]
           (query/handle-query *test-storage* *test-index* out query)))
 
       ;; Generate orders table with references to benchmark_items and users
-      (doseq [i (range 200)]
+      (doseq [_ (range 200)]
         (let [id (str (UUID/randomUUID))
               item-index (rand-int num-test-docs)
               user-index (rand-int 100)
@@ -134,11 +131,11 @@
                              query (str "INSERT INTO benchmark_items (" (str/join ", " fields) ") VALUES (" (str/join ", " values) ")")
                              start-time (System/currentTimeMillis)]
                          (query/handle-query *test-storage* *test-index* out query)
-                         (- (System/currentTimeMillis) start-time)))]
-    (let [total-time (reduce + insert-times)
-          avg-time (double (/ total-time (count insert-times)))]
-      (log/log-info (format "Average INSERT time: %.2f ms" avg-time))
-      avg-time)))
+                         (- (System/currentTimeMillis) start-time)))
+        total-time (reduce + insert-times)
+        avg-time (double (/ total-time (count insert-times)))]
+    (log/log-info (format "Average INSERT time: %.2f ms" avg-time))
+    avg-time))
 
 (deftest ^:benchmark test-sql-performance
   (testing "SQL Benchmark with 1GB+ dataset"

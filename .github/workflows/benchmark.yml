@@ -2,8 +2,8 @@ name: SQL Protocol Benchmark
 
 on:
   workflow_dispatch: # Allow manual execution
-  schedule:
-    - cron: "0 0 * * 0" # Run once a week (Sunday at midnight)
+  push:
+  pull_request:
 
 jobs:
   benchmark:
