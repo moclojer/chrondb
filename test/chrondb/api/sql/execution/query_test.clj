@@ -52,6 +52,24 @@
              (map second)
              (into [])))
 
+      (get-document-history [_ id]
+        (when-let [doc (get @documents id)]
+          [{:commit-id "mock-current"
+            :commit-time (java.util.Date.)
+            :commit-message "Current version"
+            :committer-name "Mock Storage"
+            :committer-email "mock@chrondb.com"
+            :document doc}]))
+
+      (get-document-history [_ id _branch]
+        (when-let [doc (get @documents id)]
+          [{:commit-id "mock-current"
+            :commit-time (java.util.Date.)
+            :commit-message "Current version"
+            :committer-name "Mock Storage"
+            :committer-email "mock@chrondb.com"
+            :document doc}]))
+
       (save-document [_ doc]
         (swap! documents assoc (:id doc) doc)
         doc)

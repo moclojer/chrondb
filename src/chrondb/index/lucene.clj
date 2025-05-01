@@ -9,8 +9,7 @@
            [org.apache.lucene.index IndexWriter IndexWriterConfig IndexWriterConfig$OpenMode DirectoryReader Term IndexNotFoundException]
            [org.apache.lucene.search IndexSearcher Query ScoreDoc TopDocs]
            [org.apache.lucene.queryparser.classic QueryParser ParseException]
-           [java.nio.file Paths]
-           [java.io Closeable]))
+           [java.nio.file Paths]))
 
 (defn- create-lucene-doc
   "Creates a Lucene Document from a Clojure map, using different analyzers."
@@ -151,7 +150,6 @@
         (log/log-error (str "Unexpected error trying to search the index: " (.getMessage e)))
         [])))
 
-  Closeable
   (close [_]
     (log/log-info "Closing Lucene index...")
     (try (.close writer) (catch Exception e (log/log-error (str "Error closing IndexWriter: " (.getMessage e)))))
