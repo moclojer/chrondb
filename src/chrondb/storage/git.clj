@@ -652,12 +652,7 @@
       (throw (Exception. "Repository is closed")))
 
     ;; Process commit-hash to extract just the hash part if needed
-    (let [clean-hash (if (string? commit-hash)
-                       ;; If it contains spaces, it might be in format "commit HASH ..."
-                       (if (.contains commit-hash " ")
-                         (second (clojure.string/split commit-hash #" "))
-                         commit-hash)
-                       (str commit-hash))
+    (let [clean-hash (normalize-commit-hash commit-hash)
           _ (log/log-info (str "Using commit hash for restore: " clean-hash))
           doc (get-document-at-commit repository id clean-hash)]
       (if doc
