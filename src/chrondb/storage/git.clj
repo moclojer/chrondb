@@ -576,6 +576,17 @@
   [storage id & [branch]]
   (protocol/get-document-history storage id branch))
 
+;; Add this private helper function
+(defn- normalize-commit-hash
+  "Normalize a commit hash string to extract just the hash part."
+  [commit-hash]
+  (if (string? commit-hash)
+    ;; If it contains spaces, it might be in format "commit HASH ..."
+    (if (.contains commit-hash " ")
+      (second (clojure.string/split commit-hash #" "))
+      commit-hash)
+    (str commit-hash)))
+
 (defn get-document-at-commit
   "Get the document content at a specific commit hash."
   [repository id commit-hash]
@@ -584,13 +595,7 @@
           doc-path (get-document-path repository id)]
       (when doc-path
         (try
-          ;; Process commit-hash to extract just the hash part if needed
-          (let [clean-hash (if (string? commit-hash)
-                             ;; If it contains spaces, it might be in format "commit HASH ..."
-                             (if (.contains commit-hash " ")
-                               (second (clojure.string/split commit-hash #" "))
-                               commit-hash)
-                             (str commit-hash))
+          (let [clean-hash (normalize-commit-hash commit-hash)
                 _ (log/log-info (str "Using commit hash: " clean-hash))
                 commit-id (try
                             (ObjectId/fromString clean-hash)
