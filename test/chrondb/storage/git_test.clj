@@ -283,10 +283,9 @@
         ;; Print commit hash for debugging
         (println "Commit hash:" first-commit-hash)
 
-        ;; Get document at specific commit
-        (let [doc-at-commit (git/get-document-at-commit repository "commit-test:1" first-commit-hash)]
-          (is (= 1 (:value doc-at-commit)) "Should retrieve original version")
-          (is (= "Original" (:name doc-at-commit)) "Should have original name")))
+        ;; Get document at specific commit and verify
+        (is (= 1 (:value (git/get-document-at-commit repository "commit-test:1" first-commit-hash))) "Should retrieve original version")
+        (is (= "Original" (:name (git/get-document-at-commit repository "commit-test:1" first-commit-hash))) "Should have original name"))
 
       (protocol/close storage))))
 
@@ -307,20 +306,18 @@
       (let [history (protocol/get-document-history storage "restore-test:1")
             original-commit-hash (get-in history [1 :commit-id])] ;; Original version commit
 
-        ;; Restore document to original version
-        (let [restored-doc (git/restore-document-version storage "restore-test:1" original-commit-hash)]
-          (is (= 1 (:value restored-doc)) "Restored document should have original value")
+        ;; Restore document to original version and check value
+        (is (= 1 (:value (git/restore-document-version storage "restore-test:1" original-commit-hash))) "Restored document should have original value")
 
-          ;; Verify current document is restored version
-          (let [current-doc (protocol/get-document storage "restore-test:1")]
-            (is (= 1 (:value current-doc)) "Current document should have original value")
+        ;; Verify current document is restored version
+        (is (= 1 (:value (protocol/get-document storage "restore-test:1"))) "Current document should have original value")
 
-            ;; Check history again - should have 3 versions now (original, update, restore)
-            (let [new-history (protocol/get-document-history storage "restore-test:1")]
-              (is (= 3 (count new-history)) "Should have 3 versions in history now")
-              (is (= 1 (get-in new-history [0 :document :value])) "Most recent should be restored version")
-              (is (.contains (get-in new-history [0 :commit-message]) "Restore")
-                  "Commit message should indicate restoration")))))
+        ;; Check history again - should have 3 versions now (original, update, restore)
+        (let [new-history (protocol/get-document-history storage "restore-test:1")]
+          (is (= 3 (count new-history)) "Should have 3 versions in history now")
+          (is (= 1 (get-in new-history [0 :document :value])) "Most recent should be restored version")
+          (is (.contains (get-in new-history [0 :commit-message]) "Restore")
+              "Commit message should indicate restoration")))
 
       (protocol/close storage))))
 
@@ -364,28 +361,27 @@
         (let [initial-commit-hash (get-in history-before [1 :commit-id])]
           (println "Initial commit hash:" initial-commit-hash)
 
-          ;; 3. Rollback to the original version (value 123)
-          (let [restored-doc (git/restore-document-version storage "abc" initial-commit-hash)]
-            (is (= 123 (:value restored-doc)) "Should restore original value")
+          ;; 3. Rollback to the original version (value 123) and test
+          (is (= 123 (:value (git/restore-document-version storage "abc" initial-commit-hash))) "Should restore original value")
 
-            ;; Verify the current value after rollback
-            (is (= 123 (:value (protocol/get-document storage "abc"))) "Current value should be the original one")
+          ;; Verify the current value after rollback
+          (is (= 123 (:value (protocol/get-document storage "abc"))) "Current value should be the original one")
 
-            ;; 4. Verify the history contains 3 commits
-            (let [history-after (protocol/get-document-history storage "abc")]
-              (is (= 3 (count history-after)) "Should have 3 versions in history")
+          ;; 4. Verify the history contains 3 commits
+          (let [history-after (protocol/get-document-history storage "abc")]
+            (is (= 3 (count history-after)) "Should have 3 versions in history")
 
-              ;; Verify the chronology of commits (most recent first)
-              (is (= 123 (get-in history-after [0 :document :value])) "Most recent commit should be the rollback (123)")
-              (is (= 1234 (get-in history-after [1 :document :value])) "Second commit should be the edit (1234)")
-              (is (= 123 (get-in history-after [2 :document :value])) "Third commit should be the original (123)")
+            ;; Verify the chronology of commits (most recent first)
+            (is (= 123 (get-in history-after [0 :document :value])) "Most recent commit should be the rollback (123)")
+            (is (= 1234 (get-in history-after [1 :document :value])) "Second commit should be the edit (1234)")
+            (is (= 123 (get-in history-after [2 :document :value])) "Third commit should be the original (123)")
 
-              ;; Verify the commit messages
-              (is (.contains (get-in history-after [0 :commit-message]) "Restore")
-                  "Commit message should indicate restoration")
-              (is (.contains (get-in history-after [1 :commit-message]) "Save")
-                  "Second commit should be a save operation")
-              (is (.contains (get-in history-after [2 :commit-message]) "Save")
-                  "Initial commit should be a save operation")))))
+            ;; Verify the commit messages
+            (is (.contains (get-in history-after [0 :commit-message]) "Restore")
+                "Commit message should indicate restoration")
+            (is (.contains (get-in history-after [1 :commit-message]) "Save")
+                "Second commit should be a save operation")
+            (is (.contains (get-in history-after [2 :commit-message]) "Save")
+                "Initial commit should be a save operation"))))
 
       (protocol/close storage))))

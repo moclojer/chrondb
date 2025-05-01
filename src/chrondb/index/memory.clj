@@ -41,7 +41,12 @@
                      (= field "content") (str/includes? (str/lower-case v) query-lower)
                      :else false)))
                doc))
-       all-docs))))
+       all-docs)))
+
+  (close [_]
+    (log/log-info "Closing MemoryIndex...")
+    (.clear data)
+    (log/log-info "MemoryIndex closed.")))
 
 (defn create-memory-index
   "Creates a new in-memory index.

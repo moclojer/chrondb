@@ -27,7 +27,7 @@
            [org.eclipse.jgit.dircache DirCache DirCacheEntry]
            [org.eclipse.jgit.lib ConfigConstants Constants ObjectId]
            [org.eclipse.jgit.lib CommitBuilder FileMode RefUpdate$Result]
-           [org.eclipse.jgit.revwalk RevCommit RevWalk]
+           [org.eclipse.jgit.revwalk RevWalk]
            [org.eclipse.jgit.transport RefSpec]
            [org.eclipse.jgit.treewalk CanonicalTreeParser TreeWalk]
            [org.eclipse.jgit.util SystemReader]
@@ -594,8 +594,7 @@
   "Get the document content at a specific commit hash."
   [repository id commit-hash]
   (when (and repository commit-hash id)
-    (let [git (Git/wrap repository)
-          rev-walk (RevWalk. repository)
+    (let [rev-walk (RevWalk. repository)
           doc-path (get-document-path repository id)]
       (when doc-path
         (try
@@ -609,7 +608,7 @@
                 _ (log/log-info (str "Using commit hash: " clean-hash))
                 commit-id (try
                             (ObjectId/fromString clean-hash)
-                            (catch Exception e
+                            (catch Exception _
                               (log/log-warn "Invalid commit hash format:" clean-hash)
                               nil))]
             (when commit-id

@@ -44,6 +44,18 @@
   [^ConcurrentHashMap data]
   (.clear data))
 
+(defn get-document-history-memory
+  "Simulates document history for in-memory storage.
+   Since memory storage doesn't track history, this returns just the current state."
+  [^ConcurrentHashMap data id]
+  (when-let [doc (get-document-memory data id)]
+    [{:commit-id "memory-current"
+      :commit-time (java.util.Date.)
+      :commit-message "Current version"
+      :committer-name "Memory Storage"
+      :committer-email "memory@chrondb.com"
+      :document doc}]))
+
 (defrecord MemoryStorage [^ConcurrentHashMap data]
   protocol/Storage
   (save-document [_ doc] (save-document-memory data doc))
@@ -60,6 +72,9 @@
 
   (get-documents-by-table [_ table-name] (get-documents-by-table-memory data table-name))
   (get-documents-by-table [_ table-name _branch] (get-documents-by-table-memory data table-name))
+
+  (get-document-history [_ id] (get-document-history-memory data id))
+  (get-document-history [_ id _branch] (get-document-history-memory data id))
 
   (close [_]
     (close-memory-storage data)

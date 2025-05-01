@@ -74,7 +74,7 @@ ChronDB also provides low-level access to Git-based document history, allowing y
 
 ### Retrieving Specific Document Versions
 
-You can retrieve a document at a specific commit by providing the commit hash:
+You can retrieve a document at a specific commit by providing the commit hash. Note that each retrieval operation generates a new commit to maintain chronological integrity:
 
 ```clojure
 ;; Get a document at a specific commit
