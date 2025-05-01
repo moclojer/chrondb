@@ -27,10 +27,11 @@
            [org.eclipse.jgit.dircache DirCache DirCacheEntry]
            [org.eclipse.jgit.lib ConfigConstants Constants ObjectId]
            [org.eclipse.jgit.lib CommitBuilder FileMode RefUpdate$Result]
-           [org.eclipse.jgit.revwalk RevWalk]
+           [org.eclipse.jgit.revwalk RevCommit RevWalk]
            [org.eclipse.jgit.transport RefSpec]
            [org.eclipse.jgit.treewalk CanonicalTreeParser TreeWalk]
-           [org.eclipse.jgit.util SystemReader]))
+           [org.eclipse.jgit.util SystemReader]
+           [org.eclipse.jgit.treewalk.filter PathFilter]))
 
 (defn ensure-directory
   "Creates a directory if it doesn't exist.
@@ -284,6 +285,64 @@
               (.close tree-walk)
               (.close rev-walk))))))))
 
+(defn- fetch-document-history
+  "Internal helper function to get the history of changes for a document.
+   Returns a sequence of maps containing commit info and document content at each version.
+   Similar to `git log -p -- file` command."
+  [repository id branch]
+  (let [config-map (config/load-config)
+        branch-name (or branch (get-in config-map [:git :default-branch]))
+        doc-path (get-document-path repository id branch-name)]
+
+    (when (and repository doc-path)
+      (let [git (Git/wrap repository)
+            rev-walk (RevWalk. repository)
+            log-command (-> git
+                            (.log)
+                            (.addPath doc-path))]
+
+        (try
+          (let [commits (iterator-seq (.iterator (.call log-command)))
+                results (atom [])]
+
+            (doseq [commit commits]
+              (let [commit-id (.getId commit)
+                    tree-walk (TreeWalk. repository)
+                    tree-id (.getTree commit)
+                    commit-time (Date. (* 1000 (.getCommitTime commit)))
+                    commit-message (.getFullMessage commit)
+                    committer (.getCommitterIdent commit)
+                    committer-name (.getName committer)
+                    committer-email (.getEmailAddress committer)]
+
+                ;; Get document content at this revision
+                (.addTree tree-walk (.parseTree rev-walk tree-id))
+                (.setRecursive tree-walk true)
+                (.setFilter tree-walk (PathFilter/create doc-path))
+
+                (when (.next tree-walk)
+                  (let [object-id (.getObjectId tree-walk 0)
+                        object-loader (.open repository object-id)
+                        content (String. (.getBytes object-loader) "UTF-8")
+                        doc-content (try
+                                      (json/read-str content :key-fn keyword)
+                                      (catch Exception e
+                                        {:error (str "Failed to parse document: " (.getMessage e))
+                                         :raw-content content}))]
+
+                    (swap! results conj {:commit-id (str commit-id)
+                                         :commit-time commit-time
+                                         :commit-message commit-message
+                                         :committer-name committer-name
+                                         :committer-email committer-email
+                                         :document doc-content})))
+
+                (.close tree-walk)))
+
+            @results)
+          (finally
+            (.close rev-walk)))))))
+
 (defrecord GitStorage [repository data-dir]
   protocol/Storage
   (save-document [_ document]
@@ -494,6 +553,15 @@
         ;; Document not found, return false
         false)))
 
+  (get-document-history [_ id]
+    (protocol/get-document-history _ id nil))
+
+  (get-document-history [_ id branch]
+    (when-not repository
+      (throw (Exception. "Repository is closed")))
+
+    (fetch-document-history repository id branch))
+
   (close [_]
     (when repository
       (.close repository)
@@ -509,3 +577,95 @@
      (create-git-storage path (get-in config-map [:storage :data-dir]))))
   ([path data-dir]
    (->GitStorage (create-repository path) data-dir)))
+
+(defn get-document-history
+  "Get the history of changes for a document.
+   Returns a sequence of maps containing commit info and document content at each version.
+   Similar to `git log -p -- file` command.
+
+   Parameters:
+   storage - The GitStorage instance
+   id - Document ID
+   branch - Optional branch name (defaults to the configured default branch)"
+  [storage id & [branch]]
+  (protocol/get-document-history storage id branch))
+
+(defn get-document-at-commit
+  "Get the document content at a specific commit hash."
+  [repository id commit-hash]
+  (when (and repository commit-hash id)
+    (let [git (Git/wrap repository)
+          rev-walk (RevWalk. repository)
+          doc-path (get-document-path repository id)]
+      (when doc-path
+        (try
+          ;; Process commit-hash to extract just the hash part if needed
+          (let [clean-hash (if (string? commit-hash)
+                             ;; If it contains spaces, it might be in format "commit HASH ..."
+                             (if (.contains commit-hash " ")
+                               (second (clojure.string/split commit-hash #" "))
+                               commit-hash)
+                             (str commit-hash))
+                _ (log/log-info (str "Using commit hash: " clean-hash))
+                commit-id (try
+                            (ObjectId/fromString clean-hash)
+                            (catch Exception e
+                              (log/log-warn "Invalid commit hash format:" clean-hash)
+                              nil))]
+            (when commit-id
+              (let [commit (.parseCommit rev-walk commit-id)
+                    tree-walk (TreeWalk. repository)]
+                (try
+                  (.addTree tree-walk (.parseTree rev-walk (.getTree commit)))
+                  (.setRecursive tree-walk true)
+                  (.setFilter tree-walk (PathFilter/create doc-path))
+
+                  (when (.next tree-walk)
+                    (let [object-id (.getObjectId tree-walk 0)
+                          object-loader (.open repository object-id)
+                          content (String. (.getBytes object-loader) "UTF-8")]
+                      (try
+                        (json/read-str content :key-fn keyword)
+                        (catch Exception e
+                          (log/log-warn "Failed to parse document:" (.getMessage e))
+                          nil))))
+                  (finally
+                    (.close tree-walk))))))
+          (catch Exception e
+            (log/log-warn "Error getting document at commit:" (.getMessage e))
+            nil)
+          (finally
+            (.close rev-walk)))))))
+
+(defn restore-document-version
+  "Restore a document to a specific version by creating a new commit."
+  [storage id commit-hash & [branch]]
+  (let [repository (:repository storage)
+        config-map (config/load-config)
+        branch-name (or branch (get-in config-map [:git :default-branch]))]
+
+    (when-not repository
+      (throw (Exception. "Repository is closed")))
+
+    ;; Process commit-hash to extract just the hash part if needed
+    (let [clean-hash (if (string? commit-hash)
+                       ;; If it contains spaces, it might be in format "commit HASH ..."
+                       (if (.contains commit-hash " ")
+                         (second (clojure.string/split commit-hash #" "))
+                         commit-hash)
+                       (str commit-hash))
+          _ (log/log-info (str "Using commit hash for restore: " clean-hash))
+          doc (get-document-at-commit repository id clean-hash)]
+      (if doc
+        (let [message (str "Restore document " id " to version " clean-hash)]
+          (commit-virtual (Git/wrap repository)
+                          branch-name
+                          (get-file-path (:data-dir storage) id (:_table doc))
+                          (json/write-str doc)
+                          message
+                          (get-in config-map [:git :committer-name])
+                          (get-in config-map [:git :committer-email]))
+
+          (push-changes (Git/wrap repository) config-map)
+          doc)
+        (throw (ex-info "Document version not found" {:id id :commit-hash clean-hash}))))))

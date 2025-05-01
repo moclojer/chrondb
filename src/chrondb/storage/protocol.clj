@@ -52,6 +52,15 @@
      - branch: (Optional) The branch name to get documents from (default branch if nil)
      Returns: A sequence of documents for the table.")
 
+  (get-document-history
+    [this id]
+    [this id branch]
+    "Retrieves the history of a document by its ID.
+     Parameters:
+     - id: The unique identifier of the document
+     - branch: (Optional) The branch name to get the document history from (default branch if nil)
+     Returns: A sequence of maps containing commit info and document content at each version.")
+
   (close [this]
     "Closes the storage system and releases any resources.
      Should be called when the storage system is no longer needed.
