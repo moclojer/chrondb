@@ -49,6 +49,41 @@ ChronDB provides API methods to access the complete history of any document:
 ;; ]
 ```
 
+ChronDB also provides low-level access to Git-based document history, allowing you to retrieve detailed commit information and document content at each version:
+
+```clojure
+;; Get detailed document history with Git commit metadata
+(def git-history (chrondb/get-document-history db "user:1"))
+
+;; Example git-history result
+;; [
+;;   {:commit-id "8f7e6d5c4b3a2...",
+;;    :commit-time #inst "2023-05-15T09:45:00Z",
+;;    :commit-message "Save document",
+;;    :committer-name "ChronDB",
+;;    :committer-email "system@chrondb.com",
+;;    :document {:name "John", :email "john.doe@example.com"}}
+;;   {:commit-id "1a2b3c4d5e6f7...",
+;;    :commit-time #inst "2023-05-10T14:30:00Z",
+;;    :commit-message "Save document",
+;;    :committer-name "ChronDB",
+;;    :committer-email "system@chrondb.com",
+;;    :document {:name "John", :email "john@example.com"}}
+;; ]
+```
+
+### Retrieving Specific Document Versions
+
+You can retrieve a document at a specific commit by providing the commit hash:
+
+```clojure
+;; Get a document at a specific commit
+(def old-version (chrondb/get-document-at-commit db-repository "user:1" "1a2b3c4d5e6f7..."))
+
+;; Example result
+;; {:name "John", :email "john@example.com"}
+```
+
 Through other protocols, document history is also accessible:
 
 **REST API:**
@@ -311,11 +346,24 @@ ChronDB makes it easy to revert to previous states:
 (chrondb/revert-all db "2023-05-10T14:30:00Z")
 ```
 
+For git-based storage, you can also restore a document to a specific version by commit hash while preserving the complete history:
+
+```clojure
+;; Restore a document to a specific version by commit hash
+(def restored-doc (chrondb/restore-document-version db "user:1" "1a2b3c4d5e6f7..."))
+
+;; This creates a new commit that reverts the document to that version,
+;; while preserving the complete history of changes
+```
+
+Unlike a traditional rollback that might discard history, this approach adds a new restoration commit that preserves the complete chronology of changes, ensuring full audit trails are maintained.
+
 This enables:
 
 - Recovering from errors
 - Undoing problematic changes
 - Testing with real data then reverting
+- Maintaining a complete audit trail of all operations
 
 ## Performance Considerations
 
