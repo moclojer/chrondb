@@ -164,6 +164,68 @@ SELECT * FROM user WHERE id = '1';
 | `chrondb_at(table, id, timestamp)` | Get document at a point in time |
 | `chrondb_diff(table, id, t1, t2)` | Compare document versions |
 
+#### SQL History Functions
+
+ChronDB provides specialized SQL functions to access the version history of documents:
+
+##### `chrondb_history(table_name, document_id)`
+
+Returns the complete modification history of a document.
+
+**Result columns:**
+
+- `commit_id`: Commit hash identifying the version
+- `timestamp`: When the change was made
+- `committer`: Who made the change
+- `data`: Document content at that version
+
+**Example:**
+
+```sql
+-- View all versions of a user document
+SELECT * FROM chrondb_history('user', '1');
+
+-- Get only the commit IDs and timestamps
+SELECT commit_id, timestamp FROM chrondb_history('user', '1');
+```
+
+##### `chrondb_at(table_name, document_id, commit_hash)`
+
+Returns the document exactly as it was at a specific commit.
+
+**Example:**
+
+```sql
+-- View user document as it was at commit 'abc123def456'
+SELECT * FROM chrondb_at('user', '1', 'abc123def456');
+
+-- Extract just the name field from a historical version
+SELECT name FROM chrondb_at('user', '1', 'abc123def456');
+```
+
+##### `chrondb_diff(table_name, document_id, commit_hash1, commit_hash2)`
+
+Compares two versions of a document and returns the differences.
+
+**Result columns:**
+
+- `id`: The document ID
+- `commit1`: First commit hash used in comparison
+- `commit2`: Second commit hash used in comparison
+- `added`: Fields added between versions (JSON format)
+- `removed`: Fields removed between versions (JSON format)
+- `changed`: Fields modified between versions (JSON format with old and new values)
+
+**Example:**
+
+```sql
+-- Compare user document between two versions
+SELECT * FROM chrondb_diff('user', '1', 'abc123def456', 'def456abc123');
+
+-- View only the changes between versions
+SELECT changed FROM chrondb_diff('user', '1', 'abc123def456', 'def456abc123');
+```
+
 ### Example with psql
 
 ```bash

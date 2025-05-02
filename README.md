@@ -116,6 +116,39 @@ PGSSLMODE=disable psql \
   -c "SELECT * FROM key-chrondb"
 ```
 
+#### SQL History Functions
+
+ChronDB provides SQL functions to access the version history of documents, allowing you to query and compare different versions directly through SQL:
+
+```sql
+-- Function to query the complete history of a document
+-- Returns: commit_id, timestamp, committer, data
+SELECT * FROM chrondb_history('table_name', 'document_id');
+
+-- Function to query a document at a specific point (commit hash)
+-- Returns the document as it was at that commit
+SELECT * FROM chrondb_at('table_name', 'document_id', 'commit_hash');
+
+-- Function to compare different versions of a document
+-- Returns: id, commit1, commit2, added, removed, changed
+SELECT * FROM chrondb_diff('table_name', 'document_id', 'commit_hash1', 'commit_hash2');
+```
+
+Example usage:
+
+```sql
+-- View the complete history of a user document
+SELECT * FROM chrondb_history('user', '1');
+
+-- Get user document as it was at a specific commit
+SELECT * FROM chrondb_at('user', '1', 'abc123def456');
+
+-- Compare user document between two versions
+SELECT * FROM chrondb_diff('user', '1', 'abc123def456', 'def456abc123');
+```
+
+These functions make it easy to leverage ChronDB's versioning capabilities directly through standard SQL queries.
+
 ### Using the Functional Interface
 
 You can also run ChronDB using the `-X` option:

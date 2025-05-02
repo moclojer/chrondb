@@ -119,7 +119,7 @@
                                   [(first parts) (str/trim (second parts))]
                                   [nil cleaned-spec])))
 
-       ;; Parse column names if provided
+        ;; Parse column names if provided
         columns-start (+ into-index 2)  ;; after INTO table (
         columns-end (- values-index 1)  ;; before )
         columns (when (and (< columns-start columns-end)
@@ -130,7 +130,7 @@
                        (remove #(= "," %))
                        (mapv str/trim)))
 
-       ;; Parse values
+        ;; Parse values
         values-start (+ values-index 1)
         values-tokens (subvec tokens values-start)
         values (loop [remaining values-tokens
@@ -175,7 +175,7 @@
         set-index (tokenizer/find-token-index tokens "set")
         where-index (tokenizer/find-token-index tokens "where")
 
-       ;; Parse SET clause
+        ;; Parse SET clause
         set-end (or where-index (count tokens))
         set-tokens (subvec tokens (inc set-index) set-end)
         updates (loop [remaining set-tokens
@@ -194,7 +194,7 @@
                         :else
                         (recur (rest remaining) (assoc result current-field token) nil)))))
 
-       ;; Parse WHERE clause
+        ;; Parse WHERE clause
         where-condition (when where-index
                           (clauses/parse-where-condition tokens where-index (count tokens)))]
 
@@ -231,17 +231,118 @@
      :table table-name
      :where where-condition}))
 
-(defn parse-sql-query
-  "Parses a SQL query string into a structured representation.
+(defn parse-function-call
+  "Parses a function call like chrondb_history, chrondb_at, etc.
    Parameters:
-   - sql: The SQL query string
-   Returns: A map representing the parsed query"
-  [sql]
-  (let [tokens (tokenizer/tokenize-sql sql)
-        command (when (seq tokens) (str/lower-case (first tokens)))]
-    (case command
-      "select" (parse-select-query tokens)
-      "insert" (parse-insert-query tokens)
-      "update" (parse-update-query tokens)
-      "delete" (parse-delete-query tokens)
-      {:type :unknown, :sql sql})))
+   - tokens: The sequence of query tokens starting with the function name
+   Returns: A map representing the parsed function call or nil if not a recognized function"
+  [tokens]
+  (when (not-empty tokens)
+    (let [func-name (str/lower-case (first tokens))]
+      (when (and (> (count tokens) 3)  ;; Need at least 'func(' and ')' plus args
+                 (= (second tokens) "(")
+                 (.contains (str/lower-case func-name) "chrondb_"))
+        (let [closing-paren-idx (tokenizer/find-matching-paren tokens 1)
+              args-tokens (when closing-paren-idx
+                            (subvec tokens 2 closing-paren-idx))
+              args (when args-tokens
+                     (->> args-tokens
+                          (remove #(= "," %))
+                          (mapv #(str/replace % #"['\"]" ""))))]
+          (case func-name
+            "chrondb_history"
+            (when (= (count args) 2)
+              {:type :chrondb-function
+               :function :history
+               :table (first args)
+               :id (second args)})
+
+            "chrondb_at"
+            (when (= (count args) 3)
+              {:type :chrondb-function
+               :function :at
+               :table (first args)
+               :id (second args)
+               :commit (nth args 2)})
+
+            "chrondb_diff"
+            (when (= (count args) 4)
+              {:type :chrondb-function
+               :function :diff
+               :table (first args)
+               :id (second args)
+               :commit1 (nth args 2)
+               :commit2 (nth args 3)})
+
+            nil))))))
+
+(defn parse-sql-query
+  "Parses a SQL query string into an intermediate representation.
+   Parameters:
+   - query: The SQL query string
+   Returns: A map representing the parsed query structure"
+  [query]
+  (let [tokens (tokenizer/tokenize-sql query)
+        first-token (when (not-empty tokens) (str/lower-case (first tokens)))]
+    (cond
+      ;; Tratamento específico para as funções chrondb
+      (and (= first-token "select")
+           (> (count tokens) 3) ;; Precisa ter pelo menos SELECT * FROM FUNC
+           (= (str/lower-case (nth tokens 2)) "from")
+           (let [function-name (str/lower-case (nth tokens 3))]
+             (or (.startsWith function-name "chrondb_history")
+                 (.startsWith function-name "chrondb_at")
+                 (.startsWith function-name "chrondb_diff"))))
+      (let [func-name (str/lower-case (nth tokens 3))
+            opening-paren-idx (tokenizer/find-token-index-from tokens "(" 4)
+            closing-paren-idx (when opening-paren-idx
+                                (tokenizer/find-matching-paren tokens opening-paren-idx))
+            args (when (and opening-paren-idx closing-paren-idx)
+                   (remove #(= "," %)
+                           (subvec tokens (inc opening-paren-idx) closing-paren-idx)))]
+        (cond
+          ;; chrondb_history('table', 'id')
+          (and (.startsWith func-name "chrondb_history")
+               (= (count args) 2))
+          {:type :chrondb-function
+           :function :history
+           :table (str/replace (first args) #"['\"]" "")
+           :id (str/replace (second args) #"['\"]" "")}
+
+          ;; chrondb_at('table', 'id', 'commit')
+          (and (.startsWith func-name "chrondb_at")
+               (= (count args) 3))
+          {:type :chrondb-function
+           :function :at
+           :table (str/replace (first args) #"['\"]" "")
+           :id (str/replace (second args) #"['\"]" "")
+           :commit (str/replace (nth args 2) #"['\"]" "")}
+
+          ;; chrondb_diff('table', 'id', 'commit1', 'commit2')
+          (and (.startsWith func-name "chrondb_diff")
+               (= (count args) 4))
+          {:type :chrondb-function
+           :function :diff
+           :table (str/replace (first args) #"['\"]" "")
+           :id (str/replace (second args) #"['\"]" "")
+           :commit1 (str/replace (nth args 2) #"['\"]" "")
+           :commit2 (str/replace (nth args 3) #"['\"]" "")}
+
+          ;; Default - unknown function
+          :else
+          {:type :unknown, :message (str "Unknown ChronDB function: " func-name)}))
+
+      (= first-token "select")
+      (parse-select-query tokens)
+
+      (= first-token "insert")
+      (parse-insert-query tokens)
+
+      (= first-token "update")
+      (parse-update-query tokens)
+
+      (= first-token "delete")
+      (parse-delete-query tokens)
+
+      :else
+      {:type :unknown, :message "Unsupported SQL query type"})))

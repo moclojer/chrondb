@@ -1,37 +1,37 @@
 ;; This file is part of ChronDB.
-;;
-;; ChronDB is free software: you can redistribute it and/or modify
-;; it under the terms of the GNU General Public License as published
-;; by the Free Software Foundation, either version 3 of the License,
-;; or (at your option) any later version.
-;;
-;; ChronDB is distributed in the hope that it will be useful,
-;; but WITHOUT ANY WARRANTY; without even the implied warranty of
-;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-;; GNU General Public License for more details.
-;;
-;; You should have received a copy of the GNU General Public License
-;; along with this program. If not, see <https://www.gnu.org/licenses/>.
-(ns chrondb.storage.git
-  "Git-based storage implementation for ChronDB.
+ ;;
+ ;; ChronDB is free software: you can redistribute it and/or modify
+ ;; it under the terms of the GNU General Public License as published
+ ;; by the Free Software Foundation, either version 3 of the License,
+ ;; or (at your option) any later version.
+ ;;
+ ;; ChronDB is distributed in the hope that it will be useful,
+ ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+ ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ ;; GNU General Public License for more details.
+ ;;
+ ;; You should have received a copy of the GNU General Public License
+ ;; along with this program. If not, see <https://www.gnu.org/licenses/>.
+ (ns chrondb.storage.git
+   "Git-based storage implementation for ChronDB.
    Uses JGit for Git operations and provides versioned document storage."
-  (:require [chrondb.config :as config]
-            [chrondb.storage.protocol :as protocol]
-            [chrondb.util.logging :as log]
-            [clojure.data.json :as json]
-            [clojure.java.io :as io]
-            [clojure.string :as str])
-  (:import [java.io ByteArrayInputStream]
-           [java.util Date TimeZone]
-           [org.eclipse.jgit.api Git]
-           [org.eclipse.jgit.dircache DirCache DirCacheEntry]
-           [org.eclipse.jgit.lib ConfigConstants Constants ObjectId]
-           [org.eclipse.jgit.lib CommitBuilder FileMode RefUpdate$Result]
-           [org.eclipse.jgit.revwalk RevWalk]
-           [org.eclipse.jgit.transport RefSpec]
-           [org.eclipse.jgit.treewalk CanonicalTreeParser TreeWalk]
-           [org.eclipse.jgit.util SystemReader]
-           [org.eclipse.jgit.treewalk.filter PathFilter]))
+   (:require [chrondb.config :as config]
+             [chrondb.storage.protocol :as protocol]
+             [chrondb.util.logging :as log]
+             [clojure.data.json :as json]
+             [clojure.java.io :as io]
+             [clojure.string :as str])
+   (:import [java.io ByteArrayInputStream]
+            [java.util Date TimeZone]
+            [org.eclipse.jgit.api Git]
+            [org.eclipse.jgit.dircache DirCache DirCacheEntry]
+            [org.eclipse.jgit.lib ConfigConstants Constants ObjectId]
+            [org.eclipse.jgit.lib CommitBuilder FileMode RefUpdate$Result]
+            [org.eclipse.jgit.revwalk RevWalk]
+            [org.eclipse.jgit.transport RefSpec]
+            [org.eclipse.jgit.treewalk CanonicalTreeParser TreeWalk]
+            [org.eclipse.jgit.util SystemReader]
+            [org.eclipse.jgit.treewalk.filter PathFilter]))
 
 (defn ensure-directory
   "Creates a directory if it doesn't exist.
@@ -265,7 +265,13 @@
   (when repository
     (let [config-map (config/load-config)
           branch-name (or branch (get-in config-map [:git :default-branch]))
-          head-id (.resolve repository (str branch-name "^{commit}"))]
+          head-id (.resolve repository (str branch-name "^{commit}"))
+          data-dir (get-in config-map [:storage :data-dir])
+          ; Split logic - extract table if ID has table prefix (e.g., "user:1")
+          [table-hint id-only] (let [parts (str/split (or id "") #":")]
+                                 (if (> (count parts) 1)
+                                   [(first parts) (second parts)]
+                                   [nil id]))]
       (when head-id
         (let [tree-walk (TreeWalk. repository)
               rev-walk (RevWalk. repository)]
@@ -273,13 +279,32 @@
             (.addTree tree-walk (.parseTree rev-walk head-id))
             (.setRecursive tree-walk true)
             ;; Look for .json files with the document ID
-            (let [encoded-id (encode-path id)
+            (let [encoded-id (encode-path (or id-only id))
                   found-path (atom nil)]
-              (while (and (.next tree-walk) (nil? @found-path))
-                (let [path (.getPathString tree-walk)]
-                  (when (and (.endsWith path ".json")
-                             (.contains path (str encoded-id ".json")))
-                    (reset! found-path path))))
+
+              ;; Try table-specific path first if we have a table hint
+              (when table-hint
+                (let [table-path (get-file-path data-dir id-only table-hint)]
+                  (log/log-info (str "🔍 Checking table-specific path: " table-path))
+                  (.setFilter tree-walk (PathFilter/create table-path))
+                  (when (.next tree-walk)
+                    (reset! found-path table-path)
+                    (log/log-info (str "✅ Found document at table-specific path: " table-path)))))
+
+              ;; Reset and try general search if table-specific path not found
+              (when (nil? @found-path)
+                (.reset tree-walk)
+                (.addTree tree-walk (.parseTree rev-walk head-id))
+                (.setRecursive tree-walk true)
+                (.setFilter tree-walk (org.eclipse.jgit.treewalk.filter.PathSuffixFilter/create ".json"))
+
+                (while (and (.next tree-walk) (nil? @found-path))
+                  (let [path (.getPathString tree-walk)]
+                    (when (and (.endsWith path ".json")
+                               (.contains path encoded-id))
+                      (log/log-info (str "✅ Found document at path: " path))
+                      (reset! found-path path)))))
+
               @found-path)
             (finally
               (.close tree-walk)
@@ -287,22 +312,38 @@
 
 (defn- fetch-document-history
   "Internal helper function to get the history of changes for a document.
-   Returns a sequence of maps containing commit info and document content at each version.
-   Similar to `git log -p -- file` command."
+  Returns a sequence of maps containing commit info and document content at each version."
   [repository id branch]
   (let [config-map (config/load-config)
         branch-name (or branch (get-in config-map [:git :default-branch]))
-        doc-path (get-document-path repository id branch-name)]
+        ; Get data directory from config
+        data-dir (get-in config-map [:storage :data-dir])
+        ; Split logic - extract table if ID has table prefix (e.g., "user:1")
+        [table-hint id-only] (let [parts (str/split (or id "") #":")]
+                               (if (> (count parts) 1)
+                                 [(first parts) (second parts)]
+                                 [nil id]))
+        ; Try table-specific path first if we have a table hint
+        table-specific-path (when table-hint
+                              (get-file-path data-dir id-only table-hint))
+        ; Generic document path (might find any table)
+        generic-path (get-document-path repository id branch-name)
+        ; Use table-specific path if available, otherwise fallback to generic
+        final-path (or table-specific-path generic-path)]
 
-    (when (and repository doc-path)
+    (log/log-info (str "🔎 Document paths - Generic: " generic-path ", Table-specific: " table-specific-path))
+    (log/log-info (str "Using document path for history: " final-path))
+
+    (when (and repository final-path)
       (let [git (Git/wrap repository)
             rev-walk (RevWalk. repository)
             log-command (-> git
                             (.log)
-                            (.addPath doc-path))]
+                            (.addPath final-path))]
 
         (try
           (let [commits (iterator-seq (.iterator (.call log-command)))
+                _ (log/log-info (str "Found " (count commits) " commits directly for " final-path))
                 results (atom [])]
 
             (doseq [commit commits]
@@ -318,14 +359,18 @@
                 ;; Get document content at this revision
                 (.addTree tree-walk (.parseTree rev-walk tree-id))
                 (.setRecursive tree-walk true)
-                (.setFilter tree-walk (PathFilter/create doc-path))
+                (.setFilter tree-walk (PathFilter/create final-path))
 
                 (when (.next tree-walk)
                   (let [object-id (.getObjectId tree-walk 0)
                         object-loader (.open repository object-id)
                         content (String. (.getBytes object-loader) "UTF-8")
                         doc-content (try
-                                      (json/read-str content :key-fn keyword)
+                                      (let [parsed (json/read-str content :key-fn keyword)]
+                                        ;; Ensure the document has a _table field if we know the table
+                                        (if (and table-hint (not (:_table parsed)))
+                                          (assoc parsed :_table table-hint)
+                                          parsed))
                                       (catch Exception e
                                         {:error (str "Failed to parse document: " (.getMessage e))
                                          :raw-content content}))]
@@ -339,6 +384,7 @@
 
                 (.close tree-walk)))
 
+            (log/log-info (str "History entries after processing: " (count @results)))
             @results)
           (finally
             (.close rev-walk)))))))
@@ -569,9 +615,9 @@
 
 (defn create-git-storage
   "Creates a new instance of GitStorage.
-   Takes a path for the Git repository and optionally a data directory path.
-   If data-dir is not provided, uses the one from config.
-   Returns: A new GitStorage instance."
+Takes a path for the Git repository and optionally a data directory path.
+If data-dir is not provided, uses the one from config.
+Returns: A new GitStorage instance."
   ([path]
    (let [config-map (config/load-config)]
      (create-git-storage path (get-in config-map [:storage :data-dir]))))
@@ -580,13 +626,13 @@
 
 (defn get-document-history
   "Get the history of changes for a document.
-   Returns a sequence of maps containing commit info and document content at each version.
-   Similar to `git log -p -- file` command.
+Returns a sequence of maps containing commit info and document content at each version.
+Similar to `git log -p -- file` command.
 
-   Parameters:
-   storage - The GitStorage instance
-   id - Document ID
-   branch - Optional branch name (defaults to the configured default branch)"
+Parameters:
+storage - The GitStorage instance
+id - Document ID
+branch - Optional branch name (defaults to the configured default branch)"
   [storage id & [branch]]
   (protocol/get-document-history storage id branch))
 
@@ -604,40 +650,67 @@
 (defn get-document-at-commit
   "Get the document content at a specific commit hash."
   [repository id commit-hash]
-  (when (and repository commit-hash id)
-    (let [rev-walk (RevWalk. repository)
-          doc-path (get-document-path repository id)]
-      (when doc-path
+  (if-not (and repository commit-hash id)
+    (do
+      (log/log-warn "Missing required parameters for get-document-at-commit")
+      nil)
+
+    (let [config-map (config/load-config)
+          data-dir (get-in config-map [:storage :data-dir])
+          rev-walk (RevWalk. repository)
+          ;; Split logic - extract table if ID has table prefix (e.g., "user:1")
+          parts (str/split (or id "") #":")
+          table-hint (when (> (count parts) 1) (first parts))
+          id-only (if (> (count parts) 1) (second parts) id)
+          ;; Try to find path based on table hint first
+          doc-path (if table-hint
+                     (get-file-path data-dir id-only table-hint)
+                     (get-document-path repository id))]
+
+      (if-not doc-path
+        nil
         (try
           (let [clean-hash (normalize-commit-hash commit-hash)
-                _ (log/log-info (str "Using commit hash: " clean-hash))
+                _ (log/log-info (str "Using commit hash for restore: " clean-hash))
                 commit-id (try
                             (ObjectId/fromString clean-hash)
                             (catch Exception _
-                              (log/log-warn "Invalid commit hash format:" clean-hash)
+                              (log/log-warn (str "Invalid commit hash format: " clean-hash))
                               nil))]
-            (when commit-id
+
+            (if-not commit-id
+              nil
               (let [commit (.parseCommit rev-walk commit-id)
                     tree-walk (TreeWalk. repository)]
+
                 (try
                   (.addTree tree-walk (.parseTree rev-walk (.getTree commit)))
                   (.setRecursive tree-walk true)
                   (.setFilter tree-walk (PathFilter/create doc-path))
 
-                  (when (.next tree-walk)
+                  (if-not (.next tree-walk)
+                    nil
                     (let [object-id (.getObjectId tree-walk 0)
                           object-loader (.open repository object-id)
                           content (String. (.getBytes object-loader) "UTF-8")]
+
                       (try
-                        (json/read-str content :key-fn keyword)
+                        (let [doc (json/read-str content :key-fn keyword)]
+                          ;; Ensure the document has a _table field if we know the table
+                          (if (and table-hint (not (:_table doc)))
+                            (assoc doc :_table table-hint)
+                            doc))
                         (catch Exception e
-                          (log/log-warn "Failed to parse document:" (.getMessage e))
+                          (log/log-warn (str "Failed to parse document: " (.getMessage e)))
                           nil))))
+
                   (finally
                     (.close tree-walk))))))
+
           (catch Exception e
-            (log/log-warn "Error getting document at commit:" (.getMessage e))
+            (log/log-warn (str "Error getting document at commit: " (.getMessage e)))
             nil)
+
           (finally
             (.close rev-walk)))))))
 
@@ -655,16 +728,23 @@
     (let [clean-hash (normalize-commit-hash commit-hash)
           _ (log/log-info (str "Using commit hash for restore: " clean-hash))
           doc (get-document-at-commit repository id clean-hash)]
-      (if doc
-        (let [message (str "Restore document " id " to version " clean-hash)]
+
+      (if-not doc
+        (throw (ex-info "Document version not found" {:id id :commit-hash clean-hash}))
+
+        (let [table-name (:_table doc)
+              doc-path (if table-name
+                         (get-file-path (:data-dir storage) id table-name)
+                         (get-file-path (:data-dir storage) id))
+              message (str "Restore document " id " to version " clean-hash)]
+
           (commit-virtual (Git/wrap repository)
                           branch-name
-                          (get-file-path (:data-dir storage) id (:_table doc))
+                          doc-path
                           (json/write-str doc)
                           message
                           (get-in config-map [:git :committer-name])
                           (get-in config-map [:git :committer-email]))
 
           (push-changes (Git/wrap repository) config-map)
-          doc)
-        (throw (ex-info "Document version not found" {:id id :commit-hash clean-hash}))))))
+          doc)))))
