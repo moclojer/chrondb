@@ -1,3 +1,17 @@
+;; This file is part of ChronDB.
+;;
+;; ChronDB is free software: you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published
+;; by the Free Software Foundation, either version 3 of the License,
+;; or (at your option) any later version.
+;;
+;; ChronDB is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+;;
+;; You should have received a copy of the GNU General Public License
+;; along with this program. If not, see <https://www.gnu.org/licenses/>.
 (ns chrondb.storage.git
   "Git-based storage implementation for ChronDB.
    Uses JGit for Git operations and provides versioned document storage."
@@ -368,7 +382,7 @@
                       content (String. (.getBytes object-loader) "UTF-8")
                       doc (json/read-str content :key-fn keyword)]
                   (if (or (empty? encoded-prefix)
-                           ;; If we have a prefix, check if the path contains it
+                          ;; If we have a prefix, check if the path contains it
                           (.contains path encoded-prefix))
                     (do
                       (log/log-info (str "Document matched prefix: " (:id doc)))

@@ -262,4 +262,10 @@ Please make sure to update tests as appropriate.
 
 ## License
 
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+ChronDB is licensed under the terms of the GNU General Public License v3.0 (GPLv3).
+
+This means:
+
+- You are free to use, study, modify, and redistribute the software.
+- Any distributed modified version must also be licensed under GPLv3.
+- See the [LICENSE](./LICENSE) file for full details or visit [gnu.org/licenses/gpl-3.0](https://www.gnu.org/licenses/gpl-3.0.html).
