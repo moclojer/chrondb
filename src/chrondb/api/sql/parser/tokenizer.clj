@@ -101,3 +101,22 @@
          (filter (fn [[_ token]] (= token keyword-lower)))
          (first)
          (first))))
+
+(defn find-matching-paren
+  "Finds the index of the closing parenthesis matching the opening parenthesis at the given index.
+   Parameters:
+   - tokens: The sequence of tokens to search
+   - open-paren-idx: The index of the opening parenthesis
+   Returns: The index of the matching closing parenthesis, or nil if not found"
+  [tokens open-paren-idx]
+  (when (and (< open-paren-idx (count tokens))
+             (= (nth tokens open-paren-idx) "("))
+    (loop [idx (inc open-paren-idx)
+           depth 1]
+      (cond
+        (>= idx (count tokens)) nil  ;; Reached end without finding closing paren
+        (= (nth tokens idx) "(") (recur (inc idx) (inc depth))
+        (= (nth tokens idx) ")") (if (= depth 1)
+                                   idx  ;; Found matching paren
+                                   (recur (inc idx) (dec depth)))
+        :else (recur (inc idx) depth)))))

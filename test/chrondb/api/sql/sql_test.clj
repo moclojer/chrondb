@@ -1,7 +1,9 @@
 (ns chrondb.api.sql.sql-test
   (:require [clojure.test :refer [deftest is testing]]
             [chrondb.api.sql.core :as sql]
-            [chrondb.api.sql.test-helpers :refer [create-test-resources]])
+            [chrondb.storage.protocol :as storage]
+            [chrondb.api.sql.test-helpers :refer [create-test-resources]]
+            [chrondb.api.sql.parser.statements :as statements])
   (:import [java.io BufferedReader BufferedWriter StringReader StringWriter]
            [java.net ServerSocket]))
 
@@ -77,3 +79,45 @@
 
       ;; Edge case: try to stop with nil
       (sql/stop-sql-server nil)))) ;; Should not throw an exception
+
+;; Testes para funções de histórico
+(deftest test-chrondb-history-functions
+  (testing "Parsing chrondb_history function"
+    (let [{storage :storage} (create-test-resources)
+          ;; Criar documentos de teste
+          doc1 {:id "test:1" :name "Test Document" :value 100}
+          _ (storage/save-document storage doc1)
+
+          ;; Modificar o documento para criar histórico
+          doc1-updated {:id "test:1" :name "Updated Document" :value 200}
+          _ (storage/save-document storage doc1-updated)
+
+          ;; Testar o parser da função chrondb_history
+          history-query "SELECT * FROM chrondb_history('test', '1')"
+          parsed (statements/parse-sql-query history-query)]
+
+      (is (= :chrondb-function (:type parsed)))
+      (is (= :history (:function parsed)))
+      (is (= "test" (:table parsed)))
+      (is (= "1" (:id parsed)))))
+
+  (testing "Parsing chrondb_at function"
+    (let [at-query "SELECT * FROM chrondb_at('test', '1', 'abc123')"
+          parsed (statements/parse-sql-query at-query)]
+
+      (is (= :chrondb-function (:type parsed)))
+      (is (= :at (:function parsed)))
+      (is (= "test" (:table parsed)))
+      (is (= "1" (:id parsed)))
+      (is (= "abc123" (:commit parsed)))))
+
+  (testing "Parsing chrondb_diff function"
+    (let [diff-query "SELECT * FROM chrondb_diff('test', '1', 'abc123', 'def456')"
+          parsed (statements/parse-sql-query diff-query)]
+
+      (is (= :chrondb-function (:type parsed)))
+      (is (= :diff (:function parsed)))
+      (is (= "test" (:table parsed)))
+      (is (= "1" (:id parsed)))
+      (is (= "abc123" (:commit1 parsed)))
+      (is (= "def456" (:commit2 parsed))))))
