@@ -57,48 +57,19 @@
                                          ", pure document ID=" (get document :id)
                                          ", _table=" (get document :_table))))
 
-                  ;; ID field special handling
+                  ;; ID field special handling - using STRICT EXACT MATCHING ONLY
                   is-id-field (= (name field) "id")
-                  numeric-value? (re-matches #"^\d+$" value)
-                  numeric-doc-value? (re-matches #"^\d+$" doc-value)
 
-                  ;; Get pure document ID
-                  pure-doc-id (str (get document :id))
-
-                  ;; Improved ID matching logic - more exact matches
+                  ;; Strict ID matching logic - ONLY exact matches
                   id-match? (if is-id-field
                               (cond
-                                ;; 1. Direct match: documento exato igual (mais importante)
+                                ;; Direct exact match only - the only valid case
                                 (= doc-value value)
                                 (do (log/log-info "✅ MATCH - Exact ID match") true)
 
-                                ;; 2. Exact ID pure match: quando o ID puro é exatamente o valor
-                                (= pure-doc-id value)
-                                (do (log/log-info "✅ MATCH - Pure ID exact match") true)
-
-                                ;; Se estamos buscando por um valor que parece ser um número puro
-                                numeric-value?
-                                (cond
-                                  ;; 3. Se ambos são numéricos, comparar como números
-                                  numeric-doc-value?
-                                  (let [match (= (Double/parseDouble doc-value) (Double/parseDouble value))]
-                                    (when match (log/log-info "✅ MATCH - Numeric ID match"))
-                                    match)
-
-                                  ;; 4. Se o valor termina com exatamente ":N" (ex: "user:1")
-                                  ;; e estamos procurando pelo número puro, isso só deve ser considerado
-                                  ;; se não há resultados EXATOS, e não para esta lógica individual
-                                  (re-find (re-pattern (str ":" value "$")) doc-value)
-                                  (do (log/log-info "❓ CONDITIONAL MATCH - ID ends with value, low priority")
-                                      false)
-
-                                  ;; 5. Não são números comparáveis ou não termina com o número
-                                  :else
-                                  (do (log/log-info "❌ NO MATCH - numeric mismatch") false))
-
-                                ;; 6. Se não for nenhum dos casos acima, não há correspondência
+                                ;; No match for any other case
                                 :else
-                                (do (log/log-info "❌ NO MATCH - default no match") false))
+                                (do (log/log-info "❌ NO MATCH - Not an exact ID match") false))
                               false)
 
                   ;; Final comparison result

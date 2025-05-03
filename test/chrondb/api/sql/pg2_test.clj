@@ -47,36 +47,36 @@
           port 15433
           server (sql/start-sql-server storage index port)]
       (try
-         ;; Insert multiple documents for testing with completely unique IDs
+        ;; Insert multiple documents for testing with completely unique IDs
         (println "Saving documents to storage...")
 
-         ;; Create a user document with age=25
-        (storage-protocol/save-document storage {:id "user-john-abc123" :name "John" :age 25 :active true :tags ["admin" "user"]})
+        ;; Create a user document with age=25
+        (storage-protocol/save-document storage {:id "user-john-abc123" :name "John" :age 25 :active true :tags ["admin" "user"] :_table "doc"})
         (println "Saved user-john-abc123")
 
-         ;; Create a user document with age=30
-        (storage-protocol/save-document storage {:id "user-mary-def456" :name "Mary" :age 30 :active true :tags ["user"]})
+        ;; Create a user document with age=30
+        (storage-protocol/save-document storage {:id "user-mary-def456" :name "Mary" :age 30 :active true :tags ["user"] :_table "doc"})
         (println "Saved user-mary-def456")
 
-         ;; Create a user document with active=false
-        (storage-protocol/save-document storage {:id "user-peter-ghi789" :name "Peter" :age 22 :active false :tags ["user"]})
+        ;; Create a user document with active=false
+        (storage-protocol/save-document storage {:id "user-peter-ghi789" :name "Peter" :age 22 :active false :tags ["user"] :_table "doc"})
         (println "Saved user-peter-ghi789")
 
-         ;; Create a product document with price=3500
-        (storage-protocol/save-document storage {:id "product-laptop-x987" :name "Laptop" :price 3500 :stock 10})
+        ;; Create a product document with price=3500
+        (storage-protocol/save-document storage {:id "product-laptop-x987" :name "Laptop" :price 3500 :stock 10 :_table "doc"})
         (println "Saved product-laptop-x987")
 
-         ;; Create a product document with stock=15
-        (storage-protocol/save-document storage {:id "product-phone-y654" :name "Smartphone" :price 2000 :stock 15})
+        ;; Create a product document with stock=15
+        (storage-protocol/save-document storage {:id "product-phone-y654" :name "Smartphone" :price 2000 :stock 15 :_table "doc"})
         (println "Saved product-phone-y654")
 
-         ;; Create a product document with price<2000
-        (storage-protocol/save-document storage {:id "product-tablet-z321" :name "Tablet" :price 1500 :stock 5})
+        ;; Create a product document with price<2000
+        (storage-protocol/save-document storage {:id "product-tablet-z321" :name "Tablet" :price 1500 :stock 5 :_table "doc"})
         (println "Saved product-tablet-z321")
 
         (println "All documents saved, running queries...")
 
-         ;; Connect to database
+        ;; Connect to database
         (let [config {:host "localhost"
                       :port port
                       :user "postgres"
@@ -85,9 +85,9 @@
                       :simple-query? true}
               conn (pg/connect config)]
           (try
-             ;; Test individual queries to check if each document exists and has correct data
+            ;; Test individual queries to check if each document exists and has correct data
             (testing "Individual document queries"
-               ;; Test user document with age=25
+              ;; Test user document with age=25
               (let [result (pg/query conn "SELECT * FROM doc WHERE id = 'user-john-abc123'")]
                 (println "Query for user-john-abc123 returned:" (count result) "results")
                 (is (= 1 (count result)))
@@ -97,7 +97,7 @@
                   (is (= "25" (:age doc)))
                   (is (= "true" (:active doc)))))
 
-               ;; Test user document with age=30
+              ;; Test user document with age=30
               (let [result (pg/query conn "SELECT * FROM doc WHERE id = 'user-mary-def456'")]
                 (println "Query for user-mary-def456 returned:" (count result) "results")
                 (is (= 1 (count result)))
@@ -106,7 +106,7 @@
                   (is (= "Mary" (:name doc)))
                   (is (= "30" (:age doc)))))
 
-               ;; Test user document with active=false - ChronDB parece omitir campos com valores false
+              ;; Test user document with active=false - ChronDB parece omitir campos com valores false
               (let [result (pg/query conn "SELECT * FROM doc WHERE id = 'user-peter-ghi789'")]
                 (println "Query for user-peter-ghi789 returned:" (count result) "results")
                 (is (= 1 (count result)))
@@ -118,7 +118,7 @@
                           (nil? (:active doc))))
                   (println "Active field for Peter:" (:active doc))))
 
-               ;; Test product document with price=3500
+              ;; Test product document with price=3500
               (let [result (pg/query conn "SELECT * FROM doc WHERE id = 'product-laptop-x987'")]
                 (println "Query for product-laptop-x987 returned:" (count result) "results")
                 (is (= 1 (count result)))
@@ -128,7 +128,7 @@
                   (is (= "3500" (:price doc)))
                   (is (= "10" (:stock doc)))))
 
-               ;; Test product document with stock=15
+              ;; Test product document with stock=15
               (let [result (pg/query conn "SELECT * FROM doc WHERE id = 'product-phone-y654'")]
                 (println "Query for product-phone-y654 returned:" (count result) "results")
                 (is (= 1 (count result)))
@@ -137,7 +137,7 @@
                   (is (= "Smartphone" (:name doc)))
                   (is (= "15" (:stock doc)))))
 
-               ;; Test product document with price<2000
+              ;; Test product document with price<2000
               (let [result (pg/query conn "SELECT * FROM doc WHERE id = 'product-tablet-z321'")]
                 (println "Query for product-tablet-z321 returned:" (count result) "results")
                 (is (= 1 (count result)))
