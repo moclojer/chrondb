@@ -226,6 +226,23 @@
       ;; Always send ready for query
       (messages/send-ready-for-query out \I))))
 
+(defn process-columns
+  "Process columns for a query, handling column projection and aliases"
+  [docs columns]
+  (if (and (seq columns) (not (some #(= :all (:type %)) columns)))
+    ;; Column projection needed
+    (mapv (fn [doc]
+            (into {}
+                  (keep (fn [col-def]
+                          (when (and (= :column (:type col-def))
+                                     (not= "," (:column col-def)))
+                            (let [col-name (keyword (:column col-def))]
+                              [col-name (get doc col-name)])))
+                        columns)))
+          docs)
+    ;; No column projection, return original docs
+    docs))
+
 (defn handle-select
   "Handles a SELECT query, incorporating FTS via the index.
    Parameters:
@@ -243,9 +260,10 @@
           group-by (:group-by query)
           limit (:limit query)
           join-info (:join query)
+          columns (:columns query) ;; Get the requested columns
 
           ;; Verificar se é uma consulta direta por ID
-          id-condition (when (and (= (count std-conditions) 1)
+          id-condition (when (and (seq std-conditions)
                                   (= (:field (first std-conditions)) "id")
                                   (= (:op (first std-conditions)) "="))
                          (first std-conditions))
@@ -253,279 +271,103 @@
           id-value (when id-condition
                      (str/replace (:value id-condition) #"['\"]" ""))
 
-          ;; --- Get initial documents ---
-          primary-docs (cond
-                         ;; Specific document ID requested - check if it belongs to table
-                         (and id-value (seq table-name))
-                         (let [id-doc (storage/get-document storage id-value branch-name)]
-                           (if (or
-                                ;; Either the document belongs to the specified table
-                                (and id-doc (= (:_table id-doc) table-name))
-                                ;; Or we're querying the special "doc" table which should access all documents
-                                (and id-doc (= table-name "doc"))
-                                ;; Or the document ID has a prefix matching the table name (for backward compatibility)
-                                (and id-doc (str/starts-with? id-value (str table-name ":"))))
-                             [id-doc]
-                             []))
-
-                         ;; No table specified - invalid
-                         (not table-name)
+          ;; --- Get initial documents or perform JOIN ---
+          initial-docs (if join-info
+                         ;; Handle JOIN case - use join/perform-join
                          (do
-                           (log/log-error "No table specified in query")
-                           [])
-
-                         ;; Full-text search - index required
-                         (and (seq fts-conditions) index)
-                         (let [docs (mapcat #(fts-get-matching-docs index storage % branch-name) fts-conditions)]
-                           docs)
-
-                         :else
-                         (let [docs (if (= table-name "doc")
-                                      ;; Special case for "doc" table - get all documents
-                                      (storage/get-documents-by-prefix storage "" branch-name)
-                                      ;; Normal case - get documents for specific table
-                                      (storage/get-documents-by-table storage table-name branch-name))]
-                           docs))
-
-          ;; --- Handle JOIN if present ---
-          joined-docs (if join-info
-                        (let [join-table (when join-info (:table join-info))
-                              join-branch (normalize-schema-to-branch (:schema join-info))
-                              on-condition (:on join-info)]
-
-                          (if (and join-table on-condition)
-                            (let [;; Get documents from join table
-                                  second-table-docs (storage/get-documents-by-table storage join-table join-branch)
-
-                                  ;; Extract join condition details
-                                  left-table (:left-table on-condition)
-                                  left-field (:left-field on-condition)
-                                  right-table (:right-table on-condition)
-                                  right-field (:right-field on-condition)
-
-                                  ;; Determine which collection is which (primary vs secondary)
-                                  [primary-key _ secondary-key]
-                                  (if (= left-table table-name)
-                                    [left-field right-table right-field]
-                                    [right-field left-table left-field])
-
-                                  ;; Determine join type
-                                  join-type (:type join-info)
-                                  is-left-join (= join-type :left)
-
-                                  ;; Create joined documents based on join type
-                                  docs (if is-left-join
-                                         ;; LEFT JOIN: Keep all records from primary table
-                                         (let [_ (log/log-info (str "PERFORMING LEFT JOIN with " (count primary-docs) " primary docs and " (count second-table-docs) " secondary docs"))
-                                               ;; First, get all possible field names from secondary docs
-                                               secondary-fields (if (seq second-table-docs)
-                                                                  (distinct (mapcat (fn [doc]
-                                                                                      (keep (fn [[k _]]
-                                                                                              (when (not= k :_table)
-                                                                                                (keyword (str join-table "." (name k)))))
-                                                                                            doc))
-                                                                                    second-table-docs))
-                                                                  [])
-                                               _ (log/log-info (str "Secondary fields: " (pr-str secondary-fields)))
-
-                                               all-docs
-                                               (for [primary-doc primary-docs]
-                                                 (let [primary-key-val (get primary-doc (keyword primary-key))
-                                                       ;; Usar str para garantir compatibilidade de tipos na comparação
-                                                       primary-key-str (if (nil? primary-key-val) "" (str primary-key-val))
-
-                                                       ;; First create the primary side of the result with prefixed fields
-                                                       primary-map (into {}
-                                                                         (keep (fn [[k v]]
-                                                                                 ;; Filtrar campos _table
-                                                                                 (when (not= k :_table)
-                                                                                   [(keyword (str table-name "." (name k))) v]))
-                                                                               primary-doc))
-
-                                                       ;; Create a map with nil values for all secondary fields
-                                                       null-secondary-map (into {} (map #(vector % nil) secondary-fields))
-
-                                                       ;; Find matching secondary docs
-                                                       matching-secondary-docs
-                                                       (filter #(let [secondary-key-val (get % (keyword secondary-key))
-                                                                      secondary-key-str (if (nil? secondary-key-val) "" (str secondary-key-val))]
-                                                                  (= primary-key-str secondary-key-str))
-                                                               second-table-docs)]
-                                                   (if (seq matching-secondary-docs)
-                                                     ;; For matches, merge primary with secondary values
-                                                     (let [secondary-doc (first matching-secondary-docs)
-                                                           secondary-map (into {}
-                                                                               (keep (fn [[k v]]
-                                                                                       (when (not= k :_table)
-                                                                                         [(keyword (str join-table "." (name k))) v]))
-                                                                                     secondary-doc))]
-                                                       (merge primary-map secondary-map))
-                                                     ;; For non-matches, merge primary with null secondary values
-                                                     (merge primary-map null-secondary-map))))]
-                                           (log/log-info (str "Created " (count all-docs) " joined documents"))
-                                           all-docs)
-
-                                         ;; INNER JOIN: Only where both tables match
-                                         (for [primary-doc primary-docs
-                                               secondary-doc second-table-docs
-                                               :when (let [primary-key-val (get primary-doc (keyword primary-key))
-                                                           secondary-key-val (get secondary-doc (keyword secondary-key))
-                                                           primary-key-str (if (nil? primary-key-val) "" (str primary-key-val))
-                                                           secondary-key-str (if (nil? secondary-key-val) "" (str secondary-key-val))]
-                                                       (= primary-key-str secondary-key-str))]
-                                           ;; Merge documents and prefix keys with table name, excluindo campos _table
-                                           (merge
-                                            (into {} (keep (fn [[k v]]
-                                                             ;; Filtrar campos _table
-                                                             (when (not= k :_table)
-                                                               [(keyword (str table-name "." (name k))) v]))
-                                                           primary-doc))
-                                            (into {} (keep (fn [[k v]]
-                                                             ;; Filtrar campos _table
-                                                             (when (not= k :_table)
-                                                               [(keyword (str join-table "." (name k))) v]))
-                                                           secondary-doc)))))]
-                              docs)
-                            ;; No valid join condition
-                            (do
-                              (log/log-error "Invalid JOIN - missing table or ON condition")
-                              primary-docs)))
-                        ;; No join - just use primary docs
-                        primary-docs)
-
-          ;; --- Apply WHERE conditions (skip if já aplicamos a condição de ID) ---
-          filtered-docs (if id-value
-                          joined-docs
-                          (let [join-type (get-in join-info [:type])
-                                is-left-join (= join-type :left)
-                                ;; For LEFT JOIN with conditions on the right table fields, we need special handling
-                                right-table-name (get-in join-info [:table])
-                                right-table-conditions (when (and is-left-join right-table-name)
-                                                         (filter (fn [condition]
-                                                                   (and (:field condition)
-                                                                        (string? (:field condition))
-                                                                        (str/starts-with? (:field condition) (str right-table-name "."))))
-                                                                 std-conditions))
-                                left-table-conditions (when (and is-left-join right-table-name)
-                                                        (remove (fn [condition]
-                                                                  (and (:field condition)
-                                                                       (string? (:field condition))
-                                                                       (str/starts-with? (:field condition) (str right-table-name "."))))
-                                                                std-conditions))]
-                            (cond
-                              ;; For LEFT JOIN with right table conditions:
-                              ;; Need special handling to ensure we only include rows where the right table fields
-                              ;; match the conditions - this means filtering out rows where:
-                              ;; 1. The right side fields are NULL (no match for the left side record)
-                              ;; 2. The right side fields don't satisfy the conditions
-                              (and is-left-join (seq right-table-conditions))
-                              (let [;; For LEFT JOIN with WHERE on right table, we need to handle it differently
-                                    ;; The issue is that we need to both:
-                                    ;; 1. Filter out rows that don't satisfy the conditions
-                                    ;; 2. Include rows where right table fields are NULL (legitimate LEFT JOIN matches)
-
-                                    right-prefixed-fields (map #(keyword (:field %)) right-table-conditions)
-
-                                    ;; Identify documents without values for the secondary table (NULL values from LEFT JOIN)
-                                    docs-without-right-fields (filter (fn [doc]
-                                                                        (let [has-any-right-field (some #(contains? doc %) right-prefixed-fields)]
-                                                                          (not has-any-right-field)))
-                                                                      joined-docs)
-                                    _ (log/log-info (str "Docs without right fields (NULL joined): " (count docs-without-right-fields)))
-
-                                    ;; These docs have non-null values for all right table fields in the conditions
-                                    docs-with-right-fields (filter (fn [doc]
-                                                                     (every? #(contains? doc %) right-prefixed-fields))
-                                                                   joined-docs)
-                                    _ (log/log-info (str "Docs with right fields: " (count docs-with-right-fields)))
-
-                                    ;; Apply conditions only to docs that have right table fields
-                                    docs-matching-conditions (operators/apply-where-conditions docs-with-right-fields right-table-conditions)
-                                    _ (log/log-info (str "Docs matching right conditions: " (count docs-matching-conditions)))
-
-                                    ;; Apply left table conditions only to documents with matches in the right table
-                                    docs-with-left-conditions (if (seq left-table-conditions)
-                                                                (operators/apply-where-conditions docs-matching-conditions left-table-conditions)
-                                                                docs-matching-conditions)
-                                    _ (log/log-info (str "Docs matching left conditions: " (count docs-with-left-conditions)))
-
-                                    ;; Apply left table conditions to documents without matches in the right table
-                                    docs-without-right-filtered (if (seq left-table-conditions)
-                                                                  (operators/apply-where-conditions docs-without-right-fields left-table-conditions)
-                                                                  docs-without-right-fields)
-
-                                    ;; Combine the results
-                                    final-filtered (concat docs-with-left-conditions docs-without-right-filtered)]
-
-                                final-filtered)
-
-                              ;; Normal condition filtering - mas garantimos manter registros mesmo sem JOIN
-                              (and is-left-join (seq std-conditions))
-                              (do
-                                (log/log-info "Applying standard conditions to LEFT JOIN result")
-                                (operators/apply-where-conditions joined-docs std-conditions))
-
-                              ;; If we have standard conditions but no LEFT JOIN, apply them
-                              (seq std-conditions)
-                              (do
-                                (log/log-info "Applying standard conditions to result")
-                                (operators/apply-where-conditions joined-docs std-conditions))
-
-                              ;; No conditions - just return joined docs
-                              :else
-                              (do
-                                (log/log-info "No conditions to apply, returning all joined docs")
-                                joined-docs))))
-          _ (log/log-info (str "After WHERE filtering: " (count filtered-docs) " documents"))
-
-          ;; --- Apply GROUP BY if specified ---
-          grouped-docs (operators/group-docs-by filtered-docs group-by)
-          _ (log/log-info (str "After grouping: " (count grouped-docs) " groups"))
-
-          ;; --- Process aggregate functions or column projections ---
-          processed-docs (cond
-                           ;; Group by with aggregate functions
-                           (seq group-by)
+                           (log/log-info (str "Performing JOIN between " table-name " and " (:table join-info)))
+                           (join/perform-join storage table-name join-info))
+                         ;; Normal document retrieval
+                         (cond
+                           ;; Case 1: Single ID query - efficient direct lookup
+                           id-value
                            (do
-                             (log/log-info "Processing groups with columns")
-                             (process-groups grouped-docs query))
+                             (log/log-info (str "Performing direct ID lookup for: " id-value))
+                             (let [doc (storage/get-document storage id-value branch-name)]
+                               (if doc
+                                 ;; Verify table match if both table and ID specified
+                                 (if (and table-name (not= table-name "")
+                                          (not= (:_table doc) table-name)
+                                          (not (.startsWith id-value (str table-name ":"))))
+                                   []  ;; Table mismatch
+                                   [doc])
 
-                           ;; No grouping - just process columns
+                                 ;; Try with table prefix if not found and table specified
+                                 (if (and table-name (not= table-name "")
+                                          (not (.startsWith id-value (str table-name ":"))))
+                                   (let [prefixed-id (str table-name ":" id-value)
+                                         doc (storage/get-document storage prefixed-id branch-name)]
+                                     (if doc [doc] []))
+                                   []))))
+
+                           ;; Case 2: Table specified - get documents from that table
+                           (and table-name (not= table-name ""))
+                           (do
+                             (log/log-info (str "Loading documents from table: " table-name))
+                             (let [table-docs (storage/get-documents-by-table storage table-name branch-name)]
+                               (log/log-info (str "Loaded documents from " table-name ": " (count table-docs)
+                                                  " documents with IDs: " (pr-str (map :id table-docs))))
+
+                               ;; Se a tabela for "doc" e não houver documentos, tente buscar todos
+                               (if (and (= table-name "doc") (empty? table-docs))
+                                 (let [all-docs (storage/get-documents-by-prefix storage "" branch-name)]
+                                   (log/log-info (str "No documents found in 'doc' table, loading all: "
+                                                      (count all-docs) " documents"))
+                                   all-docs)
+                                 table-docs)))
+
+                           ;; Case 3: No table specified - get all documents
                            :else
                            (do
-                             (log/log-info "No grouping: processing documents directly")
-                             (let [result (mapv (fn [doc]
-                                                  (let [columns (:columns query)]
-                                                    (if (= 1 (count columns))
-                                                      (let [col (first columns)]
-                                                        (if (= :all (:type col))
-                                                          doc
-                                                          {(keyword (:column col)) (get doc (keyword (:column col)))}))
-                                                      (reduce (fn [acc col]
-                                                                (if (= :all (:type col))
-                                                                  (merge acc doc)
-                                                                  (assoc acc (keyword (:column col))
-                                                                         (get doc (keyword (:column col))))))
-                                                              {}
-                                                              columns))))
-                                                filtered-docs)]
-                               (log/log-info (str "FINAL RESULT COUNT: " (count result)))
-                               result)))
+                             (log/log-info "No table specified, loading all documents")
+                             (storage/get-documents-by-prefix storage "" branch-name))))
 
-          _ (log/log-info (str "After processing/projection: " (count processed-docs) " documents"))
+          ;; --- Apply FTS conditions if any and we have an index ---
+          docs-with-fts (if (and index (seq fts-conditions))
+                          (let [fts-docs (mapcat #(fts-get-matching-docs index storage % branch-name) fts-conditions)
+                                fts-doc-ids (set (map :id fts-docs))]
+                            (log/log-info (str "FTS search returned " (count fts-docs) " documents"))
+                            ;; Combine FTS results with standard docs - Intersection
+                            (filter #(contains? fts-doc-ids (:id %)) initial-docs))
+                          initial-docs)
 
-          sorted-results (operators/sort-docs-by processed-docs order-by)
-          _ (log/log-info (str "After sorting: " (count sorted-results) " documents"))
+          ;; --- Apply WHERE conditions ---
+          _ (log/log-info (str "Applying WHERE conditions to " (count docs-with-fts) " documents"))
+          docs-filtered (operators/apply-where-conditions docs-with-fts std-conditions)
+          _ (log/log-info (str "After WHERE filtering: " (count docs-filtered) " documents"))
 
-          limited-results (operators/apply-limit sorted-results limit)
-          _ (log/log-info (str "After applying limit: " (count limited-results) " documents"))]
+          ;; --- Apply GROUP BY if specified ---
+          grouped-docs (operators/group-docs-by docs-filtered group-by)
 
-      (or limited-results []))
+          ;; --- Process aggregate functions or column projections ---
+          processed-docs (if group-by
+                           (process-groups grouped-docs query)
+                           ;; Do column projection if needed (but only for non-JOIN cases)
+                           (if join-info
+                             ;; For JOIN queries, don't do additional column projection here
+                             ;; since we've already included column prefixes in the join results
+                             docs-filtered
+                             (process-columns docs-filtered columns)))
+
+          ;; Single flat result list
+          flat-results (if (and (seq processed-docs) (vector? (first processed-docs)))
+                         (first processed-docs)
+                         processed-docs)
+
+          ;; --- Sort results if ORDER BY is specified ---
+          sorted-docs (operators/sort-docs-by flat-results order-by)
+
+          ;; --- Apply LIMIT if specified ---
+          limited-docs (operators/apply-limit sorted-docs limit)]
+
+      ;; For debugging
+      (log/log-info (str "FINAL RESULT COUNT: " (count limited-docs)))
+      (log/log-info (str "After processing/projection: " (count limited-docs) " documents"))
+
+      limited-docs)
     (catch Exception e
-      (let [sw (java.io.StringWriter.)
-            pw (java.io.PrintWriter. sw)]
-        (.printStackTrace e pw)
-        (log/log-error (str "Error in handle-select: " (.getMessage e) "\n" (.toString sw))))
+      (log/log-error (str "Error in handle-select: " (.getMessage e)))
+      (.printStackTrace e)
       [])))
 
 (defn handle-insert
@@ -578,6 +420,7 @@
           columns (:columns parsed)
           order-by (:order-by parsed)
           join (:join parsed)
+          branch-name (normalize-schema-to-branch (:schema parsed))
 
           ;; Logging adicional para diagnóstico
           _ (log/log-info (str "Loading documents from table: " table-name))
@@ -585,18 +428,18 @@
           ;; Get documents from storage
           docs (if join
                  (join/perform-join storage table-name join)
-                 (do
-                   ;; Logged aqui para ver quais documentos estão sendo carregados
-                   (let [docs (storage/get-documents-by-table storage table-name)]
-                     (log/log-info (str "Loaded documents from " table-name ": " (count docs)
-                                        " documents with IDs: " (pr-str (map :id docs))))
-                     docs)))
+                 (let [docs (storage/get-documents-by-table storage table-name branch-name)]
+                   (log/log-info (str "Loaded documents from " table-name ": " (count docs)
+                                      " documents with IDs: " (pr-str (map :id docs))))
+                   docs))
+
+          _ (when join
+              (log/log-info (str "Join produced " (count docs) " documents")))
 
           ;; Apply WHERE conditions
           _ (log/log-info (str "Applying WHERE conditions: " (pr-str where-conditions)))
           filtered-docs (operators/apply-where-conditions docs where-conditions)
-          _ (log/log-info (str "After WHERE filtering: " (count filtered-docs) " documents with IDs: "
-                               (pr-str (map :id filtered-docs))))
+          _ (log/log-info (str "After WHERE filtering: " (count filtered-docs) " documents"))
 
           ;; --- Apply GROUP BY if specified ---
           grouped-docs (operators/group-docs-by filtered-docs group-by)
@@ -609,6 +452,23 @@
                            (do
                              (log/log-info "Processing groups with columns")
                              (process-groups grouped-docs parsed))
+
+                           ;; For JOINs, we need special column handling to process all prefixed columns
+                           join
+                           (do
+                             (log/log-info "Processing JOIN results with column projection")
+                             (if (some #(= :all (:type %)) columns)
+                               ;; For SELECT *, return all columns
+                               filtered-docs
+                               ;; For specific columns in JOIN, project only requested columns
+                               (mapv (fn [doc]
+                                       (into {}
+                                             (keep (fn [col]
+                                                     (when (= :column (:type col))
+                                                       (let [col-name (keyword (:column col))]
+                                                         [col-name (get doc col-name)])))
+                                                   columns)))
+                                     filtered-docs)))
 
                            ;; No grouping - just process columns
                            :else
@@ -682,19 +542,19 @@
           :else
           (let [;; Get columns to display - either requested ones or all from the results
                 columns (try
-                          (let [;; Extract all unique keys from all documents
-                                all-keys (->> limited-results
-                                              (mapcat keys)
-                                              (filter #(not= % :_table)) ; Exclude :_table
-                                              (distinct)
-                                              (sort)
-                                              (mapv name))]
-                            (if (some #(= :all (:type %)) columns)
-                              ;; If * was used, return all columns
-                              all-keys
-                              ;; Otherwise, filter to only requested columns
-                              (mapv (fn [col] (when (= :column (:type col)) (:column col)))
-                                    (remove #(nil? (:column %)) columns))))
+                          (if (some #(= :all (:type %)) columns)
+                            ;; If * was used, return all columns
+                            (->> limited-results
+                                 (mapcat keys)
+                                 (filter #(not= % :_table)) ; Exclude :_table
+                                 (distinct)
+                                 (sort)
+                                 (mapv name))
+                            ;; Otherwise, filter to only requested columns
+                            (mapv (fn [col]
+                                    (when (= :column (:type col))
+                                      (:column col)))
+                                  (remove #(nil? (:column %)) columns)))
                           (catch Exception e
                             (log/log-error (str "Error extracting column names: " (.getMessage e)))
                             (when-let [first-res (first limited-results)] ; Try to get keys from first result if any
@@ -703,11 +563,12 @@
             (log/log-info (str "Sending column description: " columns))
             (messages/send-row-description out columns)
             (doseq [row limited-results]
-              (log/log-info (str "Sending row: " (:id row "N/A")))
-              ;; Map values according to the filtered columns
-              (let [values (mapv #(str (get row (keyword %) ""))
-                                 columns)] ; Use the filtered columns here
-                (messages/send-data-row out values)))
+              (when row  ;; Guard against nil rows
+                (log/log-info (str "Sending row: " (:id row "N/A")))
+                ;; Map values according to the filtered columns
+                (let [values (mapv #(str (get row (keyword %) ""))
+                                   columns)] ; Use the filtered columns here
+                  (messages/send-data-row out values))))
             (messages/send-command-complete out "SELECT" (count limited-results))))))
 
     (catch Exception e

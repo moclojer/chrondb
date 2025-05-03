@@ -109,27 +109,56 @@
   (log/log-info (str "✨ Executing chrondb_history for " table-name ", id=" id))
 
   (try
-    (let [;; Explicitly construct the document ID with table prefix
-          prefixed-id (if (str/includes? id ":")
-                        id
-                        (str table-name ":" id))]
+    (let [;; Check if the ID already has a table prefix or is bare
+          has-table-prefix (str/includes? id ":")
 
-      (log/log-info (str "Using prefixed ID for history: " prefixed-id))
+          ;; Construct the document ID appropriately
+          prefixed-id (if has-table-prefix
+                        id  ;; Already has a prefix like "user:1"
+                        (str table-name ":" id))  ;; Add the prefix
 
-      ;; Use the protocol function to get document history
-      (let [history (protocol/get-document-history storage prefixed-id nil)]
+          ;; Keep track of the search ID format for strict matching
+          search-id-format (if has-table-prefix
+                             :prefixed    ;; User requested with prefix "user:1"
+                             :bare)       ;; User requested with bare ID "1"
 
-        (log/log-info (str "History retrieved: " (count history) " entries"))
+          _ (log/log-info (str "Using prefixed ID for history: " prefixed-id " (search format: " search-id-format ")"))
 
-        ;; Convert to the format expected by SQL
-        (mapv (fn [entry]
-                {:commit_id (or (:commit-id entry) "unknown")
-                 :timestamp (if (:commit-time entry)
-                              (str (:commit-time entry))
-                              (str (Date.)))
-                 :committer (or (:committer-name entry) "unknown")
-                 :data (pr-str (:document entry))})
-              history)))
+          ;; Use the protocol function to get document history
+          history (protocol/get-document-history storage prefixed-id nil)
+
+          ;; Filter results to only match the correct table and EXACT ID FORMAT that was requested
+          filtered-history (filter (fn [entry]
+                                     (let [doc (:document entry)
+                                           doc-id (str (:id doc))
+                                           doc-table (:_table doc)]
+
+                                       ;; Check if the document ID format matches what was requested
+                                       (let [id-format-matches? (case search-id-format
+                                                                  ;; When user asked for bare ID "1", only match docs with ID="1"
+                                                                  :bare (= doc-id id)
+
+                                                                  ;; When user asked for prefixed ID "user:1", only match docs with ID="user:1"
+                                                                  :prefixed (= doc-id prefixed-id))]
+
+                                         ;; Keep entries where:
+                                         ;; 1. The document is from the requested table, and
+                                         ;; 2. The document ID format exactly matches what was requested
+                                         (and (= doc-table table-name)
+                                              id-format-matches?))))
+                                   history)]
+
+      (log/log-info (str "History retrieved: " (count filtered-history) " entries (filtered from " (count history) " total)"))
+
+      ;; Convert to the format expected by SQL
+      (mapv (fn [entry]
+              {:commit_id (or (:commit-id entry) "unknown")
+               :timestamp (if (:commit-time entry)
+                            (str (:commit-time entry))
+                            (str (Date.)))
+               :committer (or (:committer-name entry) "unknown")
+               :data (pr-str (:document entry))})
+            filtered-history))
 
     (catch Exception e
       (log/log-error (str "❌ Error retrieving history: " (.getMessage e)))
