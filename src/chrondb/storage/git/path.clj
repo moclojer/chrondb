@@ -27,7 +27,7 @@
       (str/replace "/" "_SLASH_")
       (str/replace "?" "_QMARK_")
       (str/replace "*" "_STAR_")
-      (str/replace "\\" "_BSLASH_")
+      (str/replace "\\" "_BACKSLASH_")
       (str/replace "<" "_LT_")
       (str/replace ">" "_GT_")
       (str/replace "|" "_PIPE_")
@@ -35,10 +35,32 @@
       (str/replace "%" "_PERCENT_")
       (str/replace "#" "_HASH_")
       (str/replace "&" "_AMP_")
-      (str/replace "=" "_EQ_")
+      (str/replace "=" "_EQUALS_")
       (str/replace "+" "_PLUS_")
       (str/replace "@" "_AT_")
       (str/replace " " "_SPACE_")))
+
+(defn decode-path
+  "Decode a path encoded by encode-path back to its original form.
+   Reverses the replacements done by encode-path."
+  [encoded-path]
+  (-> encoded-path
+      (str/replace "_COLON_" ":")
+      (str/replace "_SLASH_" "/")
+      (str/replace "_QMARK_" "?")
+      (str/replace "_STAR_" "*")
+      (str/replace "_BACKSLASH_" "\\")
+      (str/replace "_LT_" "<")
+      (str/replace "_GT_" ">")
+      (str/replace "_PIPE_" "|")
+      (str/replace "_QUOTE_" "\"")
+      (str/replace "_PERCENT_" "%")
+      (str/replace "_HASH_" "#")
+      (str/replace "_AMP_" "&")
+      (str/replace "_EQUALS_" "=")
+      (str/replace "_PLUS_" "+")
+      (str/replace "_AT_" "@")
+      (str/replace "_SPACE_" " ")))
 
 (defn get-table-path
   "Get the encoded path for a table directory"
