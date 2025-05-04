@@ -42,15 +42,60 @@
   "Configures repository-specific Git settings."
   [repo]
   (configure-global-git)
-  (let [config (.getConfig repo)]
+  (let [config (.getConfig repo)
+        git-config (config/load-config)]
     (.setBoolean config ConfigConstants/CONFIG_COMMIT_SECTION nil ConfigConstants/CONFIG_KEY_GPGSIGN false)
     (.setString config ConfigConstants/CONFIG_CORE_SECTION nil ConfigConstants/CONFIG_KEY_FILEMODE "false")
+    (.setString config "user" nil "name" (get-in git-config [:git :committer-name]))
+    (.setString config "user" nil "email" (get-in git-config [:git :committer-email]))
     (.save config)))
 
 (defn build-person-ident
   "Builds a PersonIdent object for Git commits."
   [name email]
   (org.eclipse.jgit.lib.PersonIdent. name email (Date.) (TimeZone/getDefault)))
+
+(defn checkout-or-create-branch
+  "Checkout an existing branch or create a new one if it doesn't exist.
+   Parameters:
+   - git: The Git instance
+   - branch-name: The name of the branch to checkout or create
+   Returns: The checked out or created ref"
+  [git branch-name]
+  (log/log-info (str "Checking out branch: " branch-name))
+  (let [repository (.getRepository git)
+        ref (.exactRef repository (str "refs/heads/" branch-name))]
+    (if (.isBare repository)
+      ;; For bare repositories, just return the reference without checkout
+      (do
+        (log/log-info (str "Repository is bare, not performing physical checkout for " branch-name))
+        (if ref
+          (reify org.eclipse.jgit.lib.Ref
+            (getName [_] branch-name))
+          ;; If the branch doesn't exist, create it
+          (let [ref-update (.updateRef repository (str "refs/heads/" branch-name))
+                head-id (.resolve repository Constants/HEAD)]
+            (.setNewObjectId ref-update (or head-id (ObjectId/zeroId)))
+            (.update ref-update)
+            (reify org.eclipse.jgit.lib.Ref
+              (getName [_] branch-name)))))
+      ;; For non-bare repositories, perform normal checkout
+      (if ref
+        ;; Branch exists, checkout
+        (do
+          (log/log-info (str "Branch " branch-name " exists, checking out"))
+          (-> git
+              (.checkout)
+              (.setName branch-name)
+              (.call)))
+        ;; Branch doesn't exist, create and checkout
+        (do
+          (log/log-info (str "Branch " branch-name " doesn't exist, creating"))
+          (-> git
+              (.checkout)
+              (.setCreateBranch true)
+              (.setName branch-name)
+              (.call)))))))
 
 (defn create-temporary-index
   "Creates an in-memory index for the document change.
@@ -133,9 +178,10 @@
                                 (= result RefUpdate$Result/FAST_FORWARD))
                     (throw (Exception. (str "Failed to update ref: " result))))))
               (finally
-                (.close rev-walk)))))
+                (.close rev-walk))))
 
-        true)
+          ;; Return the commit ID as a properly formatted string
+          (.getName commit-id)))
       (finally
         (.close object-inserter)))))
 
