@@ -1,6 +1,6 @@
 (ns chrondb.storage.git.history-test
   (:require [chrondb.config :as config]
-            [chrondb.storage.git :as git]
+            [chrondb.storage.git.core :as git-core]
             [chrondb.storage.git.history :as history]
             [chrondb.storage.protocol :as protocol]
             [clojure.java.io :as io]
@@ -32,7 +32,7 @@
 
 (deftest test-find-all-document-paths
   (testing "Find document paths"
-    (let [storage (git/create-git-storage test-repo-path)
+    (let [storage (git-core/create-git-storage test-repo-path)
           repository (:repository storage)
           doc {:id "history:test" :name "Test" :_table "history"}]
 
@@ -48,7 +48,7 @@
 
 (deftest test-document-history
   (testing "Document history retrieval"
-    (let [storage (git/create-git-storage test-repo-path)
+    (let [storage (git-core/create-git-storage test-repo-path)
           doc-v1 {:id "history-test:1" :name "Original" :value 1 :_table "history"}
           doc-v2 {:id "history-test:1" :name "Updated" :value 2 :_table "history"}
           doc-v3 {:id "history-test:1" :name "Final" :value 3 :_table "history"}]
@@ -68,7 +68,7 @@
       (Thread/sleep 200)
 
       ;; Get document history
-      (let [history-entries (git/get-document-history storage "history-test:1")]
+      (let [history-entries (git-core/get-document-history storage "history-test:1")]
         (println "Document history entries:" (count history-entries))
 
         ;; Debug: print the actual history entries with type info
@@ -99,7 +99,7 @@
 
 (deftest test-get-document-at-commit
   (testing "Get document at specific commit"
-    (let [storage (git/create-git-storage test-repo-path)
+    (let [storage (git-core/create-git-storage test-repo-path)
           doc-v1 {:id "commit-test:1" :name "Original" :value 1 :_table "commit"}
           doc-v2 {:id "commit-test:1" :name "Updated" :value 2 :_table "commit"}]
 
@@ -133,7 +133,7 @@
 
 (deftest test-restore-document-version
   (testing "Restore document to previous version"
-    (let [storage (git/create-git-storage test-repo-path)
+    (let [storage (git-core/create-git-storage test-repo-path)
           doc-v1 {:id "restore-test:1" :name "Original" :value 1 :_table "restore"}
           doc-v2 {:id "restore-test:1" :name "Updated" :value 2 :_table "restore"}]
 
@@ -178,7 +178,7 @@
 
 (deftest test-restore-document-version-errors
   (testing "Error handling when restoring document versions"
-    (let [storage (git/create-git-storage test-repo-path)
+    (let [storage (git-core/create-git-storage test-repo-path)
           doc {:id "error-test:1" :name "Test" :value 1 :_table "error"}]
 
       ;; Create document
@@ -196,7 +196,7 @@
 
 (deftest test-document-version-rollback-history
   (testing "Document rollback maintains complete history"
-    (let [storage (git/create-git-storage test-repo-path)
+    (let [storage (git-core/create-git-storage test-repo-path)
           doc-v1 {:id "abc" :value 123 :_table "kv"}
           doc-v2 {:id "abc" :value 1234 :_table "kv"}]
 

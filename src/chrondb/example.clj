@@ -1,5 +1,5 @@
 (ns chrondb.example
-  (:require [chrondb.storage.git :as git]
+  (:require [chrondb.storage.git.core :as git-core]
             [chrondb.index.lucene :as lucene]
             [chrondb.storage.protocol :as storage]
             [chrondb.index.protocol :as index]
@@ -12,7 +12,7 @@
   (io/make-parents "data/index/.keep")
 
   (println "Criando storage...")
-  (let [storage (git/create-git-storage "data")
+  (let [storage (git-core/create-git-storage "data")
         _ (println "Criando index...")
         index (lucene/create-lucene-index "data/index")]
     {:storage storage

@@ -17,7 +17,7 @@
   (:require [chrondb.api.server :as server]
             [chrondb.api.redis.core :as redis-core]
             [chrondb.api.sql.server :as sql-server]
-            [chrondb.storage.git :as git]
+            [chrondb.storage.git.core :as git-core]
             [chrondb.index.lucene :as lucene]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -113,7 +113,7 @@
   [& args]
   (ensure-data-directories)
   (let [options (parse-args args)
-        storage (git/create-git-storage "data")
+        storage (git-core/create-git-storage "data")
         _ (println "Creating Lucene index in data/index directory")
         index (lucene/create-lucene-index "data/index")
         _ (println "Lucene index created successfully: " (type index))

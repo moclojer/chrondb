@@ -1,6 +1,6 @@
 (ns chrondb.storage.git.path-test
   (:require [chrondb.config :as config]
-            [chrondb.storage.git :as git]
+            [chrondb.storage.git.core :as git-core]
             [chrondb.storage.git.path :as path]
             [chrondb.storage.protocol :as protocol]
             [clojure.java.io :as io]
@@ -65,7 +65,7 @@
 
 (deftest test-document-path-generation
   (testing "Document path generation in real repository"
-    (let [storage (git/create-git-storage test-repo-path)
+    (let [storage (git-core/create-git-storage test-repo-path)
           docs [{:id "user:1" :_table "user"}
                 {:id "product:abc-123" :_table "product"}
                 {:id "order:2023-04-15-001" :_table "order"}
