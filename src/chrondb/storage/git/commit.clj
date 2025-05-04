@@ -19,15 +19,13 @@
             [clojure.string :as str])
   (:import [java.io ByteArrayInputStream]
            [java.util Date TimeZone]
-           [org.eclipse.jgit.api Git]
            [org.eclipse.jgit.dircache DirCache DirCacheEntry]
            [org.eclipse.jgit.lib ConfigConstants Constants ObjectId]
            [org.eclipse.jgit.lib CommitBuilder FileMode RefUpdate$Result]
            [org.eclipse.jgit.revwalk RevWalk]
            [org.eclipse.jgit.transport RefSpec]
            [org.eclipse.jgit.treewalk CanonicalTreeParser TreeWalk]
-           [org.eclipse.jgit.util SystemReader]
-           [org.eclipse.jgit.treewalk.filter PathFilter]))
+           [org.eclipse.jgit.util SystemReader]))
 
 (defn configure-global-git
   "Configures global Git settings to disable GPG signing."

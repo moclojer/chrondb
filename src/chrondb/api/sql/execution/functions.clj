@@ -4,7 +4,6 @@
             [chrondb.storage.protocol :as protocol]
             [chrondb.storage.git.history :as git-history]
             [clojure.string :as str]
-            [clojure.data.json :as json]
             [clojure.set :as set])
   (:import [java.util Date]))
 
@@ -131,21 +130,19 @@
           filtered-history (filter (fn [entry]
                                      (let [doc (:document entry)
                                            doc-id (str (:id doc))
-                                           doc-table (:_table doc)]
+                                           doc-table (:_table doc)
+                                           ;; Check if the document ID format matches what was requested
+                                           id-format-matches? (case search-id-format
+                                                                ;; When user asked for bare ID "1", only match docs with ID="1"
+                                                                :bare (= doc-id id)
+                                                                ;; When user asked for prefixed ID "user:1", only match docs with ID="user:1"
+                                                                :prefixed (= doc-id prefixed-id))]
 
-                                       ;; Check if the document ID format matches what was requested
-                                       (let [id-format-matches? (case search-id-format
-                                                                  ;; When user asked for bare ID "1", only match docs with ID="1"
-                                                                  :bare (= doc-id id)
-
-                                                                  ;; When user asked for prefixed ID "user:1", only match docs with ID="user:1"
-                                                                  :prefixed (= doc-id prefixed-id))]
-
-                                         ;; Keep entries where:
-                                         ;; 1. The document is from the requested table, and
-                                         ;; 2. The document ID format exactly matches what was requested
-                                         (and (= doc-table table-name)
-                                              id-format-matches?))))
+                                       ;; Keep entries where:
+                                       ;; 1. The document is from the requested table, and
+                                       ;; 2. The document ID format exactly matches what was requested
+                                       (and (= doc-table table-name)
+                                            id-format-matches?)))
                                    history)]
 
       (log/log-info (str "History retrieved: " (count filtered-history) " entries (filtered from " (count history) " total)"))

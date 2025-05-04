@@ -21,7 +21,6 @@
              [clojure.data.json :as json]
              [clojure.string :as str])
    (:import [org.eclipse.jgit.api Git]
-            [org.eclipse.jgit.lib ObjectId]
             [org.eclipse.jgit.revwalk RevWalk]
             [org.eclipse.jgit.treewalk TreeWalk]
             [org.eclipse.jgit.treewalk.filter PathFilter]))
@@ -61,24 +60,23 @@
         (let [tree-walk (TreeWalk. repository)
               rev-walk (RevWalk. repository)
               paths (atom [])]
-          (let [result (try
-                         (.addTree tree-walk (.parseTree rev-walk head-id))
-                         (.setRecursive tree-walk true)
-                         (.setFilter tree-walk (org.eclipse.jgit.treewalk.filter.PathSuffixFilter/create ".json"))
+          (try
+            (.addTree tree-walk (.parseTree rev-walk head-id))
+            (.setRecursive tree-walk true)
+            (.setFilter tree-walk (org.eclipse.jgit.treewalk.filter.PathSuffixFilter/create ".json"))
 
-                         (while (.next tree-walk)
-                           (let [path (.getPathString tree-walk)]
-                             (when (or (is-document-path-match? path id-only table-hint)
-                                       (is-document-path-match? path id nil))
-                               (log/log-info (str "Found possible document path: " path))
-                               (swap! paths conj path))))
+            (while (.next tree-walk)
+              (let [path (.getPathString tree-walk)]
+                (when (or (is-document-path-match? path id-only table-hint)
+                          (is-document-path-match? path id nil))
+                  (log/log-info (str "Found possible document path: " path))
+                  (swap! paths conj path))))
 
-                         (log/log-info (str "Found " (count @paths) " possible paths for ID " id))
-                         (distinct @paths)
-                         (finally
-                           (.close tree-walk)
-                           (.close rev-walk)))]
-            result))))))
+            (log/log-info (str "Found " (count @paths) " possible paths for ID " id))
+            (distinct @paths)
+            (finally
+              (.close tree-walk)
+              (.close rev-walk))))))))
 
 (defn get-document-path
   "Find the document path by searching through all table directories.
@@ -145,7 +143,7 @@
 
 (defn get-document
   "Get a document by ID from the Git repository."
-  [repository data-dir id branch]
+  [repository _data-dir id branch]
   (when-not repository
     (throw (Exception. "Repository is closed")))
 
@@ -207,7 +205,7 @@
 
 (defn get-documents-by-prefix
   "Get all documents with an ID matching the given prefix."
-  [repository data-dir prefix branch]
+  [repository _data-dir prefix branch]
   (when-not repository
     (throw (Exception. "Repository is closed")))
 
@@ -255,7 +253,7 @@
 
 (defn get-documents-by-table
   "Get all documents belonging to a specific table."
-  [repository data-dir table-name branch]
+  [repository _data-dir table-name branch]
   (when-not repository
     (throw (Exception. "Repository is closed")))
 
@@ -302,20 +300,20 @@
 
 (defn delete-document
   "Delete a document from the Git repository."
-  [repository data-dir id branch]
+  [repository _data-dir id branch]
   (when-not repository
     (throw (Exception. "Repository is closed")))
 
   (let [config-map (config/load-config)
         branch-name (or branch (get-in config-map [:git :default-branch]))
-        doc (get-document repository data-dir id branch-name)]
+        doc (get-document repository _data-dir id branch-name)]
 
     (if doc
       (let [table-name (:_table doc)
             ; Use table-name if available, otherwise use simple version
             doc-path (if table-name
-                       (path/get-file-path data-dir id table-name)
-                       (path/get-file-path data-dir id))
+                       (path/get-file-path _data-dir id table-name)
+                       (path/get-file-path _data-dir id))
             git (Git/wrap repository)
             head-id (.resolve repository (str branch-name "^{commit}"))]
 

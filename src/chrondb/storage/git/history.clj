@@ -19,8 +19,7 @@
              [chrondb.storage.git.path :as path]
              [chrondb.storage.git.commit :as commit]
              [chrondb.storage.git.document :as document]
-             [clojure.data.json :as json]
-             [clojure.string :as str])
+             [clojure.data.json :as json])
    (:import [java.util Date]
             [org.eclipse.jgit.api Git]
             [org.eclipse.jgit.lib ObjectId]
@@ -32,8 +31,8 @@
   "Find all possible paths for a document by searching for its encoded ID"
   [repository id branch]
   (let [config-map (config/load-config)
-        branch-name (or branch (get-in config-map [:git :default-branch]))
-        head-id (.resolve repository (str branch-name "^{commit}"))
+        branch-ref (or branch (get-in config-map [:git :default-branch]))
+        head-id (.resolve repository (str branch-ref "^{commit}"))
         [table-hint id-only] (path/extract-table-and-id id)
         encoded-id (path/encode-path (or id-only id))]
 
@@ -71,13 +70,14 @@
   "Get document history for a specific path"
   [repository path branch]
   (let [config-map (config/load-config)
-        branch-name (or branch (get-in config-map [:git :default-branch]))]
+        branch-ref (or branch (get-in config-map [:git :default-branch]))]
 
     (when (and repository path)
       (let [git (Git/wrap repository)
             rev-walk (RevWalk. repository)
             log-command (-> git
                             (.log)
+                            (.add (.resolve repository (str branch-ref "^{commit}")))
                             (.addPath path))]
 
         (try
@@ -132,13 +132,13 @@
   Returns a sequence of maps containing commit info and document content at each version."
   [repository id branch]
   (let [config-map (config/load-config)
-        branch-name (or branch (get-in config-map [:git :default-branch]))
+        branch-ref (or branch (get-in config-map [:git :default-branch]))
         ; Get data directory from config
         data-dir (get-in config-map [:storage :data-dir])
         ; Split logic - extract table if ID has table prefix (e.g., "user:1")
         [table-hint id-only] (path/extract-table-and-id id)
         ; Search for all possible paths containing the document ID
-        all-paths (find-all-document-paths repository id branch-name)
+        all-paths (find-all-document-paths repository id branch-ref)
         _ (log/log-info (str "Found " (count all-paths) " potential paths for document " id))]
 
     (if (seq all-paths)
@@ -146,7 +146,7 @@
       (let [all-results (atom [])]
         (doseq [path all-paths]
           (log/log-info (str "Getting history for path: " path))
-          (let [path-results (get-document-history-for-path repository path branch-name)]
+          (let [path-results (get-document-history-for-path repository path branch-ref)]
             (when (seq path-results)
               (swap! all-results concat path-results))))
 
@@ -173,7 +173,7 @@
             table-specific-path (when table-hint
                                   (path/get-file-path data-dir id-only table-hint))
             ; Generic document path (might find any table)
-            generic-path (document/get-document-path repository id branch-name)
+            generic-path (document/get-document-path repository id branch-ref)
             ; Use table-specific path if available, otherwise fallback to generic
             final-path (or table-specific-path generic-path)]
 
@@ -182,7 +182,7 @@
 
         (if (and repository final-path)
           ; Try with the specific path we found
-          (let [results (get-document-history-for-path repository final-path branch-name)
+          (let [results (get-document-history-for-path repository final-path branch-ref)
                 valid-results (filter #(and (:commit-id %)
                                             (:commit-time %)
                                             (:committer-name %)
