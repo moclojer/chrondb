@@ -16,7 +16,6 @@
   "Core Git storage implementation for ChronDB"
   (:require [chrondb.config :as config]
             [chrondb.storage.protocol :as protocol]
-            [chrondb.storage.git.path :as path]
             [chrondb.storage.git.commit :as commit]
             [chrondb.storage.git.document :as document]
             [chrondb.storage.git.history :as history]

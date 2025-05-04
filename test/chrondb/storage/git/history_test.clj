@@ -41,7 +41,7 @@
 
       ;; Find paths
       (let [paths (history/find-all-document-paths repository "history:test" "main")]
-        (is (not (empty? paths)))
+        (is (seq paths))
         (is (some #(.contains % "history") paths)))
 
       (protocol/close storage))))

@@ -317,8 +317,8 @@
                                  table-docs)))
 
                            ;; Case 3: No table specified - get all documents
-                              :else
-                              (do
+                           :else
+                           (do
                              (log/log-info "No table specified, loading all documents")
                              (storage/get-documents-by-prefix storage "" branch-name))))
 
@@ -406,11 +406,10 @@
   "Handles an SQL SELECT query execution.
    Parameters:
    - storage: The storage implementation
-   - index: The index implementation (can be nil)
    - out: The output stream to write results to
    - parsed: The parsed query details
    Returns: nil"
-  [storage index ^java.io.OutputStream out parsed]
+  [storage ^java.io.OutputStream out parsed]
   (log/log-info (str "Starting handle-select-case with parsed: " parsed))
   (try
     (let [table-name (:table parsed)
@@ -429,8 +428,8 @@
           docs (if join
                  (join/perform-join storage table-name join)
                  (let [docs (storage/get-documents-by-table storage table-name branch-name)]
-                     (log/log-info (str "Loaded documents from " table-name ": " (count docs)
-                                        " documents with IDs: " (pr-str (map :id docs))))
+                   (log/log-info (str "Loaded documents from " table-name ": " (count docs)
+                                      " documents with IDs: " (pr-str (map :id docs))))
                    docs))
 
           _ (when join
@@ -545,12 +544,12 @@
                           (if (some #(= :all (:type %)) columns)
                             ;; If * was used, return all columns
                             (->> limited-results
-                                              (mapcat keys)
-                                              (filter #(not= % :_table)) ; Exclude :_table
-                                              (distinct)
-                                              (sort)
+                                 (mapcat keys)
+                                 (filter #(not= % :_table)) ; Exclude :_table
+                                 (distinct)
+                                 (sort)
                                  (mapv name))
-                              ;; Otherwise, filter to only requested columns
+                            ;; Otherwise, filter to only requested columns
                             (mapv (fn [col]
                                     (when (= :column (:type col))
                                       (:column col)))
@@ -564,10 +563,10 @@
             (messages/send-row-description out columns)
             (doseq [row limited-results]
               (when row  ;; Guard against nil rows
-              (log/log-info (str "Sending row: " (:id row "N/A")))
-              ;; Map values according to the filtered columns
-              (let [values (mapv #(str (get row (keyword %) ""))
-                                 columns)] ; Use the filtered columns here
+                (log/log-info (str "Sending row: " (:id row "N/A")))
+                ;; Map values according to the filtered columns
+                (let [values (mapv #(str (get row (keyword %) ""))
+                                   columns)] ; Use the filtered columns here
                   (messages/send-data-row out values))))
             (messages/send-command-complete out "SELECT" (count limited-results))))))
 
@@ -802,7 +801,7 @@
         (handle-chrondb-function storage index out parsed)
 
         (= query-type :select)
-        (handle-select-case storage index out parsed)
+        (handle-select-case storage out parsed)
 
         (= query-type :insert)
         (handle-insert-case storage index out parsed)

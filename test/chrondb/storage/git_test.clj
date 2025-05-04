@@ -6,7 +6,7 @@
             [chrondb.storage.git.document-test]
             [chrondb.storage.git.commit-test]
             [chrondb.storage.git.history-test]
-            [clojure.test :refer [deftest is testing run-tests]]))
+            [clojure.test :refer [deftest is testing]]))
 
 (deftest test-verify-all-tests-loaded
   (testing "This is just a placeholder. The actual tests are in the required namespaces."

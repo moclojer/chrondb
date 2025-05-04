@@ -1,7 +1,6 @@
 (ns chrondb.api.sql.execution.join
   "SQL join operations"
-  (:require [clojure.string :as str]
-            [chrondb.util.logging :as log]
+  (:require [chrondb.util.logging :as log]
             [chrondb.storage.protocol :as storage]))
 
 (defn perform-join
@@ -38,7 +37,6 @@
             ;; Extract join condition details
             left-table (:left-table on-condition)
             left-field (:left-field on-condition)
-            right-table (:right-table on-condition)
             right-field (:right-field on-condition)
 
             ;; Determine which field belongs to which table

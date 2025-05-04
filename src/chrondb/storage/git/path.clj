@@ -14,9 +14,7 @@
 ;; along with this program. If not, see <https://www.gnu.org/licenses/>.
 (ns chrondb.storage.git.path
   "Path handling utilities for Git storage implementation"
-  (:require [clojure.string :as str]
-            [chrondb.util.logging :as log]
-            [chrondb.config :as config]))
+  (:require [clojure.string :as str]))
 
 (defn encode-path
   "Encode document ID for safe use in file paths.
