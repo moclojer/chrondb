@@ -2,7 +2,7 @@
   "Implementation of SQL functions such as aggregations"
   (:require [chrondb.util.logging :as log]
             [chrondb.storage.protocol :as protocol]
-            [chrondb.storage.git :as git]
+            [chrondb.storage.git.history :as git-history]
             [clojure.string :as str]
             [clojure.data.json :as json]
             [clojure.set :as set])
@@ -187,7 +187,7 @@
       ;; For the chrondb_at function, we still need to use the repository directly
       ;; since the protocol doesn't have a get-document-at-commit function
       (if repository
-        (-> (git/get-document-at-commit repository prefixed-id commit)
+        (-> (git-history/get-document-at-commit repository prefixed-id commit)
             ;; Ensure document has the correct table
             (cond-> (not (str/includes? prefixed-id ":"))
               (assoc :_table table-name)))
@@ -218,8 +218,8 @@
 
       (if repository
         (let [;; Get documents at both commits
-              doc1 (git/get-document-at-commit repository prefixed-id commit1)
-              doc2 (git/get-document-at-commit repository prefixed-id commit2)]
+              doc1 (git-history/get-document-at-commit repository prefixed-id commit1)
+              doc2 (git-history/get-document-at-commit repository prefixed-id commit2)]
 
           ;; Check if both documents were found
           (if (and doc1 doc2)

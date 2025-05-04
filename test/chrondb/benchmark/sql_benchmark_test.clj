@@ -1,6 +1,6 @@
 (ns chrondb.benchmark.sql-benchmark-test
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
-            [chrondb.storage.git :as git]
+            [chrondb.storage.git.core :as git-core]
             [chrondb.index.lucene :as lucene]
             [chrondb.benchmark.fixtures :as fixtures]
             [chrondb.api.sql.execution.query :as query]
@@ -36,7 +36,7 @@
   (cleanup-test-env)
   (.mkdirs (io/file benchmark-repo-path))
   (.mkdirs (io/file benchmark-index-path))
-  (let [storage (git/create-git-storage benchmark-repo-path)
+  (let [storage (git-core/create-git-storage benchmark-repo-path)
         index (lucene/create-lucene-index benchmark-index-path)]
     [storage index]))
 

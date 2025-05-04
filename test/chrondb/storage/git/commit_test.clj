@@ -1,6 +1,6 @@
 (ns chrondb.storage.git.commit-test
   (:require [chrondb.config :as config]
-            [chrondb.storage.git :as git]
+            [chrondb.storage.git.core :as git-core]
             [chrondb.storage.git.commit :as commit]
             [chrondb.storage.protocol :as protocol]
             [clojure.java.io :as io]
@@ -44,7 +44,7 @@
 
 (deftest test-configure-repository
   (testing "Configure Git repository"
-    (let [storage (git/create-git-storage test-repo-path)
+    (let [storage (git-core/create-git-storage test-repo-path)
           repository (:repository storage)]
 
       ;; Configure repository
@@ -67,7 +67,7 @@
 
 (deftest test-commit-virtual
   (testing "Create virtual commit"
-    (let [repository (-> (git/create-git-storage test-repo-path) :repository)
+    (let [repository (-> (git-core/create-git-storage test-repo-path) :repository)
           git (Git/wrap repository)
           branch-name "main"
           file-path "test.txt"
@@ -102,7 +102,7 @@
 
 (deftest test-checkout-or-create-branch
   (testing "Checkout existing branch"
-    (let [storage (git/create-git-storage test-repo-path)
+    (let [storage (git-core/create-git-storage test-repo-path)
           repository (:repository storage)
           git (Git/wrap repository)
           doc {:id "test:1" :name "Test" :_table "test"}]
@@ -117,7 +117,7 @@
       (protocol/close storage)))
 
   (testing "Create and checkout new branch"
-    (let [storage (git/create-git-storage test-repo-path)
+    (let [storage (git-core/create-git-storage test-repo-path)
           repository (:repository storage)
           git (Git/wrap repository)]
 

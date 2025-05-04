@@ -2,7 +2,7 @@
   "Tool for dumping all documents from ChronDB storage.
    Useful for debugging and exploring data."
   (:require [chrondb.storage.protocol :as storage]
-            [chrondb.storage.git :as git]
+            [chrondb.storage.git.core :as git-core]
             [chrondb.util.logging :as log]
             [clojure.string :as str]
             [clojure.data.json :as json]
@@ -14,7 +14,7 @@
   (let [config-map (config/load-config)
         repository-dir (or (get-in config-map [:storage :repository-dir]) "data")
         data-dir (get-in config-map [:storage :data-dir])
-        storage (git/create-git-storage repository-dir data-dir)
+        storage (git-core/create-git-storage repository-dir data-dir)
         prefix (first args)]
 
     (log/log-info "Connecting to Git repository")

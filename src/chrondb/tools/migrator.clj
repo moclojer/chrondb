@@ -1,6 +1,6 @@
 (ns chrondb.tools.migrator
   (:require [chrondb.storage.protocol :as storage]
-            [chrondb.storage.git :as git]
+            [chrondb.storage.git.core :as git-core]
             [chrondb.index.lucene :as lucene]
             [chrondb.util.logging :as log]
             [clojure.string :as str]))
@@ -51,7 +51,7 @@
   (let [data-dir "data"
         ; Creates or uses storage
         _ (log/log-info "Initializing storage and index")
-        storage (git/create-git-storage data-dir)
+        storage (git-core/create-git-storage data-dir)
         index (lucene/create-lucene-index (str data-dir "/index"))
 
         ; Processes arguments

@@ -1,6 +1,6 @@
 (ns chrondb.storage.git.document-test
   (:require [chrondb.config :as config]
-            [chrondb.storage.git :as git]
+            [chrondb.storage.git.core :as git-core]
             [chrondb.storage.git.document :as document]
             [chrondb.storage.git.commit :as git-commit]
             [chrondb.storage.protocol :as protocol]
@@ -33,7 +33,7 @@
 
 (deftest test-save-get-document
   (testing "Save and get document"
-    (let [storage (git/create-git-storage test-repo-path)
+    (let [storage (git-core/create-git-storage test-repo-path)
           doc {:id "test:1" :name "Test Document" :value 42 :_table "test"}]
 
       ;; Save document and verify return
@@ -46,7 +46,7 @@
 
 (deftest test-save-document-error-handling
   (testing "Error handling during document save"
-    (let [storage (git/create-git-storage test-repo-path)
+    (let [storage (git-core/create-git-storage test-repo-path)
           doc {:id "test:error" :name "Error Test" :value "fail"}]
 
       ;; Test nil document
@@ -61,7 +61,7 @@
 
 (deftest test-delete-document
   (testing "Delete document"
-    (let [storage (git/create-git-storage test-repo-path)
+    (let [storage (git-core/create-git-storage test-repo-path)
           doc {:id "test:delete" :name "To Be Deleted" :value 99 :_table "test"}]
 
       ;; Save document
@@ -79,7 +79,7 @@
 
 (deftest test-get-document-path
   (testing "Get document path"
-    (let [storage (git/create-git-storage test-repo-path)
+    (let [storage (git-core/create-git-storage test-repo-path)
           doc {:id "user:123" :name "Path Test" :_table "user"}]
 
       ;; Create document to ensure repository is properly set up
@@ -95,7 +95,7 @@
 
 (deftest test-get-documents-by-prefix
   (testing "Get documents by prefix"
-    (let [storage (git/create-git-storage test-repo-path)
+    (let [storage (git-core/create-git-storage test-repo-path)
           docs [{:id "user:1" :name "Alice" :age 30 :_table "user"}
                 {:id "user:2" :name "Bob" :age 25 :_table "user"}
                 {:id "product:1" :name "Laptop" :price 1200 :_table "product"}
@@ -118,7 +118,7 @@
 
 (deftest test-get-documents-by-table
   (testing "Get documents by table"
-    (let [storage (git/create-git-storage test-repo-path)
+    (let [storage (git-core/create-git-storage test-repo-path)
           docs [{:id "user:1" :name "Alice" :age 30 :_table "user"}
                 {:id "user:2" :name "Bob" :age 25 :_table "user"}
                 {:id "product:1" :name "Laptop" :price 1200 :_table "product"}
@@ -141,7 +141,7 @@
 
 (deftest test-branch-operations
   (testing "Document operations in different branches"
-    (let [storage (git/create-git-storage test-repo-path)
+    (let [storage (git-core/create-git-storage test-repo-path)
           doc {:id "test:1" :name "Test" :value 42 :_table "test"}
           dev-doc {:id "test:1" :name "Test Dev" :value 99 :_table "test"}]
 

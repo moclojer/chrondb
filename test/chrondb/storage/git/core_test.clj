@@ -1,6 +1,5 @@
 (ns chrondb.storage.git.core-test
   (:require [chrondb.config :as config]
-            [chrondb.storage.git :as git]
             [chrondb.storage.git.core :as git-core]
             [chrondb.storage.protocol :as protocol]
             [clojure.java.io :as io]
@@ -61,12 +60,12 @@
                                 (exists [] false)
                                 (mkdirs [] false)))]
         (is (thrown-with-msg? Exception #"Could not create directory"
-                              (git/ensure-directory "test-file"))))
+                              (git-core/ensure-directory "test-file"))))
       (.delete test-file))))
 
 (deftest test-create-repository
   (testing "Create new bare repository"
-    (let [storage (git/create-git-storage test-repo-path)
+    (let [storage (git-core/create-git-storage test-repo-path)
           repo (clone-repo (.getAbsolutePath (io/file test-repo-path)))
           git-api (Git. (.getRepository repo))]
       (is (.exists (io/file test-repo-path)))
@@ -76,7 +75,7 @@
 
 (deftest test-git-storage
   (testing "Git storage operations"
-    (let [storage (git/create-git-storage test-repo-path)
+    (let [storage (git-core/create-git-storage test-repo-path)
           doc {:id "test:1" :name "Test" :value 42}]
       (testing "Save document"
         (is (= doc (protocol/save-document storage doc))))
@@ -93,7 +92,7 @@
 
 (deftest test-git-storage-error-cases
   (testing "Git storage error handling"
-    (let [storage (git/create-git-storage test-repo-path)]
+    (let [storage (git-core/create-git-storage test-repo-path)]
       (testing "Save nil document"
         (is (thrown-with-msg? Exception #"Document cannot be nil"
                               (protocol/save-document storage nil))))
@@ -108,7 +107,7 @@
 (deftest test-git-storage-with-custom-data-dir
   (testing "Git storage with custom data directory"
     (let [data-dir "custom-data"
-          storage (git/create-git-storage test-repo-path data-dir)
+          storage (git-core/create-git-storage test-repo-path data-dir)
           doc {:id "test:1" :name "Test" :value 42}]
       (testing "Save document in custom directory"
         (is (= doc (protocol/save-document storage doc)))
@@ -126,6 +125,6 @@
       (.mkdirs repo-dir)
 
       ;; Test with existing directory
-      (let [storage (git/create-git-storage test-repo-path)]
+      (let [storage (git-core/create-git-storage test-repo-path)]
         (is (not (nil? storage)))
         (protocol/close storage)))))
