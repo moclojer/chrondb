@@ -1,21 +1,43 @@
 # Table of contents
 
-* [ChronDB](../README.md)
-* [Introduction](introduction.md)
-* [Architecture](architecture.md)
-* [Quick Start Guide](quickstart.md)
-* [Configuration](configuration.md)
-* [Examples](examples.md)
-  * [Clojure API](examples-clojure.md)
-  * [REST API](examples-rest.md)
-  * [Redis Protocol](examples-redis.md)
-  * [PostgreSQL Protocol](examples-postgresql.md)
-  * [Full-Text Search with `to_tsquery`](examples-postgresql.md#full-text-search-with-to_tsquery)
-* [Data Model](data-model.md)
-* [Version Control Features](version-control.md)
-* [Performance and Scalability](performance.md)
-* [Frequently Asked Questions](faq.md)
+## Getting Started
+
+* [Introduction](index)
+* [Quick Start Guide](quickstart)
+* [Core Concepts](data-model)
+* [Frequently Asked Questions](faq)
+
+## Step-by-Step Tutorials
+
+* [Time Travel Guide](tutorials/time-travel-guide)
+* [Branching Guide](tutorials/branching-guide)
+
+## Key Concepts
+
+* [Data Model](data-model)
+* [Version Control Features](version-control)
+* [Architecture](architecture)
+
+## Connection Methods
+
+* [Protocols Overview](protocols)
+* [Clojure API](api)
+* [REST API Examples](examples-rest)
+* [Redis Protocol Examples](examples-redis)
+* [PostgreSQL Protocol Examples](examples-postgresql)
+
+## Example Applications
+
+* [Examples Overview](examples)
+* [Clojure Examples](examples-clojure)
+
+## Operations
+
+* [Configuration](configuration)
+* [Performance and Scalability](performance)
+* [Operations Guide](operations)
+* [Benchmark Results](benchmark)
 
 ## Releases
 
-* [next](releases/next.md)
+* [Release Notes](releases/next)
