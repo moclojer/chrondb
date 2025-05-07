@@ -1,18 +1,15 @@
-# Quick Start Guide
+# Getting Started with ChronDB
 
-This guide will help you get started with ChronDB quickly. We'll cover installation, basic operations, and examples for each supported protocol.
+This quick start guide will have you up and running with ChronDB in minutes, with clear examples for each supported interface.
 
-## Installation
+## Step 1: Installation
 
-### Using Docker (Recommended)
+Choose the installation method that works best for you:
 
-The fastest way to get started is with Docker:
+### 🐳 Using Docker (Simplest)
 
 ```bash
-# Pull the ChronDB image
-docker pull moclojer/chrondb:latest
-
-# Run ChronDB with all protocols enabled
+# Start ChronDB with all protocols enabled
 docker run -d --name chrondb \
   -p 3000:3000 \  # REST API
   -p 6379:6379 \  # Redis protocol
@@ -21,240 +18,250 @@ docker run -d --name chrondb \
   moclojer/chrondb:latest
 ```
 
-### Using JAR File
-
-You can also download and run the JAR file directly:
+### 🧪 Using JAR File
 
 ```bash
 # Download the latest release
 curl -L -o chrondb.jar https://github.com/moclojer/chrondb/releases/latest/download/chrondb.jar
 
-# Run ChronDB (with default configuration)
+# Run ChronDB
 java -jar chrondb.jar
 ```
 
-### Using Clojure Tools
-
-For Clojure developers:
+### 🔧 For Clojure Developers
 
 ```bash
 # Clone the repository
 git clone https://github.com/moclojer/chrondb.git
 cd chrondb
 
-# Start the server using Clojure tools
+# Start the server
 clojure -M:run
 ```
 
-## Basic Configuration
+## Step 2: Verify Installation
 
-ChronDB uses a `config.edn` file for configuration. Create one in your working directory:
+Let's make sure everything is working correctly:
 
-```clojure
-{:storage {:data-dir "/path/to/data"}
- :servers {:rest {:enabled true
-                  :host "0.0.0.0"
-                  :port 3000}
-           :redis {:enabled true
-                   :host "0.0.0.0"
-                   :port 6379}
-           :postgresql {:enabled true
-                        :host "0.0.0.0"
-                        :port 5432
-                        :username "chrondb"
-                        :password "chrondb"}}}
+```bash
+# Check the REST API
+curl http://localhost:3000/api/v1/health
+
+# Expected response:
+# {"status":"ok","version":"0.1.0"}
 ```
 
-## Getting Started with ChronDB
+## Step 3: Choose Your Interface
 
-Let's look at basic operations using different protocols.
+ChronDB offers multiple ways to connect. Let's try each one with a simple example:
 
-### Using the Clojure API
+### 📡 Using the REST API
 
-Add ChronDB as a dependency in your project:
+The REST API is the most universal interface, accessible from any language with HTTP capabilities.
+
+```bash
+# Create your first document
+curl -X POST http://localhost:3000/api/v1/documents/greeting:hello \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello, ChronDB!", "created": "2023-06-01T12:00:00Z"}'
+
+# Retrieve the document
+curl http://localhost:3000/api/v1/documents/greeting:hello
+
+# Update the document
+curl -X POST http://localhost:3000/api/v1/documents/greeting:hello \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello, ChronDB!", "created": "2023-06-01T12:00:00Z", "updated": "2023-06-02T15:30:00Z"}'
+
+# View the document history
+curl http://localhost:3000/api/v1/documents/greeting:hello/history
+```
+
+### 🔄 Using the Redis Protocol
+
+If you're familiar with Redis, you'll feel right at home:
+
+```bash
+# Connect with redis-cli
+redis-cli -p 6379
+
+# Create a document
+SET user:101 '{"name":"Alex","email":"alex@example.com"}'
+
+# Retrieve the document
+GET user:101
+
+# Update the document
+SET user:101 '{"name":"Alex","email":"alex@example.com","role":"editor"}'
+
+# View document history (ChronDB-specific command)
+CHRONDB.HISTORY user:101
+```
+
+### 🗄️ Using the PostgreSQL Protocol
+
+Connect with your favorite SQL tools:
+
+```bash
+# Connect with psql
+psql -h localhost -p 5432 -U chrondb -d chrondb -W
+# Password is 'chrondb' by default
+
+# Create a document as a row
+INSERT INTO product (id, name, price, stock)
+VALUES ('123', 'Ergonomic Chair', 299.99, 10);
+
+# Query the document
+SELECT * FROM product WHERE id = '123';
+
+# Update the document
+UPDATE product SET stock = 9, last_sold = '2023-06-15' WHERE id = '123';
+
+# View document history
+SELECT * FROM chrondb_history('product', '123');
+```
+
+### 🧩 Using the Clojure API
+
+For Clojure applications, add ChronDB as a dependency:
 
 ```clojure
-;; deps.edn
+;; In deps.edn
 {:deps {com.github.moclojer/chrondb {:git/tag "v0.1.0"
                                      :git/sha "..."}}}
 ```
 
-Basic usage:
+Then use it in your code:
 
 ```clojure
 (require '[chrondb.core :as chrondb])
 
-;; Create a database
+;; Create a database connection
 (def db (chrondb/create-chrondb))
 
-;; Create documents
-(chrondb/save db "user:1" {:name "Alice" :email "alice@example.com"})
-(chrondb/save db "user:2" {:name "Bob" :email "bob@example.com"})
+;; Create a document
+(chrondb/save db "order:1001"
+  {:customer "Pat Smith"
+   :items [{:product "123" :quantity 1}]
+   :total 299.99
+   :status "pending"})
 
-;; Retrieve a document
-(def user (chrondb/get db "user:1"))
-(println user)  ;; {:name "Alice" :email "alice@example.com"}
+;; Retrieve the document
+(def order (chrondb/get db "order:1001"))
 
-;; Update a document
-(chrondb/save db "user:1" (assoc user :age 30))
+;; Update the document
+(chrondb/save db "order:1001"
+  (assoc order :status "shipped"))
 
-;; Search for documents
-(def results (chrondb/search db "name:Alice"))
-(println results)
-
-;; Get document history
-(def history (chrondb/history db "user:1"))
-(println history)
-
-;; Try branching
-(def test-db (chrondb/create-branch db "test"))
-(chrondb/save test-db "user:1" {:name "Alice (test)" :email "alice@test.com"})
-
-;; Compare main and test branch
-(println (chrondb/get db "user:1"))  ;; Original version
-(println (chrondb/get test-db "user:1"))  ;; Test version
+;; View document history
+(def history (chrondb/history db "order:1001"))
 ```
 
-For more comprehensive Clojure examples, see [Clojure API Documentation](examples-clojure.md).
+## Step 4: Explore Time Travel Features
 
-### Using the REST API
+Now let's try ChronDB's most powerful feature - time travel:
 
-If you have ChronDB running with the REST API enabled, you can interact with it using HTTP:
+### REST API Time Travel
 
 ```bash
-# Create a document
-curl -X POST http://localhost:3000/api/v1/documents/user:3 \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Charlie", "email": "charlie@example.com"}'
+# Get document at a specific point in time
+curl http://localhost:3000/api/v1/documents/greeting:hello/at/2023-06-01T13:00:00Z
 
-# Retrieve a document
-curl http://localhost:3000/api/v1/documents/user:3
-
-# Update a document
-curl -X POST http://localhost:3000/api/v1/documents/user:3 \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Charlie", "email": "charlie@example.com", "age": 25}'
-
-# Search for documents
-curl http://localhost:3000/api/v1/search?q=name:Charlie
-
-# Get document history
-curl http://localhost:3000/api/v1/documents/user:3/history
+# Compare versions
+curl http://localhost:3000/api/v1/documents/greeting:hello/diff \
+  -d '{"from":"2023-06-01T12:00:00Z","to":"2023-06-02T16:00:00Z"}'
 ```
 
-For more comprehensive REST API examples, including JavaScript clients, see [REST API Documentation](examples-rest.md).
-
-### Using the Redis Protocol
-
-If you have Redis CLI installed, you can interact with ChronDB using Redis commands:
+### Redis Protocol Time Travel
 
 ```bash
-# Connect to ChronDB via Redis protocol
-redis-cli -h localhost -p 6379
+# Get document at a specific commit/timestamp
+CHRONDB.GETAT user:101 "2023-06-10T15:00:00Z"
 
-# Create a document
-SET user:4 '{"name":"Dave","email":"dave@example.com"}'
-
-# Retrieve a document
-GET user:4
-
-# Update a document
-SET user:4 '{"name":"Dave","email":"dave@example.com","age":35}'
-
-# Get document history (ChronDB-specific command)
-CHRONDB.HISTORY user:4
+# Compare versions
+CHRONDB.DIFF user:101 "2023-06-10T15:00:00Z" "2023-06-15T18:00:00Z"
 ```
 
-For more comprehensive Redis protocol examples, including JavaScript clients, see [Redis Protocol Documentation](examples-redis.md).
+### PostgreSQL Protocol Time Travel
 
-### Using the PostgreSQL Protocol
+```sql
+-- Get document at a specific point in time
+SELECT * FROM chrondb_at('product', '123', '2023-06-15T10:00:00Z');
 
-If you have `psql` installed, you can interact with ChronDB using SQL:
-
-```bash
-# Connect to ChronDB via PostgreSQL protocol
-psql -h localhost -p 5432 -U chrondb -d chrondb
-
-# Create a document (as a row in a table)
-INSERT INTO user (id, name, email) VALUES ('5', 'Eve', 'eve@example.com');
-
-# Retrieve a document
-SELECT * FROM user WHERE id = '5';
-
-# Update a document
-UPDATE user SET email = 'eve.smith@example.com' WHERE id = '5';
-
-# Get document history (ChronDB-specific function)
-SELECT * FROM chrondb_history('user', '5');
+-- Compare versions
+SELECT * FROM chrondb_diff('product', '123',
+  '2023-06-14T00:00:00Z', '2023-06-16T00:00:00Z');
 ```
 
-For more comprehensive PostgreSQL protocol examples, including JavaScript clients, see [PostgreSQL Protocol Documentation](examples-postgresql.md).
-
-## Key Features to Try
-
-Once you're familiar with basic operations, try these key features:
-
-### Version Control
+### Clojure API Time Travel
 
 ```clojure
-;; Get a document as it existed at a point in time
-(def old-version (chrondb/get-at db "user:1" "2023-01-01T00:00:00Z"))
+;; Get document at a specific point in time
+(def old-order (chrondb/get-at db "order:1001" "2023-06-10T12:00:00Z"))
 
 ;; Compare versions
-(def diff (chrondb/diff db "user:1"
-                        "2023-01-01T00:00:00Z"
-                        "2023-06-01T00:00:00Z"))
+(def changes (chrondb/diff db "order:1001"
+              "2023-06-10T12:00:00Z" "2023-06-11T12:00:00Z"))
 ```
 
-For more details on version control features, see [Version Control Documentation](version-control.md).
+## Step 5: Try Branching (Optional)
 
-### Branching and Merging
+ChronDB's Git foundation enables powerful branching:
 
-```clojure
-;; Create a development branch
-(def dev-db (chrondb/create-branch db "dev"))
+### REST API Branching
 
-;; Make changes in the dev branch
-(chrondb/save dev-db "user:1" {:name "Alice (Updated)" :email "alice@example.com"})
+```bash
+# Create a test branch
+curl -X POST http://localhost:3000/api/v1/branches/test
 
-;; Merge changes back to main
-(def merged-db (chrondb/merge-branch db "dev" "main"))
+# Switch to the test branch
+curl -X PUT http://localhost:3000/api/v1/branches/test/checkout
+
+# Make a change in the test branch
+curl -X POST http://localhost:3000/api/v1/documents/greeting:hello \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello from test branch!", "created": "2023-06-01T12:00:00Z"}'
+
+# Compare with main branch
+curl http://localhost:3000/api/v1/branches/main/documents/greeting:hello
+curl http://localhost:3000/api/v1/branches/test/documents/greeting:hello
+
+# Merge test branch to main
+curl -X POST http://localhost:3000/api/v1/branches/test/merge/main
 ```
 
-### Transactions
+### Clojure API Branching
 
 ```clojure
-;; Execute multiple operations atomically
-(chrondb/with-transaction [db]
-  (chrondb/save db "order:1" {:items [{:id "item1" :qty 2}] :total 50.0})
-  (chrondb/save db "inventory:item1" {:stock 18}) ;; Reducing stock
-  (chrondb/save db "user:1" (update (chrondb/get db "user:1") :orders conj "order:1")))
+;; Create a test branch
+(def test-db (chrondb/create-branch db "test"))
+
+;; Make changes in the test branch
+(chrondb/save test-db "order:1001"
+  (assoc (chrondb/get test-db "order:1001")
+         :status "canceled"))
+
+;; Compare changes
+(println (chrondb/get db "order:1001"))  ;; Main branch
+(println (chrondb/get test-db "order:1001"))  ;; Test branch
+
+;; Merge test changes to main
+(chrondb/merge-branch db "test" "main")
 ```
 
 ## Next Steps
 
-Now that you've got the basics, you can:
+Congratulations! You've taken your first steps with ChronDB. Here's where to go next:
 
-1. Explore the [complete Clojure API examples](examples-clojure.md)
-2. Learn more about [REST API integration](examples-rest.md)
-3. Check out [Redis protocol examples](examples-redis.md)
-4. Dive into [PostgreSQL protocol examples](examples-postgresql.md)
-5. Understand the [Data Model](data-model.md) in depth
-6. Leverage [Version Control Features](version-control.md)
-7. Consider [Performance and Scalability](performance.md) for production use
+- [Data Model](data-model) - Learn more about ChronDB's document structure
+- [Protocol References](protocols) - Complete protocol documentation
+- [Configuration](configuration) - Customize your ChronDB instance
+- [Examples](examples) - More detailed usage examples
 
-## Troubleshooting
+Need help? Check our [FAQ](faq) or join our community:
 
-### Common Issues
+- [Discord Community](https://discord.com/channels/1099017682487087116/1353399752636497992)
+- [GitHub Discussions](https://github.com/moclojer/chrondb/discussions)
+- [Official Documentation](https://chrondb.moclojer.com/)
 
-1. **Connection refused**: Make sure ChronDB is running and the ports are correctly exposed
-2. **Authentication failure** (PostgreSQL): Use the default username/password (chrondb/chrondb)
-3. **Data persistence**: Ensure you've mounted a volume for Docker or set the data directory
-
-### Getting Help
-
-If you encounter issues:
-
-- Check the [Frequently Asked Questions](faq.md)
-- Open an issue on [GitHub](https://github.com/moclojer/chrondb/issues)
-- Join our community chat
+**Happy time traveling with ChronDB!**

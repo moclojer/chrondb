@@ -1,57 +1,85 @@
-# ChronDB Documentation
+# ChronDB: The Time-Traveling Database
 
-ChronDB is a chronological database based on Git's internal architecture, implementing a key/value storage system with complete modification history.
+**Welcome to ChronDB!** A modern, Git-based database that remembers everything.
 
-## Key Features
+## What is ChronDB?
 
-- Immutable database with atomic transactions
-- ACID compliance
-- Schema-less
-- Complete chronological storage
-- Multiple access interfaces:
-  - Native Clojure/Java API
-  - **REST API:** communication via HTTP protocol
-  - **Redis protocol:** use the Redis driver to communicate with chrondb
-  - **PostgreSQL protocol:** in query within document, via PostgreSQL clients
+ChronDB is a chronological database built on Git's powerful architecture that gives your data complete version history. Think of it as "Git for your database" - every change is tracked, every version is accessible, and you can time-travel through your data's complete history.
 
-Understand how and when changes were made. **chrondb** stores all history, and lets you query against any point in time.
+## Why Choose ChronDB?
 
-[Git structure](https://git-scm.com/book/en/v2/Git-Internals-Git-Objects) is a powerful solution for storing **"data"** (files) in chronological order, _chrondb_ uses git core as a data structure to structure the data timeline, making it possible to return to any necessary point and bringing all git functions for a database:
+- **Complete History** - Never lose data again. Every change is preserved in your database's timeline.
+- **Time Travel** - Query your data as it existed at any point in time.
+- **Branching & Merging** - Create isolated environments for testing, development, or experimentation.
+- **Multiple Interfaces** - Connect through Clojure, REST API, Redis protocol, or even PostgreSQL protocol.
+- **ACID Compliance** - Enjoy full transaction support with commit, rollback, and consistency guarantees.
+- **Schema-less** - Store any JSON-compatible data without rigid structure requirements.
 
-- diff
-- notes
-- restore
-- branch
-- checkout
-- revert
-- merge
-- log
-- blame
-- archive
-- [hooks](https://git-scm.com/docs/githooks#_hooks)
-- ... [git high-level commands (porcelain)](https://git-scm.com/docs/git#_high_level_commands_porcelain)
+## How It Works
 
-## Concept
+ChronDB leverages Git's internal structure as a storage engine:
 
-ChronDB leverages Git's internal structure as a storage engine, offering all the advantages of version control for your data:
+```
+Repository (database)
+  └── Branches (schemas/environments)
+       └── Directories (tables)
+            └── Files (documents as JSON)
+```
 
-- Access to complete modification history
-- Ability to access any previous version of data
-- Operations like diff, branch, merge and more
-- Complete audit trail of changes
+Each document is a file in the Git repository, and each change creates a commit in the history. This gives you all the power of Git for your database:
 
-> The goal is to speak the same language as the database world
+- See diffs between versions
+- Browse commit history
+- Create branches for development
+- Merge changes between branches
+- Tag important versions
+- Hook into events
 
-- **database:** _git_ repository (local or remotely)
-- **scheme:** _git_ branch
-- **table:** directory added on _git_ repository
-- **field struct:** json (document) - will be persisted in a file and indexed in _lucene_
+## Quick Example
 
-## Getting Started
+Here's how simple it is to use ChronDB with its Clojure API:
 
-Navigate through the documentation to learn how to:
+```clojure
+;; Create/connect to a database
+(def db (chrondb/create-chrondb))
 
-- [Configure](configuration.md) your ChronDB instance
-- Use the [API](api.md) for database operations
-- Connect through various [protocols](protocols.md)
-- See [examples](examples.md) of common use cases
+;; Create a user document
+(chrondb/save db "user:1" {:name "Alice" :email "alice@example.com"})
+
+;; Update the document
+(chrondb/save db "user:1" {:name "Alice" :email "alice@example.com" :role "admin"})
+
+;; Time travel: see how the document looked yesterday
+(def yesterday (chrondb/get-at db "user:1" "2023-07-15T00:00:00Z"))
+
+;; See all versions of the document
+(def history (chrondb/history db "user:1"))
+```
+
+## Choose Your Interface
+
+ChronDB speaks multiple protocols so you can connect with your favorite tools:
+
+- **Native Clojure API** - Direct, powerful access from Clojure applications
+- **REST API** - HTTP interface for any language or client
+- **Redis Protocol** - Use Redis clients to connect directly
+- **PostgreSQL Protocol** - Connect with SQL clients and tools
+
+## Start Your Journey
+
+New to ChronDB? Here's how to get started:
+
+1. [Quick Start Guide](quickstart) - Up and running in minutes
+2. [Core Concepts](data-model) - Understand ChronDB's data model
+3. [Examples](examples) - See ChronDB in action
+4. [API Reference](api) - Complete API documentation
+
+## Ready to dive in?
+
+→ [Get Started Now](quickstart)
+
+## Community Resources
+
+- **Official Documentation**: [chrondb.moclojer.com](https://chrondb.moclojer.com/)
+- **Join our Community**: [Discord](https://discord.com/channels/1099017682487087116/1353399752636497992)
+- **Discussions & Ideas**: [GitHub Discussions](https://github.com/moclojer/chrondb/discussions)
