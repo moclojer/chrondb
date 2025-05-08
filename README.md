@@ -3,7 +3,7 @@
 _Chronological **key/value** Database built on Git architecture with complete version history._
 
 [![GitHub License](https://img.shields.io/github/license/moclojer/chrondb)](https://github.com/moclojer/chrondb/blob/main/LICENSE)
-[![Discord](https://img.shields.io/discord/1099017682487087116?label=discord)](https://discord.com/channels/1099017682487087116/1353399752636497992)
+[![Discord](https://img.shields.io/discord/1099017682487087116?label=discord)](https://discord.gg/w3Rnafyc)
 [![Documentation](https://img.shields.io/badge/docs-chrondb.moclojer.com-blue)](https://chrondb.moclojer.com/)
 
 ## ✨ Features
