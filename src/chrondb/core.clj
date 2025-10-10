@@ -14,6 +14,7 @@
 ;; along with this program. If not, see <https://www.gnu.org/licenses/>.
 (ns chrondb.core
   "Core namespace for ChronDB - A chronological database with Git-like versioning"
+  (:gen-class)
   (:require [chrondb.api.server :as server]
             [chrondb.api.redis.core :as redis-core]
             [chrondb.api.sql.server :as sql-server]

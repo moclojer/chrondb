@@ -1,0 +1,40 @@
+name: GraalVM Native Images
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-native:
+    runs-on: ${{ matrix.os }}
+    name: "Build native image on ${{ matrix.os }}"
+    strategy:
+      matrix:
+        os: ["macos-13", "ubuntu-22.04"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeLaGuardo/setup-clojure@13.4
+        with:
+          cli: 1.12.0.1530
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build JAR artifact
+        run: clojure -M:build -- --uberjar
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          version: "22.3.2"
+          java-version: "17"
+          distribution: "graalvm"
+          components: "native-image"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build native binary
+        working-directory: target
+        run: |
+          native-image @native-image-args -H:Name=chrondb_${{ runner.os }}
+
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: chrondb_${{ runner.os }}
+          path: target/chrondb_${{ runner.os }}

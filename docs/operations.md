@@ -138,6 +138,17 @@ GET /metrics
 
 By using Git internally, ChronDB has native backup capabilities.
 
+### GraalVM Native Image
+
+ChronDB pode ser distribuído como binário compilado via GraalVM:
+
+1. Instale GraalVM com o componente `native-image`
+2. Rode `clojure -M:build -- --uberjar` para gerar `target/chrondb.jar` e arquivos auxiliares
+3. Execute `native-image @target/native-image-args -jar target/chrondb.jar -o target/chrondb_local`
+4. Teste o binário local: `./target/chrondb_local`
+
+O workflow `build-native-image.yml` (GitHub Actions) executa o mesmo processo e publica os artefatos por sistema operacional.
+
 ### Backup
 
 1. Traditional backup:

@@ -18,6 +18,14 @@ target/
 data/
 test-*
 benchmark_results_*.txt
+report/
+META-INF/*-native-image-args
+.native-image/
+
+# GraalVM native-image artifacts
+target/native/
+target/chrondb_*
+chrondb_local
 
 # OS
 .DS_Store
@@ -25,3 +33,8 @@ Thumbs.db
 
 # doc codox
 docs/api/
+META-INF/
+.envrc
+./chrondb_local
+./chrondb_macos
+./chrondb_linux

@@ -33,7 +33,7 @@
 (defn start-sql-server
   "Inicia um servidor SQL"
   [storage index port]
-  (let [server-socket (create-server-socket port)
+  (let [^ServerSocket server-socket (create-server-socket port)
         actual-port (.getLocalPort server-socket)
         thread-pool (Executors/newCachedThreadPool)
         client-handler (handler/create-connection-handler storage index)]

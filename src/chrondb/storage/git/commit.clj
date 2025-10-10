@@ -20,7 +20,8 @@
   (:import [java.io ByteArrayInputStream]
            [java.util Date TimeZone]
            [org.eclipse.jgit.dircache DirCache DirCacheEntry]
-           [org.eclipse.jgit.lib ConfigConstants Constants ObjectId]
+           [org.eclipse.jgit.api Git]
+           [org.eclipse.jgit.lib ConfigConstants Constants ObjectId ObjectInserter Repository StoredConfig]
            [org.eclipse.jgit.lib CommitBuilder FileMode RefUpdate$Result]
            [org.eclipse.jgit.revwalk RevWalk]
            [org.eclipse.jgit.transport RefSpec]
@@ -30,17 +31,17 @@
 (defn configure-global-git
   "Configures global Git settings to disable GPG signing."
   []
-  (let [global-config (-> (SystemReader/getInstance)
-                          (.getUserConfig))]
+  (let [^StoredConfig global-config (-> (SystemReader/getInstance)
+                                        (.getUserConfig))]
     (.setBoolean global-config "commit" nil "gpgsign" false)
     (.unset global-config "gpg" nil "format")
     (.save global-config)))
 
 (defn configure-repository
   "Configures repository-specific Git settings."
-  [repo]
+  [^Repository repo]
   (configure-global-git)
-  (let [config (.getConfig repo)
+  (let [^StoredConfig config (.getConfig repo)
         git-config (config/load-config)]
     (.setBoolean config ConfigConstants/CONFIG_COMMIT_SECTION nil ConfigConstants/CONFIG_KEY_GPGSIGN false)
     (.setString config ConfigConstants/CONFIG_CORE_SECTION nil ConfigConstants/CONFIG_KEY_FILEMODE "false")
@@ -59,9 +60,9 @@
    - git: The Git instance
    - branch-name: The name of the branch to checkout or create
    Returns: The checked out or created ref"
-  [git branch-name]
+  [^Git git branch-name]
   (log/log-info (str "Checking out branch: " branch-name))
-  (let [repository (.getRepository git)
+  (let [^Repository repository (.getRepository git)
         ref (.exactRef repository (str "refs/heads/" branch-name))]
     (if (.isBare repository)
       ;; For bare repositories, just return the reference without checkout
@@ -98,10 +99,11 @@
 (defn create-temporary-index
   "Creates an in-memory index for the document change.
    Similar to the createTemporaryIndex method in the Java example."
-  [git head-id path content]
-  (let [in-core-index (DirCache/newInCore)
+  [^Git git head-id path content]
+  (let [^Repository repository (.getRepository git)
+        in-core-index (DirCache/newInCore)
         dc-builder (.builder in-core-index)
-        inserter (.newObjectInserter (.getRepository git))]
+        inserter (.newObjectInserter repository)]
     (try
       (when content
         (let [dc-entry (DirCacheEntry. path)
@@ -113,8 +115,9 @@
           (.add dc-builder dc-entry)))
 
       (when head-id
-        (let [tree-walk (TreeWalk. (.getRepository git))
-              h-idx (.addTree tree-walk (.parseTree (RevWalk. (.getRepository git)) head-id))]
+        (let [^Repository repo (.getRepository git)
+              tree-walk (TreeWalk. repo)
+              h-idx (.addTree tree-walk (.parseTree (RevWalk. repo) head-id))]
           (.setRecursive tree-walk true)
 
           (while (.next tree-walk)
@@ -137,13 +140,13 @@
 
 (defn commit-virtual
   "Commits changes virtually without writing to the file system."
-  [git branch-name path content message committer-name committer-email]
-  (let [repo (.getRepository git)
+  [^Git git branch-name path content message committer-name committer-email]
+  (let [^Repository repo (.getRepository git)
         head-id (.resolve repo (str branch-name "^{commit}"))
         author (build-person-ident committer-name committer-email)
-        object-inserter (.newObjectInserter repo)]
+        ^ObjectInserter object-inserter (.newObjectInserter repo)]
     (try
-      (let [index (create-temporary-index git head-id path content)
+      (let [^DirCache index (create-temporary-index git head-id path content)
             index-tree-id (.writeTree index object-inserter)
             commit (doto (CommitBuilder.)
                      (.setAuthor author)
