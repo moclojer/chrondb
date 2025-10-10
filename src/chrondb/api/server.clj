@@ -59,4 +59,4 @@
    Returns: The Jetty server instance"
   [storage index port]
   (println "Starting server on port" port)
-  (jetty/run-jetty (create-app storage index) {:port port :join? false})) 
+  (jetty/run-jetty (create-app storage index) {:port port :join? false}))

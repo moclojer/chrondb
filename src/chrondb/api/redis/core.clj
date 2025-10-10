@@ -532,7 +532,7 @@
 ;; Server
 (defn accept-connections
   "Accept connections on the server socket and handle them."
-  [server-socket storage index]
+  [^ServerSocket server-socket storage index]
   (loop []
     (when-not (.isClosed server-socket)
       (try
@@ -552,7 +552,7 @@
   ([storage index]
    (start-redis-server storage index 6379))
   ([storage index port]
-   (let [server-socket (ServerSocket. port)]
+   (let [^ServerSocket server-socket (ServerSocket. port)]
      (log/log-info "Starting chrondb server via redis protocol on port" port)
      (async/thread
        (accept-connections server-socket storage index))
