@@ -15,7 +15,7 @@ jobs:
 
       - uses: DeLaGuardo/setup-clojure@13.4
         with:
-          cli: 1.12.0.1530
+          cli: 1.12.3.1577
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build JAR artifact
