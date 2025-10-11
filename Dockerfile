@@ -28,12 +28,17 @@ WORKDIR /app
 COPY --from=builder /app/chrondb /usr/local/bin/chrondb
 COPY --from=builder /app/resources ./resources
 
-RUN mkdir -p /app/data && \
-    chown -R nobody:nogroup /app
+RUN groupadd --system chrondb && \
+    useradd --system --gid chrondb --home-dir /app --shell /usr/sbin/nologin --no-create-home chrondb && \
+    touch /etc/passwd && \
+    mkdir -p /app /app/data && \
+    chown -R chrondb:chrondb /app
 
 EXPOSE 3000 6379 5432
 
-# rodamos como usuário restrito padrão do Debian (UID 65532)
-USER nobody
+# run as dedicated non-root user
+USER chrondb
+
+ENV HOME=/app
 
 ENTRYPOINT ["/usr/local/bin/chrondb"]
