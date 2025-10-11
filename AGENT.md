@@ -94,6 +94,10 @@ ChronDB is a chronological key/value database implemented in Clojure and backed 
 - Provide runnable examples where possible (e.g., `docs/examples-*.md`)
 - Keep developer-focused instructions in this `AGENT.md`
 
+## CI/CD Workflows
+
+- `publish-docker.yml` publishes the Docker image to GitHub Container Registry on every push to `main`. The workflow authenticates with `${{ secrets.GITHUB_TOKEN }}`, builds using the project `Dockerfile`, and pushes the `latest` tag to `ghcr.io/<owner>/<repo>`.
+
 ## Native Image Support
 
 - Generate the uberjar and GraalVM metadata with `clojure -M:build -- --uberjar`
