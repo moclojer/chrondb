@@ -1,4 +1,4 @@
-FROM ghcr.io/graalvm/native-image:ol9-java17-22.3.2 AS builder
+FROM ghcr.io/graalvm/native-image:ol9-java17-22 AS builder
 
 ENV CLOJURE_VERSION=1.12.3.1577 \
     PATH="/usr/local/bin:/usr/bin:/bin:/usr/local/graalvm-ce-java17-22.3.2/bin:$PATH"
