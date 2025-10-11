@@ -83,7 +83,7 @@ ChronDB is a chronological key/value database implemented in Clojure and backed 
 ### Dependencies
 
 - Manage dependencies via `deps.edn`
-- Verify compatibility with GPLv3 license requirements
+- Verify compatibility with AGPLv3 license requirements
 - Avoid adding dependencies that conflict with GraalVM native image constraints
 - Document new libraries and rationale in PR descriptions
 

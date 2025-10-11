@@ -6,6 +6,8 @@
 
 ChronDB is a chronological database built on Git's powerful architecture that gives your data complete version history. Think of it as "Git for your database" - every change is tracked, every version is accessible, and you can time-travel through your data's complete history.
 
+ChronDB is licensed under the GNU Affero General Public License v3.0 (AGPLv3), ensuring improvements deployed as hosted services remain available to the community.
+
 ## Why Choose ChronDB?
 
 - **Complete History** - Never lose data again. Every change is preserved in your database's timeline.
