@@ -123,10 +123,10 @@ Please make sure to update tests as appropriate.
 
 ## 📄 License
 
-ChronDB is licensed under the terms of the GNU General Public License v3.0 (GPLv3).
+ChronDB is licensed under the terms of the GNU Affero General Public License v3.0 (AGPLv3).
 
 This means:
 
 - You are free to use, study, modify, and redistribute the software.
-- Any distributed modified version must also be licensed under GPLv3.
-- See the [LICENSE](./LICENSE) file for full details or visit [gnu.org/licenses/gpl-3.0](https://www.gnu.org/licenses/gpl-3.0.html).
+- If you run a modified version as a network service, you must make the source available to users of that service.
+- See the [LICENSE](./LICENSE) file for full details or visit [gnu.org/licenses/agpl-3.0](https://www.gnu.org/licenses/agpl-3.0.html).

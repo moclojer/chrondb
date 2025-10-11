@@ -34,3 +34,7 @@ This is the first official release of ChronDB, a chronological key/value databas
 ## Note
 
 This release represents the collaborative effort of the community to create a robust and efficient chronological key/value database. We thank all contributors who made this version possible.
+
+### Licensing Update
+
+- ChronDB is now distributed under the GNU Affero General Public License v3.0 (AGPLv3) to ensure modifications deployed as network services remain available to the community.
