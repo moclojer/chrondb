@@ -42,6 +42,12 @@ jobs:
           sleep 3
 
       # Run coverage excluding Redis tests
-      - name: Run coverage
+      - name: Run coverage (pr-only skip backup ns)
+        if: github.event_name == 'pull_request'
         run: |
           clojure -M:coverage-non-external-protocol
+
+      - name: Run coverage (main with backup ns)
+        if: github.event_name != 'pull_request'
+        run: |
+          clojure -M:coverage
