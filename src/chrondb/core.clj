@@ -20,7 +20,6 @@
             [chrondb.api.sql.server :as sql-server]
             [chrondb.backup.core :as backup]
             [chrondb.storage.git.core :as git-core]
-            [chrondb.storage.protocol :as storage-proto]
             [chrondb.index.lucene :as lucene]
             [clojure.java.io :as io]
             [clojure.string :as str]))
@@ -131,15 +130,16 @@
           (recur more (assoc acc (keyword (subs flag 2)) value))
           (throw (ex-info "Invalid option format" {:option flag})))))))
 
+
 (defn ensure-output
   [opts]
-  (if-let [output (:output opts)]
+  (if-let [_ (:output opts)]
     opts
     (throw (ex-info "--output is required" {:options opts}))))
 
 (defn ensure-input
   [opts]
-  (if-let [input (:input opts)]
+  (if-let [_ (:input opts)]
     opts
     (throw (ex-info "--input is required" {:options opts}))))
 

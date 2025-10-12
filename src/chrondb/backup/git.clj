@@ -91,7 +91,7 @@
           (log/log-info (str "Including ref " ref-name " in bundle"))
           (.include bundle (.getName ref) (.getObjectId ref))))
 
-      (.writeBundle bundle (org.eclipse.jgit.lib.NullProgressMonitor/INSTANCE) out))
+      (.writeBundle bundle org.eclipse.jgit.lib.NullProgressMonitor/INSTANCE out))
 
     (when verify
       (log/log-info (str "Verifying bundle " output))

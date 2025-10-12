@@ -19,12 +19,8 @@
             [chrondb.storage.git.commit :as commit]
             [chrondb.storage.git.document :as document]
             [chrondb.storage.git.history :as history]
-            [chrondb.util.logging :as log]
             [clojure.java.io :as io])
-  (:import [org.eclipse.jgit.api Git]
-           [org.eclipse.jgit.lib Repository ObjectId]
-           [org.eclipse.jgit.revwalk RevCommit RevWalk]
-           [org.eclipse.jgit.api.errors RefNotFoundException]))
+  (:import [org.eclipse.jgit.api Git]))
 
 (defn ensure-directory
   "Creates a directory if it doesn't exist.
