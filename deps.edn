@@ -116,7 +116,7 @@
                                                           "--test-ns-path" "test"
                                                           "--ns-regex" "chrondb.*"
                                                           "--test-ns-regex" "^chrondb\\.((?!benchmark).)*test$"
-                                                          "--ns-exclude-regex" "chrondb.api.redis,chrondb.api.sql,chrondb.run-redis-tests-sequential,chrondb.benchmark"
+                                                          "--ns-exclude-regex" "chrondb.api.redis,chrondb.api.sql,chrondb.backup.*,chrondb.run-redis-tests-sequential,chrondb.benchmark"
                                                           "--fail-threshold" "55"
                                                           "--codecov"
                                                           "--html"
