@@ -37,6 +37,26 @@
               (recur))))))
     (format "%064x" (BigInteger. 1 (.digest digest)))))
 
+(defn- ->refspec
+  "Create a RefSpec instance ensuring force-update semantics.
+
+   Accepts strings in either short form (\"refs/heads/main\") or full
+   refspec form (\"+refs/heads/main:refs/heads/main\")."
+  [ref]
+  (let [spec (if (and ref (or (.contains ^String ref ":") (.startsWith ^String ref "+")))
+               ref
+               (str "+" ref ":" ref))]
+    (.setForceUpdate (RefSpec. spec) true)))
+
+(defn- build-refspecs
+  "Return a collection of RefSpec instances for the given refs.
+
+   When refs are nil/empty, use a wildcard mapping to cover all refs."
+  [refs]
+  (if (seq refs)
+    (into [] (map ->refspec) refs)
+    [(->refspec "refs/*:refs/*")]))
+
 (defn- resolve-refs
   "Resolve a sequence of ref names, or return all refs when nil."
   [^Repository repo refs]
@@ -49,9 +69,9 @@
       (if (seq resolved)
         resolved
         (throw (ex-info "No valid refs resolved" {:refs refs}))))
-    (->> (.getRefDatabase repo)
-         (.getRefsByPrefix "refs/")
-         (map #(.getName ^Ref %)))))
+    (let [ref-db (.getRefDatabase repo)]
+      (->> (.getRefsByPrefix ref-db "refs/")
+           (map #(.getName ^Ref %))))))
 
 (defn export-bundle
   "Exports the repository to a git bundle file.
@@ -96,11 +116,13 @@
     (when verify
       (log/log-info (str "Verifying bundle " output))
       (let [uri (URIish. (str "file://" (.getAbsolutePath (io/file output))))
+            refspecs (build-refspecs all-refs)
             fetch (-> git
                       (.fetch)
                       (.setRemote (.toString uri))
                       (.setDryRun true)
-                      (.setRefSpecs (map #(RefSpec. %) all-refs)))]
+                      (.setForceUpdate true)
+                      (.setRefSpecs refspecs))]
         (.call fetch)))
 
     (let [checksum (sha256-file output)
@@ -135,15 +157,14 @@
 
   (let [git (Git/wrap repository)
         uri (URIish. (str "file://" (.getAbsolutePath (io/file input))))
-        refspecs (if (seq refs)
-                   (map #(RefSpec. %) refs)
-                   [(RefSpec. "refs/*:refs/*")])]
+        refspecs (build-refspecs refs)]
     (when verify
       (log/log-info (str "Dry-run fetch for bundle " input))
       (-> git
           (.fetch)
           (.setRemote (.toString uri))
           (.setDryRun true)
+          (.setForceUpdate true)
           (.setRefSpecs refspecs)
           (.call)))
 
@@ -152,6 +173,7 @@
                      (.fetch)
                      (.setRemote (.toString uri))
                      (.setDryRun false)
+                     (.setForceUpdate true)
                      (.setRefSpecs refspecs)
                      (.call))]
       {:status :ok

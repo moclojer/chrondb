@@ -65,6 +65,16 @@
   [table-name]
   (encode-path table-name))
 
+(defn- sanitize-prefix
+  "Normalize data-dir prefix so Git paths never start with a slash or drive letter."
+  [data-dir]
+  (let [normalized (-> (or data-dir "")
+                       (str/replace "\\" "/")
+                       (str/replace #"//+" "/"))
+        no-drive (str/replace normalized #"^[A-Za-z]:" "")
+        no-leading (str/replace no-drive #"^/+" "")]
+    no-leading))
+
 (defn get-file-path
   "Get the file path for a document ID, with proper encoding.
    Organizes documents in table directories as per documentation.
@@ -78,13 +88,12 @@
      (get-file-path data-dir id table-name)))
   ([data-dir id table-name]
    (let [encoded-id (encode-path id)
-         encoded-table (get-table-path table-name)]
-     (if (str/blank? data-dir)
-       (str encoded-table "/" encoded-id ".json")
-       (str data-dir
-            (if (str/ends-with? data-dir "/") "" "/")
-            encoded-table "/"
-            encoded-id ".json")))))
+         encoded-table (get-table-path table-name)
+         prefix (sanitize-prefix data-dir)]
+     (str (when (seq prefix)
+            (str prefix (when-not (str/ends-with? prefix "/") "/")))
+          encoded-table "/"
+          encoded-id ".json"))))
 
 (defn extract-table-and-id
   "Extract table name and clean ID from a potentially table-prefixed document ID"
