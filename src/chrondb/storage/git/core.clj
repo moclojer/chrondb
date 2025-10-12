@@ -101,9 +101,10 @@
       nil)))
 
 
-(defn repository? [storage]
+(defn repository?
   "Returns true if the storage contains a valid JGit Repository instance.
    Useful for validating storage before performing repository-backed operations."
+  [storage]
   (instance? org.eclipse.jgit.lib.Repository (:repository storage)))
 
 
