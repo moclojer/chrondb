@@ -5,6 +5,7 @@
             [compojure.route :as route]
             [chrondb.storage.protocol :as storage]
             [chrondb.index.protocol :as index]
+            [chrondb.api.v1 :as handlers]
             [ring.util.response :as response]))
 
 (defn handle-save
@@ -67,9 +68,9 @@
   [index query]
   ;; TODO: Allow specifying the search field via query parameter?
   ;; TODO: Allow specifying the branch via query parameter?
-  (let [default-field "content" ; Campo padrão para busca via API REST
-        default-branch "main"]   ; Branch padrão para busca via API REST
-  (response/response
+  (let [default-field "content"
+        default-branch "main"]
+    (response/response
      {:results (index/search index default-field query default-branch)})))
 
 (defn create-routes
@@ -85,4 +86,20 @@
    (GET "/api/v1/get/:id" [id] (handle-get storage id))
    (DELETE "/api/v1/delete/:id" [id] (handle-delete storage index id))
    (GET "/api/v1/search" [q] (handle-search index q))
+   (POST "/api/v1/backup" {body :body}
+     (let [result (handlers/handle-backup storage body)]
+       (-> (response/response (:body result))
+           (response/status (:status result)))))
+   (POST "/api/v1/restore" {{backup-file :tempfile :as params} :params}
+     (let [result (handlers/handle-restore storage backup-file params)]
+       (-> (response/response (:body result))
+           (response/status (:status result)))))
+   (POST "/api/v1/export" {body :body}
+     (let [result (handlers/handle-export storage body)]
+       (-> (response/response (:body result))
+           (response/status (:status result)))))
+   (POST "/api/v1/import" {{bundle :tempfile :as params} :params}
+     (let [result (handlers/handle-import storage bundle params)]
+       (-> (response/response (:body result))
+           (response/status (:status result)))))
    (route/not-found (response/not-found {:error "Not Found"}))))

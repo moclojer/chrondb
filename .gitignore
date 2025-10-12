@@ -28,6 +28,7 @@ target/native/
 .DS_Store
 Thumbs.db
 .envrc
+backups/
 
 # doc codox
 docs/api/
