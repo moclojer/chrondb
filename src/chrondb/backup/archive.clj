@@ -19,7 +19,6 @@
             [clojure.data.json :as json]
             [clojure.string :as str])
   (:import [org.eclipse.jgit.api Git]
-           [java.nio.file Files Path Paths]
            [java.security MessageDigest]
            [java.time Instant]
            [java.util.zip GZIPOutputStream GZIPInputStream ZipException]
