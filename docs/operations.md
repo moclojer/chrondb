@@ -136,49 +136,70 @@ GET /metrics
 
 ## Backup and Restoration
 
-By using Git internally, ChronDB has native backup capabilities.
+ChronDB usa Git internamente, então cada gravação gera commits imutáveis. A partir desta versão há suporte oficial a backup/restore completos e incrementais, tanto via CLI quanto via REST.
 
-### GraalVM Native Image
+### Backup (CLI)
 
-ChronDB pode ser distribuído como binário compilado via GraalVM:
+- Full tar.gz (default):
 
-1. Instale GraalVM com o componente `native-image`
-2. Rode `clojure -M:build -- --uberjar` para gerar `target/chrondb.jar` e arquivos auxiliares
-3. Execute `native-image @target/native-image-args -jar target/chrondb.jar -o target/chrondb_local`
-4. Teste o binário local: `./target/chrondb_local`
+  ```bash
+  clojure -M:run backup --output backups/full-2025-10-12.tar.gz
+  ```
 
-O workflow `build-native-image.yml` (GitHub Actions) executa o mesmo processo e publica os artefatos por sistema operacional.
+- Full bundle:
 
-### Backup
+  ```bash
+  clojure -M:run backup --output backups/full-main.bundle --format bundle
+  ```
 
-1. Traditional backup:
+- Incremental bundle (desde commit base):
 
-   ```
-   java -jar chrondb.jar --command backup --output /path/to/backup.tar.gz
-   ```
+  ```bash
+  clojure -M:run backup --format bundle --output backups/incr.bundle --base-commit <full-commit>
+  ```
 
-2. Using Git directly:
+### Restore (CLI)
 
-   ```
-   cd /path/to/data-dir
-   git bundle create /path/to/backup.bundle --all
-   ```
+- Tar.gz:
 
-### Restoration
+  ```bash
+  clojure -M:run restore --input backups/full-2025-10-12.tar.gz
+  ```
 
-1. Traditional restoration:
+- Bundle:
 
-   ```
-   java -jar chrondb.jar --command restore --input /path/to/backup.tar.gz
-   ```
+  ```bash
+  clojure -M:run restore --input backups/full-main.bundle --format bundle
+  ```
 
-2. Using Git directly:
+### Export/Import bundle (CLI)
 
-   ```
-   mkdir -p /path/to/new-data-dir
-   cd /path/to/new-data-dir
-   git clone /path/to/backup.bundle .
-   ```
+```bash
+clojure -M:run export-snapshot --output backups/main.bundle --refs refs/heads/main
+clojure -M:run import-snapshot --input backups/main.bundle
+```
+
+### Scheduler (CLI)
+
+```bash
+clojure -M:run schedule --mode full --interval 60 --output-dir backups/
+clojure -M:run cancel-schedule --id <job-id>
+clojure -M:run list-schedules
+```
+
+### Backup via REST
+
+- POST `/api/v1/backup` — body JSON `{"output":"/path/to/full.tar.gz","format":"tar.gz"}`
+- POST `/api/v1/export` — JSON `{"output":"/path/to/main.bundle","refs":["refs/heads/main"]}`
+
+### Restore via REST
+
+- POST `/api/v1/restore` com upload multipart (campo `file`) e campo opcional `format`
+- POST `/api/v1/import` com upload multipart (`file`) e flag `verify`
+
+As respostas retornam status HTTP e o manifesto com checksum, refs inclusas e tipo (:full, :incremental).
+
+> **Dica:** Incrementais suportam apenas formato bundle; para reconstruir completamente, aplique primeiro o full e depois os incrementais na ordem.
 
 ## Maintenance
 

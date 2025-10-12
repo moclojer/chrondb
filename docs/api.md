@@ -205,13 +205,36 @@ Available hook points:
 
 Returns: Map with health status information
 
-#### Backup
+#### Backup / Restore
 
 ```clojure
-(chrondb/backup db "backup-path")
+(chrondb.backup.core/create-full-backup storage {:output-path "backups/full.tar.gz"})
+(chrondb.backup.core/create-incremental-backup storage {:output-path "backups/incr.bundle"
+                                                       :base-commit "<commit>"
+                                                       :format :bundle})
 ```
 
-Creates a complete backup of the database
+```clojure
+(chrondb.backup.core/restore-backup storage {:input-path "backups/full.tar.gz"})
+```
+
+```clojure
+(chrondb.backup.core/export-snapshot storage {:output "backups/main.bundle"
+                                              :refs ["refs/heads/main"]})
+```
+
+```clojure
+(chrondb.backup.core/import-snapshot storage {:input "backups/main.bundle"})
+```
+
+Scheduled backup example:
+
+```clojure
+(chrondb.backup.core/schedule-backup storage {:mode :bundle
+                                              :format :bundle
+                                              :interval-minutes 60
+                                              :output-dir "backups/"})
+```
 
 #### Statistics
 

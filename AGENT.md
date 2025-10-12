@@ -93,6 +93,7 @@ ChronDB is a chronological key/value database implemented in Clojure and backed 
 - Record new API endpoints and wire protocol behaviors
 - Provide runnable examples where possible (e.g., `docs/examples-*.md`)
 - Keep developer-focused instructions in this `AGENT.md`
+- When touching backup/restore features, update `docs/operations.md` with CLI/REST examples and mention bundle incremental flow
 
 ## CI/CD Workflows
 

@@ -3,7 +3,9 @@
    Provides middleware for JSON request/response handling and server startup functionality."
   (:require [chrondb.api.v1.routes :as routes]
             [ring.adapter.jetty :as jetty]
-            [clojure.data.json :as json]))
+            [clojure.data.json :as json]
+            [clojure.string :as str]
+            [ring.middleware.multipart-params :refer [wrap-multipart-params]]))
 
 (defn wrap-json-body-custom
   "Custom middleware for parsing JSON request bodies.
@@ -13,17 +15,20 @@
    Returns: A new handler that parses JSON request bodies"
   [handler]
   (fn [request]
-    (if-let [body (:body request)]
-      (try
-        (let [body-str (if (string? body) body (slurp body))
-              json-body (when (not-empty body-str)
-                          (json/read-str body-str :key-fn keyword))]
-          (handler (assoc request :body json-body)))
-        (catch Exception e
-          {:status 400
-           :headers {"Content-Type" "application/json"}
-           :body (json/write-str {:error (str "Invalid JSON: " (.getMessage e))})}))
-      (handler (assoc request :body nil)))))
+    (let [content-type (get-in request [:headers "content-type"] "")]
+      (if (str/includes? (str/lower-case content-type) "multipart/form-data")
+        (handler request)
+        (if-let [body (:body request)]
+          (try
+            (let [body-str (if (string? body) body (slurp body))
+                  json-body (when (not-empty body-str)
+                              (json/read-str body-str :key-fn keyword))]
+              (handler (assoc request :body json-body)))
+            (catch Exception e
+              {:status 400
+               :headers {"Content-Type" "application/json"}
+               :body (json/write-str {:error (str "Invalid JSON: " (.getMessage e))})}))
+          (handler (assoc request :body nil)))))))
 
 (defn wrap-json-response
   "Middleware for converting response bodies to JSON.
@@ -47,6 +52,7 @@
    Returns: A Ring handler with all middleware applied"
   [storage index]
   (-> (routes/create-routes storage index)
+      wrap-multipart-params
       wrap-json-body-custom
       wrap-json-response))
 
