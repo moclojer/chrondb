@@ -15,8 +15,7 @@
 (ns chrondb.core
   (:gen-class)
   (:require [chrondb.cli.core :as cli]
-            [chrondb.cli.server :as server]
-            [clojure.string :as str]))
+            [chrondb.cli.server :as server]))
 
 (def cli-commands
   #{"init" "info" "get" "put" "history" "delete" "export" "import" "verify" "tail-history"})
