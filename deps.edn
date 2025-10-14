@@ -1,5 +1,6 @@
 {:paths     ["src" "resources"]
- :deps      {compojure/compojure                       {:mvn/version "1.7.0"}
+ :deps      {clj-http/clj-http                         {:mvn/version "3.13.0"}
+             compojure/compojure                       {:mvn/version "1.7.0"}
              ring/ring-core                            {:mvn/version "1.10.0"}
              ring/ring-jetty-adapter                   {:mvn/version "1.10.0"}
              ring/ring-json                            {:mvn/version "0.5.1"}
@@ -7,6 +8,7 @@
              ring/ring-devel                           {:mvn/version "1.10.0"}
              org.clojure/clojure                       {:mvn/version "1.11.1"}
              org.clojure/data.json                     {:mvn/version "2.4.0"}
+             org.clojure/tools.cli                     {:mvn/version "1.0.219"}
              org.apache.lucene/lucene-core             {:mvn/version "9.8.0"}
              org.apache.lucene/lucene-queryparser      {:mvn/version "9.8.0"}
              org.apache.lucene/lucene-analyzers-common {:mvn/version "8.11.2"}
