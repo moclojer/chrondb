@@ -4,7 +4,6 @@
   (:require [clojure.string :as str]
             [compojure.core :refer [GET POST DELETE routes context]]
             [compojure.route :as route]
-            [chrondb.storage.protocol :as storage]
             [chrondb.index.protocol :as index]
             [chrondb.api.v1 :as handlers]
             [ring.util.response :as response]))
