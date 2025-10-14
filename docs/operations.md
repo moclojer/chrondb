@@ -15,13 +15,13 @@ This guide covers operational aspects of ChronDB, including installation, execut
 
 1. Download the latest JAR file from the releases page:
 
-   ```
+   ```sh
    curl -LO https://github.com/moclojer/chrondb/releases/latest/download/chrondb.jar
    ```
 
 2. Run the JAR:
 
-   ```
+   ```sh
    java -jar chrondb.jar
    ```
 
@@ -29,20 +29,20 @@ This guide covers operational aspects of ChronDB, including installation, execut
 
 1. Clone the repository:
 
-   ```
+   ```sh
    git clone https://github.com/moclojer/chrondb.git
    cd chrondb
    ```
 
 2. Compile the project:
 
-   ```
+   ```sh
    clojure -T:build uber
    ```
 
 3. Run the generated JAR:
 
-   ```
+   ```sh
    java -jar target/chrondb.jar
    ```
 
@@ -50,7 +50,7 @@ This guide covers operational aspects of ChronDB, including installation, execut
 
 ### Command Line Options
 
-```
+```sh
 java -jar chrondb.jar [options]
 
 Options:
@@ -67,7 +67,7 @@ Options:
 
 1. Create a service file `/etc/systemd/system/chrondb.service`:
 
-   ```
+   ```toml
    [Unit]
    Description=ChronDB Chronological Database
    After=network.target
@@ -84,13 +84,13 @@ Options:
 
 2. Reload systemd:
 
-   ```
+   ```sh
    sudo systemctl daemon-reload
    ```
 
 3. Start the service:
 
-   ```
+   ```sh
    sudo systemctl start chrondb
    ```
 
@@ -100,7 +100,7 @@ ChronDB exposes metrics and health information for monitoring.
 
 ### Health Check Endpoint
 
-```
+```http
 GET /api/v1/health
 ```
 
@@ -130,7 +130,7 @@ Logs contain detailed information about operations and errors. By default, they 
 
 ChronDB exposes metrics in Prometheus format at:
 
-```
+```http
 GET /metrics
 ```
 
