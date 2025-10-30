@@ -105,7 +105,9 @@
 (def base-run-time-classes
   ["org.eclipse.jgit.util.FileUtils"
    "org.eclipse.jgit.internal.storage.file.FileReftableStack"
-   "org.eclipse.jgit.internal.storage.file.FileReftableDatabase"])
+   "org.eclipse.jgit.internal.storage.file.FileReftableDatabase"
+   "com.fasterxml.jackson.core.JsonFactory"
+   "com.fasterxml.jackson.core.io.SerializedString"])
 
 (def jar-path "target/chrondb.jar")
 
@@ -269,9 +271,13 @@
                          "org.eclipse.jetty.util.log.Log"
                          "org.eclipse.jetty.server.Server"
                          "org.eclipse.jetty.server.handler.ContextHandler"]
-          trace-args (map #(str "--trace-object-instantiation=" %) trace-classes)]
+          trace-object-args (map #(str "--trace-object-instantiation=" %) trace-classes)]
       (spit (io/file target-dir "native-image-args")
-            (string/join "\n" (concat base-args startup-args linker-args trace-args tail-args))))
+            (string/join "\n" (concat base-args
+                                      startup-args
+                                      linker-args
+                                      trace-object-args
+                                      tail-args))))
     (.mkdirs report-dir)
     (let [reflect-config (into base-reflect-config
                                (for [cls clj-classes]
