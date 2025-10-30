@@ -98,62 +98,62 @@
   (and (map? condition)
        (= (:type condition) :fts-match)))
 
-(defn- fts-get-matching-docs
-  "Get documents that match a full-text search condition.
-   Parameters:
-   - index: The index implementation
-   - storage: The storage implementation
-   - fts-condition: The FTS condition map
-   - branch-name: The branch to search in
-   Returns: A sequence of matching documents"
-  [index storage fts-condition branch-name]
-  (try
-    (let [fts-field (:field fts-condition)
-          ;; Modify field to use _fts suffix for full-text search
-          search-field (if (str/ends-with? fts-field "_fts")
-                         fts-field
-                         (str fts-field "_fts"))
-          _ (log/log-info (str "Using FTS field: " search-field " (original: " fts-field ")"))
-          fts-value (:value fts-condition)
-          _ (log/log-info (str "Raw FTS value: " fts-value))
+#_(defn- fts-get-matching-docs
+    "Get documents that match a full-text search condition.
+     Parameters:
+     - index: The index implementation
+     - storage: The storage implementation
+     - fts-condition: The FTS condition map
+     - branch-name: The branch to search in
+     Returns: A sequence of matching documents"
+    [index storage fts-condition branch-name]
+    (try
+      (let [fts-field (:field fts-condition)
+            ;; Modify field to use _fts suffix for full-text search
+            search-field (if (str/ends-with? fts-field "_fts")
+                           fts-field
+                           (str fts-field "_fts"))
+            _ (log/log-info (str "Using FTS field: " search-field " (original: " fts-field ")"))
+            fts-value (:value fts-condition)
+            _ (log/log-info (str "Raw FTS value: " fts-value))
 
-          ;; Extract search term from the to_tsquery function and add wildcards
-          clean-value (cond
-                        ;; For to_tsquery('term')
-                        (re-find #"to_tsquery" fts-value)
-                        (let [matches (re-find #"to_tsquery\s*\(\s*['\"]([^'\"]+)['\"]" fts-value)]
-                          (log/log-info (str "Regex matches: " (pr-str matches)))
-                          (if (and matches (> (count matches) 1))
-                            ;; Normalize term - remove accents, extra spaces and convert to lowercase
-                            (let [term (-> (second matches)
-                                           (str/trim)
-                                           (str/lower-case)
-                                           (java.text.Normalizer/normalize java.text.Normalizer$Form/NFD)
-                                           (str/replace #"[\p{InCombiningDiacriticalMarks}]" ""))]
-                              (log/log-info (str "Normalized term without accents: '" term "'"))
-                              ;; If term is very short, consider it as part of a word
-                              (if (< (count term) 4)
-                                (str "*" term "*")
-                                ;; For normal terms, search for exact term or prefix
-                                (str term "*")))
-                            fts-value))
+            ;; Extract search term from the to_tsquery function and add wildcards
+            clean-value (cond
+                          ;; For to_tsquery('term')
+                          (re-find #"to_tsquery" fts-value)
+                          (let [matches (re-find #"to_tsquery\s*\(\s*['\"]([^'\"]+)['\"]" fts-value)]
+                            (log/log-info (str "Regex matches: " (pr-str matches)))
+                            (if (and matches (> (count matches) 1))
+                              ;; Normalize term - remove accents, extra spaces and convert to lowercase
+                              (let [term (-> (second matches)
+                                             (str/trim)
+                                             (str/lower-case)
+                                             (java.text.Normalizer/normalize java.text.Normalizer$Form/NFD)
+                                             (str/replace #"[\p{InCombiningDiacriticalMarks}]" ""))]
+                                (log/log-info (str "Normalized term without accents: '" term "'"))
+                                ;; If term is very short, consider it as part of a word
+                                (if (< (count term) 4)
+                                  (str "*" term "*")
+                                  ;; For normal terms, search for exact term or prefix
+                                  (str term "*")))
+                              fts-value))
 
-                        ;; For other cases
-                        :else fts-value)
-          _ (log/log-info (str "Modified search term with wildcards: '" clean-value "'"))
+                          ;; For other cases
+                          :else fts-value)
+            _ (log/log-info (str "Modified search term with wildcards: '" clean-value "'"))
 
-          ;; Search for document IDs using the index
-          doc-ids (index/search index search-field clean-value branch-name)
-          _ (log/log-info (str "FTS search found " (count doc-ids) " document IDs"))
+            ;; Search for document IDs using the index
+            doc-ids (index/search index search-field clean-value branch-name)
+            _ (log/log-info (str "FTS search found " (count doc-ids) " document IDs"))
 
-          ;; Retrieve full documents from storage
-          docs (filter some? (map #(storage/get-document storage % branch-name) doc-ids))
-          _ (log/log-info (str "Retrieved " (count docs) " full documents from IDs"))]
+            ;; Retrieve full documents from storage
+            docs (filter some? (map #(storage/get-document storage % branch-name) doc-ids))
+            _ (log/log-info (str "Retrieved " (count docs) " full documents from IDs"))]
 
-      docs)
-    (catch Exception e
-      (log/log-error (str "Error in FTS matching: " (.getMessage e)))
-      [])))
+        docs)
+      (catch Exception e
+        (log/log-error (str "Error in FTS matching: " (.getMessage e)))
+        [])))
 
 (defn handle-chrondb-function
   "Handles ChronDB specific functions.
@@ -353,7 +353,7 @@
                                      ;; If not found and table specified, try with table prefix (for IDs like "1" when table is "user")
                                      doc (or doc
                                              (when (and table-name (not= table-name "")
-                                                       (not (.startsWith id-value (str table-name ":"))))
+                                                        (not (.startsWith id-value (str table-name ":"))))
                                                (storage/get-document storage (str table-name ":" id-value) branch-name)))
 
                                      ;; If still not found and table specified, try getting from table

@@ -2,7 +2,8 @@
   "Helpers for building query AST structures that the Lucene engine can
    execute. The AST is intentionally lightweight: leaf clauses describe
    predicates and boolean nodes combine them. A complete query may also
-   include pagination, sorting hints and branch selection.")
+   include pagination, sorting hints and branch selection."
+  (:refer-clojure :exclude [range boolean and or not sort-by]))
 
 (defn match-all
   "Clause that matches all documents."
@@ -12,7 +13,7 @@
 (defn term
   "Exact match clause."
   [field value]
-  (when (and field (some? value))
+  (when (clojure.core/and field (some? value))
     {:type :term
      :field (name field)
      :value (str value)}))
@@ -20,7 +21,7 @@
 (defn wildcard
   "Wildcard match using ?/* patterns."
   [field value]
-  (when (and field (some? value))
+  (when (clojure.core/and field (some? value))
     {:type :wildcard
      :field (name field)
      :value (str value)}))
@@ -45,8 +46,8 @@
       :field (name field)
       :lower (when (some? lower) (str lower))
       :upper (when (some? upper) (str upper))
-      :include-lower? (boolean include-lower?)
-      :include-upper? (boolean include-upper?)
+      :include-lower? (clojure.core/boolean include-lower?)
+      :include-upper? (clojure.core/boolean include-upper?)
       :value-type type})))
 
 (defn range-long
@@ -66,7 +67,7 @@
 (defn fts
   "Full-text search clause (uses dedicated analyzer)."
   [field value]
-  (when (and field (some? value))
+  (when (clojure.core/and field (some? value))
     {:type :fts
      :field (name field)
      :value (str value)
@@ -98,14 +99,14 @@
         filter (vectorize filter)]
     (cond
       (every? empty? [must should must-not filter]) (match-all)
-      (and (empty? must)
-           (= 1 (count should))
-           (empty? must-not)
-           (empty? filter)) (first should)
-      (and (empty? must)
-           (empty? should)
-           (= 1 (count must-not))
-           (empty? filter))
+      (clojure.core/and (empty? must)
+                        (= 1 (count should))
+                        (empty? must-not)
+                        (empty? filter)) (first should)
+      (clojure.core/and (empty? must)
+                        (empty? should)
+                        (= 1 (count must-not))
+                        (empty? filter))
       {:type :boolean
        :must [(match-all)]
        :should []
@@ -140,7 +141,7 @@
   "Negates a clause."
   [clause]
   (boolean {:must [(match-all)]
-            :must-not [(or clause (match-all))]}))
+            :must-not [(clojure.core/or clause (match-all))]}))
 
 (defn sort-by
   "Creates a sort descriptor. Optionally specify :direction and :type (:string, :long, :double, :doc, :score)."
