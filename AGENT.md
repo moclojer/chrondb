@@ -54,6 +54,7 @@ ChronDB is a chronological key/value database implemented in Clojure and backed 
 - Include integration tests that exercise Git-backed storage
 - Add regression tests for concurrency and conflict resolution
 - Prefer property-based tests when sequence ordering matters
+- Unit coverage for query AST helpers lives in `test/chrondb/query/ast_test.clj`
 
 ### Git Architecture Integration
 

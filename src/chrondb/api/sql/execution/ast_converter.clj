@@ -89,6 +89,3 @@
         (if (= (count clauses) 1)
           (first clauses)
           (apply ast/and clauses))))))
-
-
-
