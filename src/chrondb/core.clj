@@ -13,19 +13,51 @@
 ;; You should have received a copy of the GNU Affero General Public License
 ;; along with this program. If not, see <https://www.gnu.org/licenses/>.
 (ns chrondb.core
-  (:gen-class)
-  (:require [chrondb.cli.core :as cli]
-            [chrondb.cli.server :as server]))
+  (:gen-class))
 
-(def cli-commands
-  #{"init" "info" "get" "put" "history" "delete" "export" "import" "verify" "tail-history"})
+(def ^:private cli-ns "chrondb.cli.core")
+(def ^:private server-ns "chrondb.cli.server")
 
-(def server-commands
-  (set (keys server/server-command-map)))
+(defn- requiring-var
+  [namespace name]
+  (requiring-resolve (symbol namespace name)))
+
+(def ^:private cli-command-spec (delay @(requiring-var cli-ns "command-spec")))
+(def ^:private cli-usage-fn (delay @(requiring-var cli-ns "usage")))
+(def ^:private cli-main-fn (delay @(requiring-var cli-ns "-main")))
+
+(def ^:private server-command-map (delay @(requiring-var server-ns "server-command-map")))
+(def ^:private server-usage-fn (delay @(requiring-var server-ns "usage")))
+(def ^:private server-parse-fn (delay @(requiring-var server-ns "parse-command")))
+(def ^:private server-dispatch-fn (delay @(requiring-var server-ns "dispatch!")))
+
+(defn- cli-command-set []
+  (-> @cli-command-spec keys set))
+
+(defn- server-command-set []
+  (-> @server-command-map keys set))
+
+(defn- cli-usage
+  ([] ((@cli-usage-fn)))
+  ([command] ((@cli-usage-fn) command)))
+
+(defn- cli-main [& args]
+  (apply (@cli-main-fn) args))
+
+(defn- server-usage []
+  ((@server-usage-fn)))
+
+(defn- parse-server-command [args]
+  ((@server-parse-fn) args))
+
+(defn- dispatch-server! [command args]
+  ((@server-dispatch-fn) command args))
 
 (defn detect-mode
   [args]
-  (let [[cmd & _] args]
+  (let [[cmd & _] args
+        cli-commands (cli-command-set)
+        server-commands (server-command-set)]
     (cond
       (nil? cmd) :server
       (cli-commands cmd) :cli
@@ -38,13 +70,13 @@
   [& args]
   (case (detect-mode args)
     :help (do
-            (println (server/usage))
+            (println (server-usage))
             (println)
-            (println (cli/usage)))
-    :cli (apply cli/-main args)
-    (let [{:keys [command args value]} (server/parse-command args)]
+            (println (cli-usage)))
+    :cli (apply cli-main args)
+    (let [{:keys [command args value]} (parse-server-command args)]
       (if (= command :unknown)
         (do
           (println "Unknown command" value)
-          (println (server/usage)))
-        (server/dispatch! command args)))))
+          (println (server-usage)))
+        (dispatch-server! command args)))))

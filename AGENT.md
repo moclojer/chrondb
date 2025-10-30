@@ -113,6 +113,8 @@ ChronDB is a chronological key/value database implemented in Clojure and backed 
 - Do not reintroduce `-H:+UnlockExperimentalVMOptions`; critical JGit classes are already marked for build-time init
 - Avoid running the native image build in parallel with services on ports `3000`, `6379`, or `5432`
 - Use `.github/workflows/build-native-image.yml` as a reference for the full pipeline and smoke tests
+- Ensure Jackson factories stay runtime-initialized: `dev/chrondb/native_image.clj` registers `com.fasterxml.jackson.core.JsonFactory` and related classes under `base-run-time-classes`; keep this list in sync when touching JSON dependencies
+- Keep CLI namespaces lazily loaded (use `requiring-resolve` as in `chrondb.core`) so `clj-http`/`cheshire` initialization happens at runtime instead of during native image analysis
 
 ### Advanced Native Image Topics
 
