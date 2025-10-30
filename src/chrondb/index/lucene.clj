@@ -1,15 +1,15 @@
 (ns chrondb.index.lucene
   (:require [chrondb.index.protocol :as protocol]
+            [chrondb.storage.protocol :as storage]
             [clojure.string :as str]
             [chrondb.util.logging :as log])
   (:import [org.apache.lucene.store Directory FSDirectory]
            [org.apache.lucene.analysis Analyzer]
            [org.apache.lucene.analysis.standard StandardAnalyzer]
-           [org.apache.lucene.document Document StringField TextField Field$Store SortedDocValuesField LongPoint DoublePoint NumericDocValuesField DoubleDocValuesField]
+           [org.apache.lucene.document Document StringField TextField Field$Store LongPoint DoublePoint NumericDocValuesField DoubleDocValuesField]
            [org.apache.lucene.index IndexWriter IndexWriterConfig IndexWriterConfig$OpenMode DirectoryReader Term IndexNotFoundException]
-           [org.apache.lucene.search IndexSearcher Query ScoreDoc TopDocs BooleanQuery BooleanQuery$Builder BooleanClause$Occur MatchAllDocsQuery TermQuery WildcardQuery TermRangeQuery Sort SortField SortField$Type TopFieldCollector TopScoreDocCollector DocValuesFieldExistsQuery]
+           [org.apache.lucene.search IndexSearcher Query ScoreDoc TopDocs BooleanQuery$Builder BooleanClause$Occur MatchAllDocsQuery TermQuery WildcardQuery TermRangeQuery Sort SortField SortField$Type TopFieldCollector TopScoreDocCollector DocValuesFieldExistsQuery]
            [org.apache.lucene.queryparser.classic QueryParser ParseException]
-           [org.apache.lucene.util BytesRef]
            [java.nio.file Paths]))
 
 (defn- normalize-field
@@ -265,6 +265,94 @@
         (.close reader)
         new-reader)
       reader)))
+
+(defonce ^:private maintenance-task (atom nil))
+
+(defn stop-index-maintenance-task
+  "Stops the background maintenance task if it is running."
+  []
+  (when-let [task @maintenance-task]
+    (future-cancel task)
+    (reset! maintenance-task nil)))
+
+(defn- ensure-searcher-updated!
+  "Ensures the IndexSearcher attached to the LuceneIndex reflects the latest commits."
+  [index]
+  (let [reader-atom (:reader-atom index)
+        searcher-atom (:searcher-atom index)
+        ^IndexWriter writer (:writer index)]
+    (when (and reader-atom searcher-atom writer)
+      (try
+        (if-let [^DirectoryReader current @reader-atom]
+          (let [^DirectoryReader refreshed (refresh-reader current writer)]
+            (when (and refreshed (not (identical? refreshed current)))
+              (reset! reader-atom refreshed)
+              (reset! searcher-atom (IndexSearcher. refreshed))))
+          (when-let [^DirectoryReader initial (DirectoryReader/open writer)]
+            (reset! reader-atom initial)
+            (reset! searcher-atom (IndexSearcher. initial))))
+        (catch Exception e
+          (log/log-warn (str "Failed to refresh Lucene IndexSearcher: " (.getMessage e))))))))
+
+(defn start-index-maintenance-task
+  "Starts a background task that periodically commits and refreshes the Lucene index.
+  The task wakes up every `interval-minutes` to ensure readers observe the latest writes."
+  [index interval-minutes]
+  (stop-index-maintenance-task)
+  (let [interval-ms (-> (or interval-minutes 60)
+                        (max 1)
+                        (long)
+                        (* 60 1000))
+        task (future
+               (try
+                 (loop []
+                   (Thread/sleep interval-ms)
+                   (try
+                     (when-let [^IndexWriter writer (:writer index)]
+                       (.commit writer)
+                       (ensure-searcher-updated! index)
+                       (log/log-info "Lucene index maintenance cycle completed."))
+                     (catch InterruptedException ie
+                       (throw ie))
+                     (catch Exception e
+                       (log/log-error (str "Lucene index maintenance cycle failed: " (.getMessage e)))))
+                   (recur))
+                 (catch InterruptedException _
+                   (log/log-info "Lucene index maintenance task interrupted."))
+                 (catch Exception e
+                   (log/log-error (str "Lucene index maintenance task stopped due to error: " (.getMessage e))))))]
+    (reset! maintenance-task task)
+    task))
+
+(defn ensure-index-populated
+  "Indexes existing documents from storage into the Lucene index.
+  Returns a future when run asynchronously."
+  ([index storage branch]
+   (ensure-index-populated index storage branch {:async? true}))
+  ([index storage branch {:keys [async?] :or {async? true}}]
+   (let [branch-name (or branch "main")
+         populate! (fn []
+                     (try
+                       (log/log-info (str "Ensuring Lucene index is populated for branch '" branch-name "'."))
+                       (let [docs (->> (storage/get-documents-by-prefix storage "" branch-name)
+                                       (remove nil?)
+                                       (vec))]
+                         (log/log-info (str "Found " (count docs) " document(s) to index for branch '" branch-name "'."))
+                         (doseq [doc docs]
+                           (when-let [doc-id (:id doc)]
+                             (try
+                               (protocol/delete-document index doc-id)
+                               (protocol/index-document index doc)
+                               (catch Exception e
+                                 (log/log-error (str "Failed to index document '" doc-id "': " (.getMessage e)))))))
+                         (ensure-searcher-updated! index)
+                         (log/log-info (str "Lucene index population completed for branch '" branch-name "'.")))
+                       (catch Exception e
+                         (log/log-error (str "Error populating Lucene index for branch '" branch-name "': " (.getMessage e)))
+                         (throw e))))]
+     (if async?
+       (future (populate!))
+       (populate!)))))
 
 (defrecord LuceneIndex [^Directory directory
                         ^Analyzer fts-analyzer

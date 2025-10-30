@@ -1,5 +1,5 @@
 (ns chrondb.api.sql.parser.clauses-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.test :refer [deftest is]]
             [chrondb.api.sql.parser.tokenizer :as tokenizer]
             [chrondb.api.sql.parser.clauses :as clauses]))
 
