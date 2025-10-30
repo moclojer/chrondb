@@ -55,9 +55,32 @@
                            :id id
                            :branch branch-name}}))))
 
-(defn handle-search [index query]
-  {:status 200
-   :body (index/search index "name" query "main")})
+(defn handle-search
+  "Unified search handler. Accepts either a raw query string (`:q`) or a structured query map (`:query`)."
+  [index params]
+  (let [{:keys [q query branch limit offset sort]} params
+        branch-name (or (not-empty branch) "main")
+        limit (some-> limit str Integer/parseInt)
+        offset (some-> offset str Integer/parseInt)
+        sort (cond
+               (string? sort) (map (fn [spec]
+                                     (let [[field dir] (-> spec str/trim (str/split #":"))]
+                                       {:field (str/trim field)
+                                        :direction (if (= "desc" (str/lower-case (or dir ""))) :desc :asc)}))
+                                   (str/split sort #","))
+               (sequential? sort) sort
+               :else nil)
+        base-query (cond
+                     (map? query) query
+                     (string? q) {:clauses [{:type :fts :field "content" :value q :analyzer :fts}]}
+                     :else {:clauses []})
+        opts (cond-> {}
+               limit (assoc :limit limit)
+               offset (assoc :offset offset)
+               sort (assoc :sort sort))
+        result (index/search-query index base-query branch-name opts)]
+    {:status 200
+     :body result}))
 
 (defn handle-backup [storage {:keys [output format refs]}]
   (try

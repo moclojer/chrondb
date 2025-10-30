@@ -24,17 +24,17 @@
   (testing "Index and search document"
     (let [doc {:id "user:1" :name "John Doe" :age 30 :email "john@example.com"}]
       (index/index-document *test-index* doc)
-      (let [results (index/search *test-index* "name" "John" "main")]
+      (let [results (index/search-query *test-index* {:field "name" :value "John"} "main" {:limit 10})]
         (is (= 1 (count results)))
         (is (= "user:1" (first results))))))
 
   (testing "Remove document"
     (let [doc {:id "user:1" :name "John Doe" :age 30 :email "john@example.com"}]
       (index/index-document *test-index* doc)
-      (let [before-remove (index/search *test-index* "name" "John" "main")]
+      (let [before-remove (index/search-query *test-index* {:field "name" :value "John"} "main" {:limit 10})]
         (is (= 1 (count before-remove)))
         (index/delete-document *test-index* (:id doc))
-        (let [after-remove (index/search *test-index* "name" "John" "main")]
+        (let [after-remove (index/search-query *test-index* {:field "name" :value "John"} "main" {:limit 10})]
           (is (empty? after-remove)))))))
 
 (deftest test-index-edge-cases
@@ -43,27 +43,27 @@
           doc2 {:id "user:1" :name "Update Test" :age 31}]
       (index/index-document *test-index* doc1)
       (index/index-document *test-index* doc2)
-      (let [results (index/search *test-index* "name" "Update" "main")]
+      (let [results (index/search-query *test-index* {:field "name" :value "Update"} "main" {:limit 10})]
         (is (= 1 (count results)))
         (is (= "user:1" (first results))))))
 
   (testing "Index with nil values"
     (let [doc {:id "user:1" :name nil :age 30}]
       (index/index-document *test-index* doc)
-      (let [results (index/search *test-index* "age" "30" "main")]
+      (let [results (index/search-query *test-index* {:field "age" :value "30"} "main" {:limit 10})]
         (is (= 1 (count results)))
         (is (= "user:1" (first results))))))
 
   (testing "Search with empty query"
     (let [doc {:id "user:1" :name "John Doe" :age 30}]
       (index/index-document *test-index* doc)
-      (let [results (index/search *test-index* "name" "" "main")]
+      (let [results (index/search-query *test-index* {:field "name" :value ""} "main" {:limit 10})]
         (is (empty? results)))))
 
   (testing "Search with non-existent term"
     (let [doc {:id "user:1" :name "John Doe" :age 30}]
       (index/index-document *test-index* doc)
-      (let [results (index/search *test-index* "name" "NonExistent" "main")]
+      (let [results (index/search-query *test-index* {:field "name" :value "NonExistent"} "main" {:limit 10})]
         (is (empty? results))))))
 
 (deftest test-full-text-search-capabilities
@@ -71,9 +71,9 @@
     (let [doc {:id "user:1" :name "José García" :city "São Paulo"}]
       (index/index-document *test-index* doc)
       ;; Should find with or without accents
-      (let [results1 (index/search *test-index* "name" "José" "main")
-            results2 (index/search *test-index* "name" "Jose" "main")
-            results3 (index/search *test-index* "city" "Sao" "main")]
+      (let [results1 (index/search-query *test-index* {:field "name" :value "José"} "main" {:limit 10})
+            results2 (index/search-query *test-index* {:field "name" :value "Jose"} "main" {:limit 10})
+            results3 (index/search-query *test-index* {:field "city" :value "Sao"} "main" {:limit 10})]
         (is (= 1 (count results1)))
         (is (= 1 (count results2)))
         (is (= 1 (count results3)))
@@ -90,13 +90,13 @@
       (index/index-document *test-index* doc3)
 
       ;; Test prefix search (automatically adds * to end)
-      (let [results1 (index/search *test-index* "name" "Jo" "main")]
+      (let [results1 (index/search-query *test-index* {:field "name" :value "Jo"} "main" {:limit 10})]
         (is (= 2 (count results1)))
         (is (contains? (set results1) "user:1"))
         (is (contains? (set results1) "user:3")))
 
       ;; Test infix search (with wildcards)
-      (let [results2 (index/search *test-index* "title" "Dev*" "main")]
+      (let [results2 (index/search-query *test-index* {:field "title" :value "Dev*"} "main" {:limit 10})]
         (is (= 2 (count results2)))
         (is (contains? (set results2) "user:1"))
         (is (contains? (set results2) "user:3"))))))
@@ -110,12 +110,12 @@
       (index/index-document *test-index* doc)
 
       ;; Standard field search
-      (let [results1 (index/search *test-index* "description" "Software Engineer" "main")]
+      (let [results1 (index/search-query *test-index* {:field "description" :value "Software Engineer"} "main" {:limit 10})]
         (is (= 1 (count results1)))
         (is (= "user:1" (first results1))))
 
       ;; Dedicated FTS field search
-      (let [results2 (index/search *test-index* "description_fts" "custom" "main")]
+      (let [results2 (index/search-query *test-index* {:field "description_fts" :value "custom" :analyzer :fts} "main" {:limit 10})]
         (is (= 1 (count results2)))
         (is (= "user:1" (first results2)))))))
 
@@ -146,5 +146,5 @@
     (reset! (.reader-atom *test-index*) nil)
 
     ;; Should handle gracefully
-    (let [results (index/search *test-index* "name" "test" "main")]
+    (let [results (index/search-query *test-index* {:field "name" :value "test"} "main" {:limit 10})]
       (is (empty? results)))))

@@ -71,6 +71,7 @@ ChronDB is a chronological key/value database implemented in Clojure and backed 
 3. Leverage `transduce`, `reduce`, or pipelines for efficient data flows
 4. Guard shared mutable state; prefer atoms with swap! semantics
 5. Profile Git-heavy operations when adding loops or recursion
+6. Route new search features through the Lucene planner, cache, and index definitions—avoid bespoke query engines that bypass the centralized indexing layer
 
 ### When Reviewing Code
 
@@ -94,6 +95,7 @@ ChronDB is a chronological key/value database implemented in Clojure and backed 
 - Provide runnable examples where possible (e.g., `docs/examples-*.md`)
 - Keep developer-focused instructions in this `AGENT.md`
 - When touching backup/restore features, update `docs/operations.md` with CLI/REST examples and mention bundle incremental flow
+- When altering Lucene indexing, query planning, or search analyzers, update `docs/architecture.md`, `docs/performance.md`, `docs/index.md`, and the README to reflect the new capabilities and operational guidance
 
 ## CI/CD Workflows
 

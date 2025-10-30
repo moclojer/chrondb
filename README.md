@@ -24,6 +24,10 @@ ChronDB offers unique capabilities for your data:
   - Diffs between versions
   - Complete audit trails with commit messages
 
+## 🔍 Lucene Search Overhaul
+
+ChronDB's indexing layer now runs entirely on Apache Lucene, replacing the previous bespoke search structures. The upgrade brings production-grade analyzers, configurable secondary and composite indexes, geospatial capabilities, and a query planner with smart caching. The work was motivated by real-world workloads that demanded lower latency and richer search semantics powered by a proven search engine. Dive into the updated documentation to learn how to enable and tune the new indexes for your applications.
+
 ## 🚀 Quick Start
 
 ### Using Docker (Simplest)

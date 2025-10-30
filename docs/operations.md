@@ -217,6 +217,15 @@ This operation:
 - Rebuilds indices to improve search performance
 - Optimizes the internal structure
 
+### Background Reindexing
+
+ChronDB mantém o índice Lucene sincronizado através de uma tarefa de reindexação em segundo plano. Sempre que `chrondb server` é iniciado, um processo assíncrono percorre commits existentes para garantir que documentos antigos também estejam presentes nos novos índices Lucene. A tarefa roda sem bloquear gravações ou leituras e respeita a ordem cronológica: novas confirmações continuam chegando enquanto a reindexação prossegue.
+
+- **Inicialização resiliente**: após restaurações, importações ou grandes refatorações de esquema, o reindexador faz o catch-up automático para que a busca reflita imediatamente o estado do repositório Git.
+- **Janela de manutenção recorrente**: além do bootstrap inicial, uma rotina programada executa a verificação/reindexação a cada hora (valor padrão). Esse intervalo é seguro para ambientes de produção porque processa batches incrementais e atualiza métricas de uso para o planejador de consultas.
+- **Observabilidade**: logs no namespace `chrondb.index.lucene` indicam quando a reindexação começa e termina, bem como eventuais erros de documento. Métricas expostas em `chrondb.index.*` ajudam a acompanhar progresso e filas pendentes.
+- **Uso recomendado**: após rodar `chrondb restore`, `import-snapshot` ou grandes cargas batch, aguarde a conclusão da tarefa em background ou monitore os logs antes de liberar novas buscas críticas.
+
 ### Updating
 
 1. Stop the ChronDB service

@@ -113,6 +113,29 @@ KEYS user:*
 
 # Find keys with wildcard
 KEYS *:laptop*
+
+# Full-text search using AST (new in Lucene migration)
+SEARCH Software
+# Output: Array of JSON documents matching "Software" in content field
+
+# Search with limit
+SEARCH Software LIMIT 10
+
+# Search with limit and offset
+SEARCH Software LIMIT 10 OFFSET 5
+
+# Search with sorting
+SEARCH Software SORT age:asc
+SEARCH Software SORT age:desc
+
+# Search on specific branch
+SEARCH Software BRANCH main
+
+# Combined options
+SEARCH Software LIMIT 10 OFFSET 0 SORT name:asc BRANCH main
+
+# Using FT.SEARCH alias (compatible with RediSearch)
+FT.SEARCH Software LIMIT 10
 ```
 
 ### Version Control Commands

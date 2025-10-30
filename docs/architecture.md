@@ -32,7 +32,7 @@ In ChronDB, these concepts are mapped to database terminology:
 ChronDB is built in layers:
 
 1. **Storage Layer**: Uses JGit to interact with Git's internal structure
-2. **Indexing Layer**: Implements Lucene for fast document search
+2. **Indexing Layer**: Delegates to Apache Lucene for fast document search, supporting configurable secondary and composite indexes, geospatial shapes, and a planner-driven execution engine with result caching
 3. **Access Layer**: Provides multiple interfaces (Clojure API, REST, Redis, PostgreSQL)
 4. **Concurrency Layer**: Manages concurrent transactions and conflicts
 
@@ -43,6 +43,10 @@ ChronDB is built in layers:
 3. Each transaction results in a Git commit
 4. Indices are updated to reflect changes
 5. Reads can access any point in time using specific commits
+
+### Indexing Layer Details
+
+The Lucene layer receives document mutations from the storage layer and updates the appropriate secondary indexes. It maintains statistics about term distributions and query plans so that complex requests—such as multi-field boolean filters or temporal slices—can be executed without scanning entire collections. When a query arrives, the planner determines the optimal combination of indexes, warms the cache when necessary, and streams results back to the access layer. Geospatial fields are stored in BKD trees, while full-text fields use analyzers that can be tuned per collection.
 
 ## Architecture Benefits
 

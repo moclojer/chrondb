@@ -102,7 +102,9 @@
     (redis-core/start-redis-server storage index redis-port))
   (when-not disable-sql
     (println "Starting SQL protocol server on port" sql-port)
-    (sql-server/start-server storage index sql-port)))
+    (sql-server/start-server storage index sql-port))
+  ;; Start index maintenance task (runs every 60 minutes by default)
+  (lucene/start-index-maintenance-task index 60))
 
 (defn run-server-command
   [args]
@@ -110,7 +112,9 @@
         storage (git-core/create-git-storage "data")
         _ (println "Creating Lucene index in data/index directory")
         index (lucene/create-lucene-index "data/index")
-        _ (println "Lucene index created successfully: " (type index))]
+        _ (println "Lucene index created successfully: " (type index))
+        ;; Ensure index is populated with existing documents (in background)
+        _ (lucene/ensure-index-populated index storage "main")]
     (start-servers storage index
                    {:http-port (Integer/parseInt (:http-port options))
                     :redis-port (Integer/parseInt (:redis-port options))
