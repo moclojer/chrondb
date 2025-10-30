@@ -219,3 +219,4 @@ The AST system replaces the legacy query format:
 ```
 
 Both are supported during migration, but new code should use AST.
+
