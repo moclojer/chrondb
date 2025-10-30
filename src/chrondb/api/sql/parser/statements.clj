@@ -154,7 +154,7 @@
      :schema schema
      :table table-name
      :columns columns
-     :values (first values)}))
+     :values values}))
 
 (defn parse-update-query
   "Parses a SQL UPDATE query.

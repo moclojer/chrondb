@@ -3,8 +3,10 @@
    Allows Redis clients to connect to ChronDB and use Redis commands."
   (:require [chrondb.storage.protocol :as storage]
             [chrondb.index.protocol :as index]
+            [chrondb.query.ast :as ast]
             [chrondb.util.logging :as log]
             [clojure.string :as str]
+            [clojure.data.json :as json]
             [clojure.core.async :as async])
   (:import [java.net ServerSocket]
            [java.io BufferedReader BufferedWriter InputStreamReader OutputStreamWriter]
@@ -473,6 +475,89 @@
           (write-integer writer removed-count))
         (write-integer writer 0)))))
 
+(defn handle-search
+  "SEARCH command: search documents using AST queries.
+   Usage: SEARCH query [LIMIT limit] [OFFSET offset] [SORT field:asc|desc] [BRANCH branch]
+   Example: SEARCH hello LIMIT 10 SORT id:asc"
+  [storage index writer args]
+  (if (empty? args)
+    (write-error writer "ERR wrong number of arguments for 'search' command")
+    (try
+      (let [query-str (first args)
+            remaining (vec (rest args))
+            ;; Parse options - look for keyword-value pairs
+            limit (loop [idx 0 found nil]
+                    (if (>= idx (count remaining))
+                      found
+                      (if (and (< (inc idx) (count remaining))
+                               (= "limit" (str/lower-case (nth remaining idx))))
+                        (recur (+ idx 2) (try (Integer/parseInt (nth remaining (inc idx)))
+                                             (catch Exception _ nil)))
+                        (recur (inc idx) found))))
+            offset (loop [idx 0 found nil]
+                     (if (>= idx (count remaining))
+                       found
+                       (if (and (< (inc idx) (count remaining))
+                                (= "offset" (str/lower-case (nth remaining idx))))
+                         (recur (+ idx 2) (try (Integer/parseInt (nth remaining (inc idx)))
+                                              (catch Exception _ nil)))
+                         (recur (inc idx) found))))
+            sort-param (loop [idx 0 found nil]
+                         (if (>= idx (count remaining))
+                           found
+                           (if (and (< (inc idx) (count remaining))
+                                    (= "sort" (str/lower-case (nth remaining idx))))
+                             (recur (+ idx 2) (nth remaining (inc idx)))
+                             (recur (inc idx) found))))
+            branch (loop [idx 0 found nil]
+                     (if (>= idx (count remaining))
+                       found
+                       (if (and (< (inc idx) (count remaining))
+                                (= "branch" (str/lower-case (nth remaining idx))))
+                         (recur (+ idx 2) (nth remaining (inc idx)))
+                         (recur (inc idx) found))))
+            branch-name (or (not-empty branch) "main")
+
+            ;; Build AST query from query string
+            ;; Simple query string is converted to FTS clause
+            fts-clause (ast/fts "content" query-str)
+            sort-descriptors (when sort-param
+                               (let [parts (str/split sort-param #":")
+                                     field (some-> parts first str/trim)
+                                     dir (some-> parts second str/trim)
+                                     direction (if (= "desc" (str/lower-case (or dir ""))) :desc :asc)]
+                                 (when field
+                                   [(ast/sort-by field direction)])))
+            ast-query (ast/query [fts-clause]
+                                {:limit limit
+                                 :offset offset
+                                 :sort sort-descriptors
+                                 :branch branch-name})
+
+            ;; Execute search
+            opts (cond-> {}
+                   limit (assoc :limit limit)
+                   offset (assoc :offset offset)
+                   sort-descriptors (assoc :sort sort-descriptors))
+
+            result (index/search-query index ast-query branch-name opts)
+
+            ;; Get full documents from storage
+            doc-ids (:ids result)
+            docs (filter some? (map #(storage/get-document storage % branch-name) doc-ids))
+
+            ;; Format results as array of JSON strings
+            results (mapv #(json/write-str %) docs)]
+
+        (write-array writer results))
+      (catch Exception e
+        (write-error writer (str "Search error: " (.getMessage e)))))))
+
+(defn handle-ft-search
+  "FT.SEARCH command: alias for SEARCH (compatible with RediSearch)"
+  [storage index writer args]
+  (handle-search storage index writer args))
+
 (defn process-command
   "Process a Redis command with the given arguments"
   [storage index writer command args]
@@ -506,6 +591,8 @@
       "zrank" (handle-zrank storage writer args)
       "zscore" (handle-zscore storage writer args)
       "zrem" (handle-zrem storage writer args)
+      "search" (handle-search storage index writer args)
+      "ft.search" (handle-ft-search storage index writer args)
       "command" (handle-command storage index writer args)
       "info" (handle-info writer args)
       (write-error writer (str "unknown command '" cmd "'")))))

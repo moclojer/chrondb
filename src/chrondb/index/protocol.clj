@@ -7,5 +7,10 @@
   "Protocol defining the indexing and search operations for ChronDB."
   (index-document [this doc] "Indexes a single document.")
   (delete-document [this id] "Deletes a document from the index.")
-  (search [this field query-string branch] "Searches the index based on a query string for a specific field and branch.")
+  (search [this field query-string branch] "Legacy search API (simple field/query lookup).
+   Pending removal once all callers use `search-query`.")
+  (search-query [this query-map branch opts]
+    "Executes a structured query described by `query-map` within `branch` and optional overrides `opts`.
+     `query-map` typically contains `:clauses`, `:sort`, `:limit`, `:offset`, etc.
+     Returns a map {:ids [...], :total n, :limit l, :offset o, :sort sort-applied}.")
   (close [this] "Closes the index resources, releasing any held files or connections."))

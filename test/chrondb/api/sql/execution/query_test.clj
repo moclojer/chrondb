@@ -35,10 +35,16 @@
         (get @documents id))
 
       (get-documents-by-prefix [_ prefix]
-        (filter (fn [[k _]] (.startsWith k prefix)) @documents))
+        (->> @documents
+             (filter (fn [[k _]] (.startsWith k prefix)))
+             (map second)
+             (into [])))
 
       (get-documents-by-prefix [_ prefix _branch]
-        (filter (fn [[k _]] (.startsWith k prefix)) @documents))
+        (->> @documents
+             (filter (fn [[k _]] (.startsWith k prefix)))
+             (map second)
+             (into [])))
 
       (get-documents-by-table [_ table-name]
         (->> @documents

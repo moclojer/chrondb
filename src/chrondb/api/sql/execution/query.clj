@@ -7,6 +7,8 @@
             [chrondb.api.sql.execution.operators :as operators]
             [chrondb.api.sql.execution.functions :as functions]
             [chrondb.api.sql.execution.join :as join]
+            [chrondb.api.sql.execution.ast-converter :as ast-converter]
+            [chrondb.query.ast :as ast]
             [chrondb.storage.protocol :as storage]
             [chrondb.index.protocol :as index]))
 
@@ -244,18 +246,17 @@
     docs))
 
 (defn handle-select
-  "Handles a SELECT query, incorporating FTS via the index.
+  "Handles a SELECT query, using Lucene AST for efficient filtering when index is available.
    Parameters:
    - storage: The storage implementation
-   - index: The index implementation (optional for FTS)
+   - index: The index implementation (optional, but required for Lucene filtering)
    - query: The parsed SELECT query map
    Returns: A sequence of matching documents"
   [storage index query]
   (try
     (let [branch-name (normalize-schema-to-branch (:schema query))
           table-name (when (:table query) (str/trim (:table query)))  ;; Trim extra spaces
-          std-conditions (remove fts-condition? (:where query)) ;; Handle standard conditions
-          fts-conditions (filter fts-condition? (:where query)) ;; Handle full-text search
+          where-conditions (:where query)
           order-by (:order-by query)
           group-by (:group-by query)
           limit (:limit query)
@@ -263,6 +264,7 @@
           columns (:columns query) ;; Get the requested columns
 
           ;; Verificar se é uma consulta direta por ID
+          std-conditions (remove fts-condition? where-conditions)
           id-condition (when (and (seq std-conditions)
                                   (= (:field (first std-conditions)) "id")
                                   (= (:op (first std-conditions)) "="))
@@ -271,73 +273,140 @@
           id-value (when id-condition
                      (str/replace (:value id-condition) #"['\"]" ""))
 
-          ;; --- Get initial documents or perform JOIN ---
-          initial-docs (if join-info
-                         ;; Handle JOIN case - use join/perform-join
-                         (do
-                           (log/log-info (str "Performing JOIN between " table-name " and " (:table join-info)))
-                           (join/perform-join storage table-name join-info))
-                         ;; Normal document retrieval
-                         (cond
-                           ;; Case 1: Single ID query - efficient direct lookup
-                           id-value
+          ;; --- Use Lucene AST if index is available and we have WHERE conditions ---
+          ;; Don't use Lucene for direct ID queries - they're more efficient with direct lookup
+          use-lucene? (and index (seq where-conditions) (not join-info) (not id-value))
+
+          ;; --- Build AST query if using Lucene ---
+          ast-clauses (when use-lucene?
+                        (let [all-clauses (keep (fn [condition]
+                                                  (cond
+                                                    ;; FTS conditions
+                                                    (= (:type condition) :fts-match)
+                                                    (ast/fts (:field condition) (:query condition))
+
+                                                    ;; Standard conditions
+                                                    (= (:type condition) :standard)
+                                                    (ast-converter/condition->ast-clause condition)))
+                                                where-conditions)]
+                          (when (seq all-clauses)
+                            (if (= (count all-clauses) 1)
+                              (first all-clauses)
+                              (apply ast/and all-clauses)))))
+
+          ;; Add table filter to AST if table specified
+          ast-clauses-with-table (if (and ast-clauses table-name (not= table-name ""))
+                                   (ast/and ast-clauses (ast/term :_table table-name))
+                                   ast-clauses)
+
+          ;; Build sort descriptors from ORDER BY
+          sort-descriptors (when (seq order-by)
+                             (mapv (fn [o]
+                                     (ast/sort-by (:column o) (:direction o)))
+                                   order-by))
+
+          ;; Execute AST query via Lucene if available
+          lucene-result (when (and use-lucene? ast-clauses-with-table)
+                          (try
+                            (let [ast-query (ast/query [ast-clauses-with-table]
+                                                       {:sort sort-descriptors
+                                                        :limit limit
+                                                        :offset 0
+                                                        :branch branch-name})
+                                  opts (cond-> {}
+                                         sort-descriptors (assoc :sort sort-descriptors)
+                                         limit (assoc :limit limit))]
+                              (log/log-info (str "Executing AST query via Lucene: " (pr-str ast-query)))
+                              (index/search-query index ast-query branch-name opts))
+                            (catch Exception e
+                              (log/log-error (str "Error executing AST query: " (.getMessage e)))
+                              nil)))
+
+          ;; --- Get documents: use Lucene results or fallback to storage ---
+          initial-docs (if (and use-lucene? lucene-result)
+                         ;; Use Lucene results
+                         (let [doc-ids (:ids lucene-result)
+                               ;; Deduplicate IDs before fetching documents
+                               unique-doc-ids (distinct doc-ids)
+                               docs (filter some? (map #(storage/get-document storage % branch-name) unique-doc-ids))]
+                           (log/log-info (str "Lucene returned " (count doc-ids) " document IDs, " (count unique-doc-ids) " unique, fetched " (count docs) " documents"))
+                           ;; Deduplicate by ID to ensure no duplicates
+                           (->> docs
+                                (clojure.core/group-by :id)
+                                (vals)
+                                (map first)))
+                         ;; Fallback: JOIN or direct storage lookup
+                         (if join-info
+                           ;; Handle JOIN case - use join/perform-join
                            (do
-                             (log/log-info (str "Performing direct ID lookup for: " id-value))
-                             (let [doc (storage/get-document storage id-value branch-name)]
-                               (if doc
-                                 ;; Verify table match if both table and ID specified
-                                 (if (and table-name (not= table-name "")
-                                          (not= (:_table doc) table-name)
-                                          (not (.startsWith id-value (str table-name ":"))))
-                                   []  ;; Table mismatch
-                                   [doc])
+                             (log/log-info (str "Performing JOIN between " table-name " and " (:table join-info)))
+                             (join/perform-join storage table-name join-info))
+                           ;; Normal document retrieval
+                           (cond
+                             ;; Case 1: Single ID query - efficient direct lookup with table-aware search
+                             id-value
+                             (do
+                               (log/log-info (str "Performing direct ID lookup for: " id-value " in table: " (or table-name "any")))
+                               (let [;; Try direct lookup first (ID might already have table prefix like "user:1")
+                                     doc (storage/get-document storage id-value branch-name)
 
-                                 ;; Try with table prefix if not found and table specified
-                                 (if (and table-name (not= table-name "")
-                                          (not (.startsWith id-value (str table-name ":"))))
-                                   (let [prefixed-id (str table-name ":" id-value)
-                                         doc (storage/get-document storage prefixed-id branch-name)]
-                                     (if doc [doc] []))
-                                   []))))
+                                     ;; If not found and table specified, try with table prefix (for IDs like "1" when table is "user")
+                                     doc (or doc
+                                             (when (and table-name (not= table-name "")
+                                                       (not (.startsWith id-value (str table-name ":"))))
+                                               (storage/get-document storage (str table-name ":" id-value) branch-name)))
 
-                           ;; Case 2: Table specified - get documents from that table
-                           (and table-name (not= table-name ""))
-                           (do
-                             (log/log-info (str "Loading documents from table: " table-name))
-                             (let [table-docs (storage/get-documents-by-table storage table-name branch-name)]
-                               (log/log-info (str "Loaded documents from " table-name ": " (count table-docs)
-                                                  " documents with IDs: " (pr-str (map :id table-docs))))
+                                     ;; If still not found and table specified, try getting from table
+                                     doc (or doc
+                                             (when (and table-name (not= table-name "") (nil? doc))
+                                               (let [table-docs (storage/get-documents-by-table storage table-name branch-name)]
+                                                 (first (filter #(= (:id %) id-value) table-docs)))))
 
-                               ;; Se a tabela for "doc" e não houver documentos, tente buscar todos
-                               (if (and (= table-name "doc") (empty? table-docs))
-                                 (let [all-docs (storage/get-documents-by-prefix storage "" branch-name)]
-                                   (log/log-info (str "No documents found in 'doc' table, loading all: "
-                                                      (count all-docs) " documents"))
-                                   all-docs)
-                                 table-docs)))
+                                     ;; Verify table match: if document found and table specified, check if they match
+                                     doc (if (and doc table-name (not= table-name ""))
+                                           (if (= (:_table doc) table-name)
+                                             doc
+                                             ;; If table doesn't match but ID already starts with table prefix, still return it
+                                             (if (.startsWith id-value (str table-name ":"))
+                                               doc
+                                               nil))
+                                           doc)]
 
-                           ;; Case 3: No table specified - get all documents
-                           :else
-                           (do
-                             (log/log-info "No table specified, loading all documents")
-                             (storage/get-documents-by-prefix storage "" branch-name))))
+                                 (if doc [doc] [])))
 
-          ;; --- Apply FTS conditions if any and we have an index ---
-          docs-with-fts (if (and index (seq fts-conditions))
-                          (let [fts-docs (mapcat #(fts-get-matching-docs index storage % branch-name) fts-conditions)
-                                fts-doc-ids (set (map :id fts-docs))]
-                            (log/log-info (str "FTS search returned " (count fts-docs) " documents"))
-                            ;; Combine FTS results with standard docs - Intersection
-                            (filter #(contains? fts-doc-ids (:id %)) initial-docs))
-                          initial-docs)
+                             ;; Case 2: Table specified - get documents from that table
+                             (and table-name (not= table-name ""))
+                             (do
+                               (log/log-info (str "Loading documents from table: " table-name))
+                               (let [table-docs (storage/get-documents-by-table storage table-name branch-name)]
+                                 (log/log-info (str "Loaded documents from " table-name ": " (count table-docs)
+                                                    " documents with IDs: " (pr-str (map :id table-docs))))
 
-          ;; --- Apply WHERE conditions ---
-          _ (log/log-info (str "Applying WHERE conditions to " (count docs-with-fts) " documents"))
-          docs-filtered (operators/apply-where-conditions docs-with-fts std-conditions)
-          _ (log/log-info (str "After WHERE filtering: " (count docs-filtered) " documents"))
+                                 ;; Se a tabela for "doc" e não houver documentos, tente buscar todos
+                                 (if (and (= table-name "doc") (empty? table-docs))
+                                   (let [all-docs (storage/get-documents-by-prefix storage "" branch-name)]
+                                     (log/log-info (str "No documents found in 'doc' table, loading all: "
+                                                        (count all-docs) " documents"))
+                                     all-docs)
+                                   table-docs)))
+
+                             ;; Case 3: No table specified - get all documents
+                             :else
+                             (do
+                               (log/log-info "No table specified, loading all documents")
+                               (storage/get-documents-by-prefix storage "" branch-name)))))
+
+          ;; --- Apply WHERE conditions if not using Lucene (fallback) ---
+          docs-filtered (if use-lucene?
+                          ;; Already filtered by Lucene
+                          initial-docs
+                          ;; Fallback: filter in memory
+                          (do
+                            (log/log-info (str "Applying WHERE conditions in memory to " (count initial-docs) " documents"))
+                            (operators/apply-where-conditions initial-docs where-conditions)))
 
           ;; --- Apply GROUP BY if specified ---
-          grouped-docs (operators/group-docs-by docs-filtered group-by)
+          grouped-docs (operators/group-docs-by docs-filtered (or group-by []))
 
           ;; --- Process aggregate functions or column projections ---
           processed-docs (if group-by
@@ -354,11 +423,19 @@
                          (first processed-docs)
                          processed-docs)
 
-          ;; --- Sort results if ORDER BY is specified ---
-          sorted-docs (operators/sort-docs-by flat-results order-by)
+          ;; --- Sort results if ORDER BY is specified and not already sorted by Lucene ---
+          sorted-docs (if (and use-lucene? sort-descriptors)
+                        ;; Already sorted by Lucene
+                        flat-results
+                        ;; Fallback: sort in memory
+                        (operators/sort-docs-by flat-results order-by))
 
-          ;; --- Apply LIMIT if specified ---
-          limited-docs (operators/apply-limit sorted-docs limit)]
+          ;; --- Apply LIMIT if specified and not already applied by Lucene ---
+          limited-docs (if (and use-lucene? limit)
+                         ;; Already limited by Lucene
+                         sorted-docs
+                         ;; Fallback: limit in memory
+                         (operators/apply-limit sorted-docs limit))]
 
       ;; For debugging
       (log/log-info (str "FINAL RESULT COUNT: " (count limited-docs)))
@@ -404,102 +481,21 @@
 
 (defn handle-select-case
   "Handles an SQL SELECT query execution.
+   Uses handle-select which leverages Lucene AST for efficient filtering.
    Parameters:
    - storage: The storage implementation
+   - index: The index implementation (for Lucene filtering)
    - out: The output stream to write results to
    - parsed: The parsed query details
    Returns: nil"
-  [storage ^java.io.OutputStream out parsed]
+  [storage index ^java.io.OutputStream out parsed]
   (log/log-info (str "Starting handle-select-case with parsed: " parsed))
   (try
-    (let [table-name (:table parsed)
-          where-conditions (:where parsed)
-          limit (:limit parsed)
-          group-by (:group-by parsed)
-          columns (:columns parsed)
-          order-by (:order-by parsed)
-          join (:join parsed)
-          branch-name (normalize-schema-to-branch (:schema parsed))
+    ;; Use handle-select which now uses Lucene AST for efficient filtering
+    (let [docs (handle-select storage index parsed)
+          columns (:columns parsed)]
 
-          ;; Logging adicional para diagnóstico
-          _ (log/log-info (str "Loading documents from table: " table-name))
-
-          ;; Get documents from storage
-          docs (if join
-                 (join/perform-join storage table-name join)
-                 (let [docs (storage/get-documents-by-table storage table-name branch-name)]
-                   (log/log-info (str "Loaded documents from " table-name ": " (count docs)
-                                      " documents with IDs: " (pr-str (map :id docs))))
-                   docs))
-
-          _ (when join
-              (log/log-info (str "Join produced " (count docs) " documents")))
-
-          ;; Apply WHERE conditions
-          _ (log/log-info (str "Applying WHERE conditions: " (pr-str where-conditions)))
-          filtered-docs (operators/apply-where-conditions docs where-conditions)
-          _ (log/log-info (str "After WHERE filtering: " (count filtered-docs) " documents"))
-
-          ;; --- Apply GROUP BY if specified ---
-          grouped-docs (operators/group-docs-by filtered-docs group-by)
-          _ (log/log-info (str "After grouping: " (count grouped-docs) " groups"))
-
-          ;; --- Process aggregate functions or column projections ---
-          processed-docs (cond
-                           ;; Group by with aggregate functions
-                           (seq group-by)
-                           (do
-                             (log/log-info "Processing groups with columns")
-                             (process-groups grouped-docs parsed))
-
-                           ;; For JOINs, we need special column handling to process all prefixed columns
-                           join
-                           (do
-                             (log/log-info "Processing JOIN results with column projection")
-                             (if (some #(= :all (:type %)) columns)
-                               ;; For SELECT *, return all columns
-                               filtered-docs
-                               ;; For specific columns in JOIN, project only requested columns
-                               (mapv (fn [doc]
-                                       (into {}
-                                             (keep (fn [col]
-                                                     (when (= :column (:type col))
-                                                       (let [col-name (keyword (:column col))]
-                                                         [col-name (get doc col-name)])))
-                                                   columns)))
-                                     filtered-docs)))
-
-                           ;; No grouping - just process columns
-                           :else
-                           (do
-                             (log/log-info "No grouping: processing documents directly")
-                             (let [result (mapv (fn [doc]
-                                                  (let [columns (:columns parsed)]
-                                                    (if (= 1 (count columns))
-                                                      (let [col (first columns)]
-                                                        (if (= :all (:type col))
-                                                          doc
-                                                          {(keyword (:column col)) (get doc (keyword (:column col)))}))
-                                                      (reduce (fn [acc col]
-                                                                (if (= :all (:type col))
-                                                                  (merge acc doc)
-                                                                  (assoc acc (keyword (:column col))
-                                                                         (get doc (keyword (:column col))))))
-                                                              {}
-                                                              columns))))
-                                                filtered-docs)]
-                               (log/log-info (str "FINAL RESULT COUNT: " (count result)))
-                               result)))
-
-          _ (log/log-info (str "After processing/projection: " (count processed-docs) " documents"))
-
-          sorted-results (operators/sort-docs-by processed-docs order-by)
-          _ (log/log-info (str "After sorting: " (count sorted-results) " documents"))
-
-          limited-results (operators/apply-limit sorted-results limit)
-          _ (log/log-info (str "After applying limit: " (count limited-results) " documents"))]
-
-      (if (empty? limited-results)
+      (if (empty? docs)
         ;; For empty results - special format
         (do
           (log/log-info "Sending empty row description for 0 results")
@@ -516,7 +512,7 @@
           (do
             (log/log-info "Processing count(*) query")
             (messages/send-row-description out ["count"])
-            (messages/send-data-row out [(str (count limited-results))])
+            (messages/send-data-row out [(str (count docs))])
             (messages/send-command-complete out "SELECT" 1))
 
           ;; For other aggregate functions (sum, avg, min, max)
@@ -530,7 +526,7 @@
                   _ (log/log-info (str "Aggregate function: " agg-function ", Field: " agg-field))
                   agg-result (functions/execute-aggregate-function
                               agg-function
-                              limited-results
+                              docs
                               agg-field)
                   _ (log/log-info (str "Aggregate result: " agg-result))]
               (messages/send-row-description out [column-name])
@@ -540,35 +536,35 @@
           ;; For regular SELECT queries (non-aggregate)
           :else
           (let [;; Get columns to display - either requested ones or all from the results
-                columns (try
-                          (if (some #(= :all (:type %)) columns)
-                            ;; If * was used, return all columns
-                            (->> limited-results
-                                 (mapcat keys)
-                                 (filter #(not= % :_table)) ; Exclude :_table
-                                 (distinct)
-                                 (sort)
-                                 (mapv name))
-                            ;; Otherwise, filter to only requested columns
-                            (mapv (fn [col]
-                                    (when (= :column (:type col))
-                                      (:column col)))
-                                  (remove #(nil? (:column %)) columns)))
-                          (catch Exception e
-                            (log/log-error (str "Error extracting column names: " (.getMessage e)))
-                            (when-let [first-res (first limited-results)] ; Try to get keys from first result if any
-                              (mapv name (keys first-res)))
-                            []))] ; Empty fallback if no results or error
-            (log/log-info (str "Sending column description: " columns))
-            (messages/send-row-description out columns)
-            (doseq [row limited-results]
+                column-names (try
+                               (if (some #(= :all (:type %)) columns)
+                                 ;; If * was used, return all columns
+                                 (->> docs
+                                      (mapcat keys)
+                                      (filter #(not= % :_table)) ; Exclude :_table
+                                      (distinct)
+                                      (sort)
+                                      (mapv name))
+                                 ;; Otherwise, filter to only requested columns
+                                 (mapv (fn [col]
+                                         (when (= :column (:type col))
+                                           (:column col)))
+                                       (remove #(nil? (:column %)) columns)))
+                               (catch Exception e
+                                 (log/log-error (str "Error extracting column names: " (.getMessage e)))
+                                 (when-let [first-res (first docs)] ; Try to get keys from first result if any
+                                   (mapv name (keys first-res)))
+                                 []))] ; Empty fallback if no results or error
+            (log/log-info (str "Sending column description: " column-names))
+            (messages/send-row-description out column-names)
+            (doseq [row docs]
               (when row  ;; Guard against nil rows
                 (log/log-info (str "Sending row: " (:id row "N/A")))
                 ;; Map values according to the filtered columns
                 (let [values (mapv #(str (get row (keyword %) ""))
-                                   columns)] ; Use the filtered columns here
+                                   column-names)] ; Use the filtered columns here
                   (messages/send-data-row out values))))
-            (messages/send-command-complete out "SELECT" (count limited-results))))))
+            (messages/send-command-complete out "SELECT" (count docs))))))
 
     (catch Exception e
       (let [sw (java.io.StringWriter.)
@@ -583,7 +579,8 @@
   (log/log-info "SELECT query processing completed"))
 
 (defn handle-insert-case
-  "Handles the INSERT case of an SQL query"
+  "Handles the INSERT case of an SQL query.
+   Supports multiple VALUES rows: INSERT INTO table (cols) VALUES (...), (...), ..."
   [storage index out parsed]
   (try
     (log/log-info (str "Processing INSERT in table: " (:table parsed)
@@ -605,58 +602,78 @@
                                    clean-col))
                                columns))
 
-          ;; Properly clean values - keep quotes while processing
-          ;; and only remove them at the end to preserve values with spaces
-          clean-values (when (seq values)
-                         (map (fn [val]
-                                ;; Only remove quotes from strings, leave other values as-is
-                                (if (and (string? val)
-                                         (or (str/starts-with? val "'")
-                                             (str/starts-with? val "\"")))
-                                  (str/replace val #"^['\"]|['\"]$" "")
-                                  val))
-                              values))
+          ;; Check if values is a list of lists (multiple rows) or a single list
+          values-rows (if (and (sequential? values)
+                               (seq values)
+                               (every? sequential? values))
+                        ;; Multiple rows: values is [[val1 val2], [val3 val4], ...]
+                        values
+                        ;; Single row: values is [val1 val2 val3]
+                        [values])
 
-          ;; Make sure columns and values have the same count
-          _ (when (and (seq clean-columns) (seq clean-values) (not= (count clean-columns) (count clean-values)))
-              (throw (Exception. "Column count doesn't match value count")))
+          ;; Process each row
+          saved-docs (mapv (fn [row-values]
+                             ;; Clean values for this row
+                             (let [clean-values (when (seq row-values)
+                                                  (map (fn [val]
+                                                         ;; Only remove quotes from strings, leave other values as-is
+                                                         (if (and (string? val)
+                                                                  (or (str/starts-with? val "'")
+                                                                      (str/starts-with? val "\"")))
+                                                           (str/replace val #"^['\"]|['\"]$" "")
+                                                           val))
+                                                       row-values))
 
-          ;; Create a document map from columns and values
-          doc-data (if (and (seq clean-columns) (seq clean-values))
-                     (zipmap (map keyword clean-columns) clean-values)
-                     {})
+                                   ;; Make sure columns and values have the same count
+                                   _ (when (and (seq clean-columns) (seq clean-values)
+                                                (not= (count clean-columns) (count clean-values)))
+                                       (throw (Exception. (str "Column count doesn't match value count: "
+                                                               (count clean-columns) " columns vs "
+                                                               (count clean-values) " values"))))
 
-          ;; Check if ID is provided, otherwise generate one
-          id-provided (if-let [id (:id doc-data)]
-                        ;; Use provided ID as is, without adding table prefix
-                        id
-                        ;; Generate a UUID if no ID provided, without table prefix
-                        (str (java.util.UUID/randomUUID)))
+                                   ;; Create a document map from columns and values
+                                   doc-data (if (and (seq clean-columns) (seq clean-values))
+                                              (zipmap (map keyword clean-columns) clean-values)
+                                              {})
 
-          ;; Create final document with table information
-          doc (merge
-               doc-data
-               {:id id-provided
-                :_table table-name})
+                                   ;; Check if ID is provided, otherwise generate one
+                                   id-provided (if-let [id (:id doc-data)]
+                                                 ;; Use provided ID as is, without adding table prefix
+                                                 id
+                                                 ;; Generate a UUID if no ID provided, without table prefix
+                                                 (str (java.util.UUID/randomUUID)))
 
-          _ (log/log-info (str "Document to insert: " doc))
-          saved (storage/save-document storage doc branch-name)]
+                                   ;; Create final document with table information
+                                   doc (merge
+                                        doc-data
+                                        {:id id-provided
+                                         :_table table-name})
 
-      (when index
-        (log/log-info (str "Indexing document in Lucene: " (:id saved) ", index type: " (type index)))
-        (try
-          (index/index-document index saved)
-          (log/log-info "Document indexed successfully")
-          (catch Exception e
-            (log/log-error (str "Error indexing document: " (.getMessage e))))))
+                                   _ (log/log-info (str "Document to insert: " doc))
+                                   saved (storage/save-document storage doc branch-name)]
 
-      (messages/send-command-complete out "INSERT" 1)
+                               ;; Index document
+                               (when index
+                                 (try
+                                   (index/index-document index saved)
+                                   (log/log-info (str "Document indexed successfully: " (:id saved)))
+                                   (catch Exception e
+                                     (log/log-error (str "Error indexing document: " (:id saved) " - " (.getMessage e))))))
+
+                               saved))
+                           values-rows)
+
+          inserted-count (count saved-docs)]
+
+      (log/log-info (str "Inserted " inserted-count " document(s)"))
+
+      (messages/send-command-complete out "INSERT" inserted-count)
 
       ;; Send ReadyForQuery to finalize the response
       (messages/send-ready-for-query out \I)
 
-      ;; Return the saved document to support the test cases
-      saved)
+      ;; Return the saved documents to support the test cases
+      saved-docs)
 
     (catch Exception e
       (let [sw (java.io.StringWriter.)
@@ -801,7 +818,7 @@
         (handle-chrondb-function storage index out parsed)
 
         (= query-type :select)
-        (handle-select-case storage out parsed)
+        (handle-select-case storage index out parsed)
 
         (= query-type :insert)
         (handle-insert-case storage index out parsed)

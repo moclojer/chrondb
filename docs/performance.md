@@ -44,6 +44,25 @@ Research has shown:
 
 > "Git write performance tends to scale with O(log n) where n is the number of objects. Small commits typically complete in 10-50ms, while larger dataset operations can take seconds." - [Microsoft's Analysis of Git Performance](https://devblogs.microsoft.com/devops/scalar-git-performance-at-scale/)
 
+## Lucene Indexing Overhaul
+
+ChronDB's search layer now leans entirely on Apache Lucene, bringing a substantial performance uplift compared to the earlier bespoke indexes. The rework was driven by production users that needed predictable latency under complex filters and full-text workloads. By adopting Lucene's optimized query execution engine, ChronDB now delegates scoring, boolean logic, and range evaluation to proven algorithms instead of reimplementing them in-house.
+
+### Why it matters
+
+- **Lower tail latencies**: Composite and secondary indexes can now be configured per collection, reducing random I/O and eliminating manual fan-out scans.
+- **Specialized analyzers**: Tokenization, stemming, and language-specific analyzers are first-class Lucene features and drastically improve relevance quality for full-text search scenarios.
+- **Query planner**: ChronDB inspects incoming queries to choose efficient index combinations, avoiding redundant segment scans and materializing only the minimal result set.
+- **Result caching**: Frequently used queries populate an eviction-aware cache, trimming recurring response times and protecting the repository from repeated heavy traversals.
+- **Geospatial acceleration**: Geohash and BKD tree indexes leverage Lucene's spatial extensions, enabling fast proximity queries without bespoke data structures.
+
+### Operational guidance
+
+- Configure index definitions alongside schema creation so that ChronDB can warm caches and statistics proactively.
+- Monitor the new index metrics under `chrondb.index.*` to track cache hit rates, planner fallbacks, and segment merge costs.
+- Use the `ANALYZE INDEX` tooling to recompute query statistics when workloads shift—ChronDB will use the new data to refine its execution plans.
+- When adding batch ingestion jobs, stage writes behind the asynchronous indexer to prevent cache stampedes and leverage Lucene's bulk segment writers.
+
 ## Scaling Strategies
 
 ### Repository Size Considerations

@@ -117,3 +117,18 @@
   (request cfg {:method :post
                 :path "/api/v1/verify"}))
 
+(defn search-documents
+  "Search documents using AST queries via REST API"
+  [cfg {:keys [q query branch limit offset sort after cursor]}]
+  (request cfg {:method :get
+                :path "/api/v1/search"
+                :query (cond-> {}
+                         q (assoc :q q)
+                         query (assoc :query query)
+                         branch (assoc :branch branch)
+                         limit (assoc :limit limit)
+                         offset (assoc :offset offset)
+                         sort (assoc :sort sort)
+                         after (assoc :after after)
+                         cursor (assoc :cursor cursor))}))
+

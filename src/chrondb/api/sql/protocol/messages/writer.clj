@@ -29,11 +29,17 @@
           body-bytes (if is-byte-array
                        ^bytes body
                        (.getBytes (str body) StandardCharsets/UTF_8))
-          length (+ 4 (count body-bytes))]
+          length (+ 4 (count body-bytes))
+          ;; Ensure type is converted to int properly
+          type-int (cond
+                     (nil? type) nil
+                     (number? type) (int type)
+                     (instance? Byte type) (bit-and (int type) 0xFF)
+                     :else (int type))]
 
       ;; Message type (except for startup message)
-      (when-not (= type constants/PG_STARTUP_MESSAGE)
-        (.write out (int type)))
+      (when-not (= type-int nil)
+        (.write out type-int))
 
       ;; Message length (int32)
       (write-bytes out (prepare-int-bytes length))

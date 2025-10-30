@@ -126,6 +126,32 @@
                   (do (log/log-warn (str "Operador @@ seguido de algo diferente de to_tsquery: " to_tsquery-prefix))
                       (recur (rest remaining) conditions))))
 
+              ;; Skip IN conditions (not implemented)
+              (and (>= (count remaining) 2)
+                   (= (str/lower-case (second remaining)) "in"))
+              (do
+                (log/log-warn "IN condition parsing not yet implemented, skipping")
+                (recur (drop-while #(not (constants/LOGICAL_OPERATORS (str/lower-case %))) remaining) conditions))
+
+              ;; Skip BETWEEN conditions (not implemented)
+              (and (>= (count remaining) 2)
+                   (= (str/lower-case (second remaining)) "between"))
+              (do
+                (log/log-warn "BETWEEN condition parsing not yet implemented, skipping")
+                (let [rest-tokens (drop 2 remaining)
+                      after-between (drop-while (fn [tok]
+                                                   (and tok
+                                                        (not (constants/LOGICAL_OPERATORS (str/lower-case tok)))))
+                                                 rest-tokens)]
+                  (recur after-between conditions)))
+
+              ;; Skip NULL comparisons (not implemented)
+              (and (>= (count remaining) 3)
+                   (= (str/lower-case (nth remaining 2)) "null"))
+              (do
+                (log/log-warn "NULL comparison parsing not yet implemented, skipping")
+                (recur (drop 3 remaining) conditions))
+
               ;; Check for standard condition (field op value)
               (>= (count remaining) 3)
               (let [field token1 ; Corrected: use token1 as field

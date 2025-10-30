@@ -24,7 +24,7 @@
     saved))
 
 (defn search-users [chrondb query]
-  (index/search (:index chrondb) "name" query "main"))
+  (index/search-query (:index chrondb) {:field "name" :value query :analyzer :fts} "main" {:limit 100}))
 
 (defn get-user [chrondb id]
   (storage/get-document (:storage chrondb) id))

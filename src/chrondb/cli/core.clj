@@ -57,7 +57,17 @@
                    :options [[nil "--branch BRANCH"]
                              [nil "--interval MS" :default 2000 :parse-fn #(Integer/parseInt %)]
                              [nil "--since COMMIT"]]
-                   :args 1}})
+                   :args 1}
+   "search" {:doc "Search documents using AST queries"
+              :usage "chrondb search [--query QUERY] [--q QUERY_STRING] [--limit N] [--offset N] [--sort FIELD:asc|desc] [--branch BRANCH]"
+              :options [[nil "--q QUERY" "Query string for full-text search"]
+                       [nil "--query QUERY" "EDN query map"]
+                       [nil "--branch BRANCH" "Branch name"]
+                       [nil "--limit N" :parse-fn #(Integer/parseInt %)]
+                       [nil "--offset N" :parse-fn #(Integer/parseInt %)]
+                       [nil "--sort SORT" "Sort specification (field:asc or field:desc)"]
+                       [nil "--after CURSOR" "Cursor for pagination"]]
+              :args 0}})
 
 (defn usage
   ([]
@@ -209,6 +219,17 @@
                 (Thread/sleep interval)
                 (recur (or new-cursor cursor)))))))
 
+(defn run-search [cfg _ opts]
+  (let [{:keys [q query branch limit offset sort after]} opts
+        resp (http/search-documents cfg {:q q
+                                         :query query
+                                         :branch branch
+                                         :limit limit
+                                         :offset offset
+                                         :sort sort
+                                         :after after})]
+    (handle-response resp)))
+
 (def handlers
   {"init" run-init
    "info" run-info
@@ -219,7 +240,8 @@
    "export" run-export
    "import" run-import
    "verify" run-verify
-   "tail-history" run-tail-history})
+   "tail-history" run-tail-history
+   "search" run-search})
 
 (defn dispatch! [command cfg args opts]
   (if-let [handler (handlers command)]

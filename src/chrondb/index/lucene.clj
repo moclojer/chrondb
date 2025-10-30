@@ -5,11 +5,70 @@
   (:import [org.apache.lucene.store Directory FSDirectory]
            [org.apache.lucene.analysis Analyzer]
            [org.apache.lucene.analysis.standard StandardAnalyzer]
-           [org.apache.lucene.document Document StringField TextField Field$Store]
+           [org.apache.lucene.document Document StringField TextField Field$Store SortedDocValuesField LongPoint DoublePoint NumericDocValuesField DoubleDocValuesField]
            [org.apache.lucene.index IndexWriter IndexWriterConfig IndexWriterConfig$OpenMode DirectoryReader Term IndexNotFoundException]
-           [org.apache.lucene.search IndexSearcher Query ScoreDoc TopDocs]
+           [org.apache.lucene.search IndexSearcher Query ScoreDoc TopDocs BooleanQuery BooleanQuery$Builder BooleanClause$Occur MatchAllDocsQuery TermQuery WildcardQuery TermRangeQuery Sort SortField SortField$Type TopFieldCollector TopScoreDocCollector DocValuesFieldExistsQuery]
            [org.apache.lucene.queryparser.classic QueryParser ParseException]
+           [org.apache.lucene.util BytesRef]
            [java.nio.file Paths]))
+
+(defn- normalize-field
+  "Normalizes a field name for full-text search support."
+  [field]
+  (let [field-name (name field)]
+    (if (str/ends-with? field-name "_fts")
+      field-name
+      (str field-name "_fts"))))
+
+(defn- sanitize-sort-field
+  [{:keys [field direction type]}]
+  (let [sort-field (name field)
+        direction (if (= :desc direction) :desc :asc)
+        requested-type (keyword type)
+        detected-type (cond
+                        (and requested-type (not= requested-type :string)) requested-type
+                        (or (= sort-field "age")
+                            (= sort-field "price")
+                            (= sort-field "count")
+                            (= sort-field "score")
+                            (= sort-field "timestamp")
+                            (str/ends-with? sort-field "_id")
+                            (str/ends-with? sort-field "_count")
+                            (str/ends-with? sort-field "_score")) :long
+                        :else :string)
+        type detected-type]
+    {:field sort-field
+     :direction direction
+     :type (keyword type)}))
+
+(defn- sort-field->lucene
+  [{:keys [field direction type]}]
+  (let [reverse (= :desc direction)]
+    (case type
+      :score (SortField. SortField/FIELD_SCORE reverse)
+      :doc   (SortField. SortField/FIELD_DOC reverse)
+      :long  (SortField. field SortField$Type/LONG reverse)
+      :double (SortField. field SortField$Type/DOUBLE reverse)
+      (SortField. field SortField$Type/STRING reverse))))
+
+(defn- build-sort
+  [sort-descriptors]
+  (when (seq sort-descriptors)
+    (->> sort-descriptors
+         (map sanitize-sort-field)
+         (map sort-field->lucene)
+         (into-array SortField)
+         Sort.)))
+
+(defn- parse-long-safe [s]
+  (try
+    (Long/parseLong s)
+    (catch Exception _ nil)))
+
+(defn- parse-double-safe [s]
+  (try
+    (Double/parseDouble s)
+    (catch Exception _ nil)))
 
 (defn- create-lucene-doc
   "Creates a Lucene Document from a Clojure map, using different analyzers."
@@ -20,24 +79,175 @@
       (when v
         (let [field-name (name k)
               field-value (str v)
-              ;; Normalize value - remove accents for text fields
-              normalized-value (-> field-value
-                                   (java.text.Normalizer/normalize java.text.Normalizer$Form/NFD)
-                                   (str/replace #"[\p{InCombiningDiacriticalMarks}]" ""))]
-          ;; Add as normal field with original value
+              long-val (parse-long-safe field-value)
+              double-val (when (nil? long-val)
+                           (parse-double-safe field-value))]
           (.add ldoc (TextField. field-name field-value Field$Store/YES))
 
-          ;; For fields that can be searched via FTS (like name, description, etc.)
-          ;; create an additional field with _fts suffix using normalized value
+          (cond
+            long-val
+            (let [long-arr (long-array [long-val])]
+              (.add ldoc (LongPoint. field-name long-arr))
+              (.add ldoc (NumericDocValuesField. field-name long-val)))
+
+            double-val
+            (let [double-arr (double-array [double-val])]
+              (.add ldoc (DoublePoint. field-name double-arr))
+              (.add ldoc (DoubleDocValuesField. field-name double-val))))
+
           (when (or (= field-name "name")
                     (= field-name "description")
                     (= field-name "content")
                     (= field-name "text")
                     (= field-name "location")
                     (str/ends-with? field-name "_fts"))
-            ;; Create a copy of the field for FTS with normalized value
-            (.add ldoc (TextField. (str field-name "_fts") normalized-value Field$Store/YES))))))
+            (.add ldoc (TextField. (normalize-field field-name) field-value Field$Store/YES))))))
     ldoc))
+
+(defmulti ast->query (fn [_ clause] (:type clause)))
+
+(def ^:dynamic *lucene-context* nil)
+
+(defn- current-analyzer
+  ([] (:default-analyzer *lucene-context*))
+  ([preferred]
+   (or preferred (:default-analyzer *lucene-context*))))
+
+(defn- current-fts-analyzer []
+  (:fts-analyzer *lucene-context*))
+
+(defmethod ast->query :match-all
+  [_ _]
+  (MatchAllDocsQuery.))
+
+(defmethod ast->query :term
+  [_ {:keys [field value]}]
+  (when (and field value)
+    (TermQuery. (Term. field (str value)))))
+
+(defmethod ast->query :wildcard
+  [_ {:keys [field value]}]
+  (when (and field value)
+    (WildcardQuery. (Term. field (str/lower-case value)))))
+
+(defmethod ast->query :fts
+  [_ {:keys [field value analyzer]}]
+  (let [normalized-field (normalize-field field)
+        actual-analyzer (if (instance? org.apache.lucene.analysis.Analyzer analyzer)
+                          analyzer
+                          (current-fts-analyzer))
+        parser (QueryParser. normalized-field (or actual-analyzer (current-analyzer)))]
+    (.setAllowLeadingWildcard parser true)
+    (try
+      (.parse parser (str value))
+      (catch Exception e
+        (log/log-error (str "Error creating FTS query for field " normalized-field ": " (.getMessage e)))
+        (throw e)))))
+
+(defmethod ast->query :range
+  [_ {:keys [field lower upper include-lower? include-upper? value-type]}]
+  (let [lower (when lower (str lower))
+        upper (when upper (str upper))]
+    (case value-type
+      :long (TermRangeQuery. field lower upper (boolean include-lower?) (boolean include-upper?))
+      :double (TermRangeQuery. field lower upper (boolean include-lower?) (boolean include-upper?))
+      (TermRangeQuery. field lower upper (boolean include-lower?) (boolean include-upper?)))))
+
+(defmethod ast->query :exists
+  [_ {:keys [field]}]
+  (DocValuesFieldExistsQuery. field))
+
+(defmethod ast->query :missing
+  [_ {:keys [field]}]
+  (let [builder (BooleanQuery$Builder.)]
+    (.add builder (MatchAllDocsQuery.) BooleanClause$Occur/MUST)
+    (.add builder (DocValuesFieldExistsQuery. field) BooleanClause$Occur/MUST_NOT)
+    (.build builder)))
+
+(defmethod ast->query :boolean
+  [ast {:keys [must should must-not filter]}]
+  (let [builder (BooleanQuery$Builder.)]
+    (doseq [clause must]
+      (when-let [q (ast->query ast clause)]
+        (.add builder q BooleanClause$Occur/MUST)))
+    (doseq [clause should]
+      (when-let [q (ast->query ast clause)]
+        (.add builder q BooleanClause$Occur/SHOULD)))
+    (doseq [clause must-not]
+      (when-let [q (ast->query ast clause)]
+        (.add builder q BooleanClause$Occur/MUST_NOT)))
+    (doseq [clause filter]
+      (when-let [q (ast->query ast clause)]
+        (.add builder q BooleanClause$Occur/FILTER)))
+    (.build builder)))
+
+(defmethod ast->query :default
+  [_ _]
+  (MatchAllDocsQuery.))
+
+(defn- normalize-clauses [clauses]
+  (cond
+    (nil? clauses) []
+    (sequential? clauses) (vec clauses)
+    :else [clauses]))
+
+(defn- create-lucene-query
+  [{:keys [clauses] :as ast}]
+  (let [clauses (normalize-clauses clauses)]
+    (if (seq clauses)
+      (ast->query ast {:type :boolean :must clauses})
+      (ast->query ast {:type :match-all}))))
+
+(defn- normalize-query-opts [query-map opts]
+  {:limit (or (:limit opts) (:limit query-map) 100)
+   :offset (or (:offset opts) (:offset query-map) 0)
+   :sort (or (:sort opts) (:sort query-map))
+   :after (or (:after opts) (:after query-map))})
+
+(defn- execute-query
+  [^IndexSearcher searcher ^Query query {:keys [limit offset sort after]}]
+  (let [limit (max 1 (or limit 100))
+        offset (max 0 (or offset 0))
+        lucene-sort (when sort (build-sort sort))
+        after-score-doc (when (and after (map? after))
+                          (let [doc (:doc after)
+                                score (:score after)]
+                            (log/log-info (str "Preparing search-after cursor with doc=" doc " (" (class doc) ") score=" score " (" (class score) ")"))
+                            (when (and (number? doc) (number? score))
+                              (ScoreDoc. (int doc) (float score)))))
+        format-results (fn [top-docs]
+                         (let [score-docs (.-scoreDocs top-docs)
+                               ids (mapv (fn [^ScoreDoc sd]
+                                           (.get (.doc searcher (.-doc sd)) "id"))
+                                         score-docs)
+                               next-cursor (last score-docs)]
+                           (log/log-info (str "Query executed: found " (.-totalHits top-docs)
+                                              " total hits, returning " (count ids) " IDs: " (pr-str ids)))
+                           {:ids ids
+                            :total (.-totalHits top-docs)
+                            :limit limit
+                            :offset offset
+                            :sort sort
+                            :next-cursor next-cursor}))]
+    (log/log-info (str "Executing query: " query ", limit=" limit ", offset=" offset ", sort=" lucene-sort))
+    (try
+      (if after-score-doc
+        (let [top-docs (if lucene-sort
+                         (.searchAfter searcher after-score-doc query limit lucene-sort)
+                         (.searchAfter searcher after-score-doc query limit))]
+          (format-results top-docs))
+        (let [collector (if lucene-sort
+                          (TopFieldCollector/create lucene-sort (+ limit offset) Integer/MAX_VALUE)
+                          (TopScoreDocCollector/create (+ limit offset) Integer/MAX_VALUE))]
+          (.search ^IndexSearcher searcher query collector)
+          (let [top-docs (.topDocs collector offset limit)]
+            (format-results top-docs))))
+      (catch Exception e
+        (let [sw (java.io.StringWriter.)
+              pw (java.io.PrintWriter. sw)]
+          (.printStackTrace e pw)
+          (log/log-error (str "Error executing search-query: " (.getMessage e) "\n" (.toString sw))))
+        {:ids [] :total 0 :limit limit :offset offset :sort sort :next-cursor nil}))))
 
 ;; This function is currently unused but might be needed later
 #_(defn- doc->map
@@ -149,6 +359,32 @@
       (catch Exception e
         (log/log-error (str "Unexpected error trying to search the index: " (.getMessage e)))
         [])))
+
+  (search-query [_ query-map _branch opts]
+    (let [query-opts (normalize-query-opts query-map opts)
+          context {:fts-analyzer fts-analyzer
+                   :default-analyzer default-analyzer}]
+      (try
+        (if-let [_ @reader-atom]
+          (let [^IndexSearcher searcher @searcher-atom
+                lucene-query (binding [*lucene-context* context]
+                               (create-lucene-query query-map))
+                _ (log/log-info (str "Executing search-query with clauses " (:clauses query-map) " and opts " query-opts))
+                result (execute-query searcher lucene-query query-opts)]
+            (log/log-info (str "Lucene search produced IDs: " (:ids result) ", total=" (:total result)))
+            {:ids (:ids result)
+             :total (:total result)
+             :limit (:limit result)
+             :offset (:offset result)
+             :sort (:sort result)
+             :next-cursor (:next-cursor result)})
+          {:ids [] :total 0 :limit 0 :offset 0})
+        (catch Exception e
+          (let [sw (java.io.StringWriter.)
+                pw (java.io.PrintWriter. sw)]
+            (.printStackTrace e pw)
+            (log/log-error (str "Error executing search-query: " (.getMessage e) "\n" (.toString sw))))
+          {:ids [] :total 0 :limit 0 :offset 0 :sort (:sort query-opts) :next-cursor nil}))))
 
   (close [_]
     (log/log-info "Closing Lucene index...")

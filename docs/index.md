@@ -16,6 +16,7 @@ ChronDB is licensed under the GNU Affero General Public License v3.0 (AGPLv3), e
 - **Multiple Interfaces** - Connect through Clojure, REST API, Redis protocol, or even PostgreSQL protocol.
 - **ACID Compliance** - Enjoy full transaction support with commit, rollback, and consistency guarantees.
 - **Schema-less** - Store any JSON-compatible data without rigid structure requirements.
+- **Lucene-Powered Search** - Execute full-text, composite, and geospatial queries using Lucene's production-grade indexing engine.
 
 ## How It Works
 

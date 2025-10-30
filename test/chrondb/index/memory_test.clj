@@ -41,10 +41,11 @@
       (index/index-document *test-index* doc3)
 
       ;; Search for "John" in name field
-      (let [results (index/search *test-index* "name" "John" "main")]
+      (let [results-map (index/search-query *test-index* {:field "name" :value "John"} "main" {:limit 10})
+            results (:ids results-map)]
         (is (= 2 (count results)))
-        (is (contains? (set results) doc1))
-        (is (contains? (set results) doc3))))))
+        (is (contains? (set results) "user:1"))
+        (is (contains? (set results) "user:3"))))))
 
 (deftest test-search-with-content-field
   (testing "Search documents using content field"
@@ -56,9 +57,10 @@
       (index/index-document *test-index* doc2)
 
       ;; Search for "developer" in content field
-      (let [results (index/search *test-index* "content" "developer" "main")]
+      (let [results-map (index/search-query *test-index* {:field "content" :value "developer"} "main" {:limit 10})
+            results (:ids results-map)]
         (is (= 1 (count results)))
-        (is (= doc1 (first results)))))))
+        (is (= "user:1" (first results)))))))
 
 (deftest test-search-case-insensitivity
   (testing "Search is case insensitive"
@@ -68,12 +70,15 @@
       (index/index-document *test-index* doc)
 
       ;; Search with different cases
-      (let [results1 (index/search *test-index* "name" "john" "main")
-            results2 (index/search *test-index* "name" "JOHN" "main")
-            results3 (index/search *test-index* "name" "John" "main")]
+      (let [results-map1 (index/search-query *test-index* {:field "name" :value "john"} "main" {:limit 10})
+            results-map2 (index/search-query *test-index* {:field "name" :value "JOHN"} "main" {:limit 10})
+            results-map3 (index/search-query *test-index* {:field "name" :value "John"} "main" {:limit 10})
+            results1 (:ids results-map1)
+            results2 (:ids results-map2)
+            results3 (:ids results-map3)]
         (is (= 1 (count results1)))
         (is (= 1 (count results2)))
         (is (= 1 (count results3)))
-        (is (= doc (first results1)))
-        (is (= doc (first results2)))
-        (is (= doc (first results3)))))))
+        (is (= "user:1" (first results1)))
+        (is (= "user:1" (first results2)))
+        (is (= "user:1" (first results3)))))))
