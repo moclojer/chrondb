@@ -42,7 +42,8 @@
         url (if (and path (str/starts-with? path "http"))
               path
               (str base-url path))
-        request-headers (cond-> {"Accept" "application/json"}
+        request-headers (cond-> {"Accept" "application/json"
+                                 "X-ChronDB-Origin" "cli"}
                           (:token cfg) (assoc "Authorization" (str "Bearer " (:token cfg)))
                           headers (merge headers))
         opts {:method method

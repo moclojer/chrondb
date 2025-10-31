@@ -177,6 +177,28 @@ All operations within the transaction block are atomic:
 - Changes are only visible after successful commit
 - Automatic rollback on failure
 
+#### Transaction Metadata and Git Notes
+
+ChronDB attaches a structured Git note to every commit. The payload includes the transaction id (`tx_id`), origin, optional user identifier, flags, and request metadata. You can enrich this payload by providing HTTP headers on REST requests:
+
+| Header | Description |
+| --- | --- |
+| `X-ChronDB-Origin` | Overrides the origin label stored in the note (defaults to `rest`). |
+| `X-ChronDB-User` | Associates commits with an authenticated user id or service account. |
+| `X-ChronDB-Flags` | Comma-separated list of semantic flags (for example: `bulk-load, migration`). |
+| `X-Request-Id` / `X-Correlation-Id` | Propagate request correlation identifiers into commit metadata. |
+
+All ChronDB front-ends (REST, Redis, SQL) reuse the same transaction core, so commits that belong to the same logical operation share the same `tx_id`. Special operations automatically set semantic flags. For instance, document imports mark the transaction with `bulk-load`, and restore flows add `rollback`.
+
+Inspect commit notes with standard Git tooling:
+
+```
+git log --show-notes=chrondb
+git notes --ref=chrondb show <commit-hash>
+```
+
+You can parse the JSON payload to correlate commits with external systems or audit trails.
+
 ### Event Hooks
 
 #### Register Hook
@@ -263,3 +285,5 @@ Example error handling:
     (log/error "Storage error:" (.getMessage e)))
   (catch chrondb.exceptions.ValidationException e
     (log/error "Validation error:" (.getMessage e))))
+
+```

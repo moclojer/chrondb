@@ -53,7 +53,9 @@
                            nil
                            "Initial empty commit"
                            (get-in config-map [:git :committer-name])
-                           (get-in config-map [:git :committer-email]))
+                           (get-in config-map [:git :committer-email])
+                           {:note {:operation "initialize-repository"
+                                   :flags ["system" "init"]}})
 
     repo))
 

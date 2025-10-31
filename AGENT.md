@@ -40,6 +40,7 @@ ChronDB is a chronological key/value database implemented in Clojure and backed 
 - Handle repository creation and concurrency with JGit primitives
 - Surface meaningful errors when Git operations fail (lock contention, missing refs)
 - Avoid destructive operations; prefer new commits over in-place mutation
+- Ensure every write path calls the shared transaction helpers so that Git notes capture `tx_id`, origin, user, flags, and protocol metadata. Treat missing notes as regressions.
 
 ### API Development
 

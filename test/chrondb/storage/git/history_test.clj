@@ -2,9 +2,12 @@
   (:require [chrondb.config :as config]
             [chrondb.storage.git.core :as git-core]
             [chrondb.storage.git.history :as history]
+            [chrondb.storage.git.notes :as notes]
+            [chrondb.storage.git.commit :as commit]
             [chrondb.storage.protocol :as protocol]
             [clojure.java.io :as io]
-            [clojure.test :refer [deftest is testing use-fixtures]]))
+            [clojure.test :refer [deftest is testing use-fixtures]])
+  (:import [org.eclipse.jgit.api Git]))
 
 (def test-repo-path "test-repo")
 (def test-clone-path "test-repo-clone")
@@ -153,26 +156,39 @@
       (let [history-entries (protocol/get-document-history storage "restore-test:1")
             _ (println "Restore history entries:" (count history-entries))]
 
-        (when (>= (count history-entries) 2)
-          (let [original-commit-hash (get-in history-entries [1 :commit-id])] ;; Original version commit
-            (println "Original commit hash for restore:" original-commit-hash)
+        (when-let [original-entry (nth history-entries 1 nil)]
+          (let [raw-hash (:commit-id original-entry)
+                normalized-hash (commit/normalize-commit-hash raw-hash)
+                _ (println "Original commit hash for restore:" raw-hash)
+                _ (println "Normalized hash for restore:" normalized-hash)
+                repository (:repository storage)
+                original-doc (history/get-document-at-commit repository "restore-test:1" normalized-hash)]
+            (is original-doc "Original document must exist at target commit")
+            (let [restored (history/restore-document-version storage "restore-test:1" normalized-hash)
+                  git (Git/wrap repository)
+                  head (-> repository (.resolve "refs/heads/main"))
+                  note (notes/read-note git (.getName head))
+                  new-history (protocol/get-document-history storage "restore-test:1")]
+              (is (= 1 (:value restored)) "Restored document should have original value")
 
-            ;; Restore document to original version and check value (if we have a valid hash)
-            (when original-commit-hash
-              (let [restored (history/restore-document-version storage "restore-test:1" original-commit-hash)]
-                (is (= 1 (:value restored)) "Restored document should have original value")
+              ;; Verify current document is restored version
+              (is (= 1 (:value (protocol/get-document storage "restore-test:1")))
+                  "Current document should have original value")
 
-                ;; Verify current document is restored version
-                (is (= 1 (:value (protocol/get-document storage "restore-test:1"))) "Current document should have original value")
+              ;; Validate git note metadata
+              (is (= "restore-document" (:operation note)))
+              (is (= "restore-test:1" (:document_id note)))
+              (is (some #(= "rollback" %) (:flags note)))
+              (is (= normalized-hash (get-in note [:metadata :source-commit])))
+              (is (= "restore" (get-in note [:metadata :table])))
 
-                ;; Check history again - should have 3 versions now (original, update, restore)
-                (let [new-history (protocol/get-document-history storage "restore-test:1")]
-                  (is (= 3 (count new-history)) "Should have 3 versions in history now")
-                  (when (>= (count new-history) 1)
-                    (is (= 1 (get-in new-history [0 :document :value])) "Most recent should be restored version")
-                    (when (and (>= (count new-history) 1) (get-in new-history [0 :commit-message]))
-                      (is (.contains (get-in new-history [0 :commit-message]) "Restore")
-                          "Commit message should indicate restoration")))))))))
+              ;; Check history again - should have 3 versions now (original, update, restore)
+              (is (= 3 (count new-history)) "Should have 3 versions in history now")
+              (when-let [latest (first new-history)]
+                (is (= 1 (get-in latest [:document :value])) "Most recent should be restored version")
+                (when-let [msg (:commit-message latest)]
+                  (is (.contains msg "Restore")
+                      "Commit message should indicate restoration")))))))
 
       (protocol/close storage))))
 

@@ -14,6 +14,9 @@
             [ring.util.response :as response]
             [chrondb.util.logging :as log]))
 
+(defn- keywordize-params [params]
+  (-> params (or {}) (walk/keywordize-keys)))
+
 (defn handle-save
   "Handles document save requests (default branch)."
   [storage index doc params]
@@ -73,6 +76,76 @@
           parsed))
       (catch Exception _
         nil))))
+
+(defn- parse-flags
+  [value]
+  (cond
+    (nil? value) []
+    (vector? value) (->> value (map str) (map str/trim) (remove str/blank?) vec)
+    (and (coll? value) (not (string? value))) (->> value (mapcat parse-flags) vec)
+    (string? value) (->> (str/split value #",") (map str/trim) (remove str/blank?) vec)
+    :else [(str value)]))
+
+(defn- build-request-context
+  ([request]
+   (build-request-context request {}))
+  ([{:keys [headers query-params request-method uri remote-addr] :as request} overrides]
+   (let [params (keywordize-params query-params)
+         override-params (keywordize-params (:params overrides))
+         merged-params (merge params override-params)
+         branch-override (some-> (:branch overrides) str/trim not-empty)
+         branch-param (some-> (:branch merged-params) str/trim not-empty)
+         branch (or branch-override branch-param)
+         origin-override (some-> (:origin overrides) str/trim str/lower-case not-empty)
+         origin-header (some-> (get headers "x-chrondb-origin") str/trim str/lower-case not-empty)
+         origin-param (some-> (:origin merged-params) str/trim str/lower-case not-empty)
+         origin (or origin-override origin-header origin-param "rest")
+         user-override (some-> (:user overrides) str/trim not-empty)
+         user-header (some-> (get headers "x-chrondb-user") str/trim not-empty)
+         user-param (some-> (:user merged-params) str/trim not-empty)
+         user (or user-override user-header user-param)
+         flags-header (parse-flags (get headers "x-chrondb-flags"))
+         flags-param (parse-flags (:flags merged-params))
+         flags-override (parse-flags (:flags overrides))
+         flags (->> [flags-header flags-param flags-override]
+                    (mapcat identity)
+                    (remove str/blank?)
+                    distinct
+                    vec)
+         metadata-param (let [m (:metadata merged-params)]
+                          (cond
+                            (map? m) m
+                            (string? m) (try
+                                          (edn/read-string m)
+                                          (catch Exception _ nil))
+                            :else nil))
+         metadata-override (when (map? (:metadata overrides))
+                             (:metadata overrides))
+         request-id (some-> (or (get headers "x-request-id")
+                                (:request-id merged-params)
+                                (:request-id overrides))
+                            str/trim not-empty)
+         base-metadata {:http {:method (some-> request-method name)
+                               :path uri
+                               :remote-addr remote-addr}}
+         combined-metadata (-> base-metadata
+                               (merge (or metadata-param {}))
+                               (merge (or metadata-override {}))
+                               (cond-> request-id (assoc :request-id request-id)))
+         params* (-> merged-params
+                     (cond-> branch (assoc :branch branch))
+                     (cond-> user (assoc :user user))
+                     (cond-> (seq flags) (assoc :flags flags))
+                     (cond-> (seq combined-metadata) (assoc :metadata combined-metadata)))
+         context (-> overrides
+                     (assoc :request request
+                            :params params*)
+                     (cond-> branch (assoc :branch branch))
+                     (assoc :origin origin)
+                     (cond-> user (assoc :user user))
+                     (cond-> (seq flags) (assoc :flags flags))
+                     (cond-> (seq combined-metadata) (assoc :metadata combined-metadata)))]
+     context)))
 
 (defn handle-search
   "Handles document search requests via the Lucene-backed query engine.
@@ -185,62 +258,69 @@
            (response/status (:status result)))))
    (GET "/" [] (response/response {:message "Welcome to ChronDB"}))
    (context "/api/v1" []
-     (POST "/save" {body :body}
-       (handle-save storage index body nil))
-     (POST "/put" {body :body params :query-params}
-       (let [payload (if (map? body)
+     (POST "/save" {:keys [body] :as request}
+       (handle-save storage index body (build-request-context request {:metadata {:endpoint "/api/v1/save"}})))
+     (POST "/put" {:keys [body] :as request}
+       (let [context (build-request-context request {:metadata {:endpoint "/api/v1/put"}})
+             params (:params context)
+             payload (if (map? body)
                        (cond-> body
-                         (contains? params :id) (assoc :id (:id params)))
+                         (:id params) (assoc :id (:id params)))
                        body)]
-         (handle-save storage index payload params)))
-     (GET "/get/:id" [id :as {params :query-params}]
-       (handle-get storage id params))
-     (GET "/get/:id/history" [id :as {params :query-params}]
-       (let [result (handlers/handle-history storage id params)]
+         (handle-save storage index payload context)))
+     (GET "/get/:id" [id :as request]
+       (handle-get storage id (build-request-context request {:metadata {:endpoint "/api/v1/get" :document-id id}})))
+     (GET "/get/:id/history" [id :as request]
+       (let [result (handlers/handle-history storage id (build-request-context request {:metadata {:endpoint "/api/v1/get/:id/history"}}))]
          (-> (response/response (:body result))
              (response/status (:status result)))))
-     (DELETE "/delete/:id" [id :as {params :query-params}]
-       (handle-delete storage index id params))
+     (DELETE "/delete/:id" [id :as request]
+       (handle-delete storage index id (build-request-context request {:metadata {:endpoint "/api/v1/delete" :document-id id}})))
      (GET "/search" request
        (handle-search storage index request))
-     (GET "/documents" {params :query-params}
-       (let [result (handlers/handle-export-documents storage params)]
+     (GET "/documents" {:as request}
+       (let [result (handlers/handle-export-documents storage (build-request-context request {:metadata {:endpoint "/api/v1/documents"}}))]
          (-> (response/response (:body result))
              (response/status (:status result)))))
-     (POST "/documents/import" {body :body params :query-params}
-       (let [result (handlers/handle-import-documents storage index body params)]
+     (POST "/documents/import" {:keys [body] :as request}
+       (let [result (handlers/handle-import-documents storage index body (build-request-context request {:metadata {:endpoint "/api/v1/documents/import"}}))]
          (-> (response/response (:body result))
              (response/status (:status result)))))
      (POST "/verify" []
        (let [result (handlers/handle-verify storage)]
          (-> (response/response (:body result))
              (response/status (:status result)))))
-     (GET "/history/:id" [id :as {params :query-params}]
-       (let [result (handlers/handle-history storage id params)]
+     (GET "/history/:id" [id :as request]
+       (let [result (handlers/handle-history storage id (build-request-context request {:metadata {:endpoint "/api/v1/history/:id"}}))]
          (-> (response/response (:body result))
              (response/status (:status result)))))
-     (GET "/history" {params :query-params}
-       (let [{:strs [id]} params]
+     (GET "/history" {:as request}
+       (let [context (build-request-context request {:metadata {:endpoint "/api/v1/history"}})
+             params (:params context)
+             id (or (:id params) (get params :id) (get-in request [:query-params "id"]))]
          (if (str/blank? id)
            (-> (response/response {:error "Query parameter 'id' is required"})
                (response/status 400))
-           (let [result (handlers/handle-history storage id params)]
+           (let [result (handlers/handle-history storage id context)]
              (-> (response/response (:body result))
                  (response/status (:status result)))))))
-     (GET "/export" {params :query-params}
-       (let [result (handlers/handle-export-documents storage params)]
+     (GET "/export" {:as request}
+       (let [result (handlers/handle-export-documents storage (build-request-context request {:metadata {:endpoint "/api/v1/export"}}))]
          (-> (response/response (:body result))
              (response/status (:status result))))))
-   (POST "/api/v1/backup" {body :body}
-     (let [result (handlers/handle-backup storage body)]
+  (POST "/api/v1/backup" {:keys [body]}
+    (let [result (handlers/handle-backup storage body)]
        (-> (response/response (:body result))
            (response/status (:status result)))))
-   (POST "/api/v1/restore" {{backup-file :tempfile :as params} :params}
-     (let [result (handlers/handle-restore storage backup-file params)]
+   (POST "/api/v1/restore" {:keys [params] :as request}
+    (let [context (build-request-context request {:metadata {:endpoint "/api/v1/restore"}})
+          params* (keywordize-params params)
+          backup-file (:tempfile params)
+          result (handlers/handle-restore storage backup-file (merge params* context))]
        (-> (response/response (:body result))
            (response/status (:status result)))))
-   (POST "/api/v1/export" {body :body}
-     (let [result (handlers/handle-export storage body)]
+  (POST "/api/v1/export" {:keys [body]}
+    (let [result (handlers/handle-export storage body)]
        (-> (response/response (:body result))
            (response/status (:status result)))))
    (route/not-found (response/not-found {:error "Not Found"}))))
