@@ -651,58 +651,64 @@
                         ;; Single row: values is [val1 val2 val3]
                         [values])
 
-          ;; Process each row
-          saved-docs (mapv (fn [row-values]
-                             ;; Clean values for this row
-                             (let [clean-values (when (seq row-values)
-                                                  (map (fn [val]
-                                                         ;; Only remove quotes from strings, leave other values as-is
-                                                         (if (and (string? val)
-                                                                  (or (str/starts-with? val "'")
-                                                                      (str/starts-with? val "\"")))
-                                                           (str/replace val #"^['\"]|['\"]$" "")
-                                                           val))
-                                                       row-values))
+          ;; Build documents for each row
+          documents (mapv (fn [row-values]
+                            (let [clean-values (when (seq row-values)
+                                                 (map (fn [val]
+                                                        ;; Only remove quotes from strings, leave other values as-is
+                                                        (if (and (string? val)
+                                                                 (or (str/starts-with? val "'")
+                                                                     (str/starts-with? val "\"")))
+                                                          (str/replace val #"^['\"]|['\"]$" "")
+                                                          val))
+                                                      row-values))
 
-                                   ;; Make sure columns and values have the same count
-                                   _ (when (and (seq clean-columns) (seq clean-values)
-                                                (not= (count clean-columns) (count clean-values)))
-                                       (throw (Exception. (str "Column count doesn't match value count: "
-                                                               (count clean-columns) " columns vs "
-                                                               (count clean-values) " values"))))
+                                  ;; Make sure columns and values have the same count
+                                  _ (when (and (seq clean-columns) (seq clean-values)
+                                               (not= (count clean-columns) (count clean-values)))
+                                      (throw (Exception. (str "Column count doesn't match value count: "
+                                                              (count clean-columns) " columns vs "
+                                                              (count clean-values) " values"))))
 
-                                   ;; Create a document map from columns and values
-                                   doc-data (if (and (seq clean-columns) (seq clean-values))
-                                              (zipmap (map keyword clean-columns) clean-values)
-                                              {})
+                                  ;; Create a document map from columns and values
+                                  doc-data (if (and (seq clean-columns) (seq clean-values))
+                                             (zipmap (map keyword clean-columns) clean-values)
+                                             {})
 
-                                   ;; Check if ID is provided, otherwise generate one
-                                   id-provided (if-let [id (:id doc-data)]
-                                                 ;; Use provided ID as is, without adding table prefix
-                                                 id
-                                                 ;; Generate a UUID if no ID provided, without table prefix
-                                                 (str (java.util.UUID/randomUUID)))
+                                  ;; Check if ID is provided, otherwise generate one
+                                  id-provided (if-let [id (:id doc-data)]
+                                                ;; Use provided ID as is, without adding table prefix
+                                                id
+                                                ;; Generate a UUID if no ID provided, without table prefix
+                                                (str (java.util.UUID/randomUUID)))]
 
-                                   ;; Create final document with table information
-                                   doc (merge
-                                        doc-data
-                                        {:id id-provided
-                                         :_table table-name})
+                              ;; Create final document with table information
+                              (merge doc-data
+                                     {:id id-provided
+                                      :_table table-name})))
+                          values-rows)
 
-                                   _ (log/log-info (str "Document to insert: " doc))
-                                   saved (storage/save-document storage doc branch-name)]
+          doc-ids (map :id documents)
+          tx-opts (sql-tx-options {:operation "insert"
+                                   :table table-name
+                                   :branch branch-name
+                                   :metadata (cond-> {:document-count (count documents)}
+                                               (seq doc-ids) (assoc :document-ids (vec doc-ids)))})
 
-                               ;; Index document
-                               (when index
-                                 (try
-                                   (index/index-document index saved)
-                                   (log/log-info (str "Document indexed successfully: " (:id saved)))
-                                   (catch Exception e
-                                     (log/log-error (str "Error indexing document: " (:id saved) " - " (.getMessage e))))))
-
-                               saved))
-                           values-rows)
-
+          saved-docs (tx/with-transaction [storage tx-opts]
+                       (mapv (fn [doc]
+                               (log/log-info (str "Document to insert: " doc))
+                               (let [saved (storage/save-document storage doc branch-name)]
+                                 ;; Index document when index is provided
+                                 (when index
+                                   (try
+                                     (index/index-document index saved)
+                                     (log/log-info (str "Document indexed successfully: " (:id saved)))
+                                     (catch Exception e
+                                       (log/log-error (str "Error indexing document: " (:id saved)
+                                                           " - " (.getMessage e))))))
+                                 saved))
+                             documents))
           inserted-count (count saved-docs)]
 
       (log/log-info (str "Inserted " inserted-count " document(s)"))
@@ -742,24 +748,28 @@
 
           ;; Get documents with branch parameter
           table-docs (storage/get-documents-by-table storage table-name branch-name)
-          matching-docs (operators/apply-where-conditions table-docs where-condition)
-          update-count (atom 0)]
+          matching-docs (operators/apply-where-conditions table-docs where-condition)]
 
       (if (seq matching-docs)
-        (do
-          (log/log-info (str "Found " (count matching-docs) " documents to update"))
-          (doseq [doc matching-docs]
-            (let [updated-doc (merge doc updates)
-                  saved (storage/save-document storage updated-doc branch-name)]
-
-              (when (and saved index)
-                (index/index-document index saved))
-
-              (swap! update-count inc)))
-
-          (log/log-info (str "Updated " @update-count " documents successfully"))
-          (messages/send-command-complete out "UPDATE" @update-count)
-          (messages/send-ready-for-query out \I))
+        (let [doc-ids (map :id matching-docs)
+              tx-opts (sql-tx-options {:operation "update"
+                                       :table table-name
+                                       :branch branch-name
+                                       :flags ["update"]
+                                       :metadata (cond-> {:document-count (count matching-docs)}
+                                                   (seq doc-ids) (assoc :document-ids (vec doc-ids)))})
+              updated-docs (tx/with-transaction [storage tx-opts]
+                             (mapv (fn [doc]
+                                     (let [updated-doc (merge doc updates)
+                                           saved (storage/save-document storage updated-doc branch-name)]
+                                       (when (and saved index)
+                                         (index/index-document index saved))
+                                       saved))
+                                   matching-docs))]
+          (log/log-info (str "Updated " (count updated-docs) " documents successfully"))
+          (messages/send-command-complete out "UPDATE" (count updated-docs))
+          (messages/send-ready-for-query out \I)
+          updated-docs)
 
         (do
           (log/log-warn "No documents found matching WHERE conditions")
@@ -797,10 +807,16 @@
       (if (and id (seq table-name))
         (if-let [doc-to-delete (storage/get-document storage id branch-name)]
           (if (= (:_table doc-to-delete) table-name)
-            (let [_ (log/log-info (str "Deleting document with ID: " id " from table " table-name))
-                  deleted (storage/delete-document storage id branch-name)
-                  _ (when (and deleted index)
-                      (index/delete-document index id))]
+            (let [tx-opts (sql-tx-options {:operation "delete"
+                                           :id id
+                                           :table table-name
+                                           :branch branch-name
+                                           :flags ["delete"]})
+                  deleted (tx/with-transaction [storage tx-opts]
+                            (let [result (storage/delete-document storage id branch-name)]
+                              (when (and result index)
+                                (index/delete-document index id))
+                              result))]
               (if deleted
                 (do
                   (log/log-info "Document deleted successfully")
