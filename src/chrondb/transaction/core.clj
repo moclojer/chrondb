@@ -43,7 +43,7 @@
   (if (map? value) value {}))
 
 (defn- base-context
-  [{:keys [tx-id origin user timestamp flags metadata status] :as opts}]
+  [{:keys [tx-id origin user timestamp flags metadata status]}]
   {:tx-id (normalize-string (or tx-id (UUID/randomUUID)))
    :origin (or (normalize-string origin) "unknown")
    :user (normalize-string user)
@@ -125,7 +125,7 @@
   ([context]
    (context->note context nil))
   ([context {:keys [commit-id commit-message branch path document-id operation flags metadata timestamp]
-             :as overrides}]
+             }]
    (let [merged (-> context
                     (merge-into-context {:flags flags
                                          :metadata metadata
@@ -165,7 +165,7 @@
   "Executes the given function within a transactional context.
    Options support :origin, :user, :timestamp, :metadata, :flags and :on-complete.
    When :on-complete is provided, it will be invoked with [final-context result error]."
-  [storage {:keys [on-complete] :as opts} f]
+  [_storage {:keys [on-complete] :as opts} f]
   (let [context-opts (dissoc opts :on-complete)
         existing *transaction-context*]
     (if existing

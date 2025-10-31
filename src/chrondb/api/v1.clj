@@ -78,7 +78,7 @@
   "Persist a document optionally targeting a branch."
   ([storage index doc]
    (handle-save storage index doc nil))
-  ([storage index doc {:keys [branch params request flags metadata origin user] :as ctx}]
+  ([storage index doc {:keys [branch params request flags metadata origin user]}]
    (let [params (or params {})
          branch-name (sanitize-branch (or branch (:branch params)))
          meta-base (or metadata {})
@@ -103,7 +103,7 @@
   "Delete document optionally from a specific branch."
   ([storage index id]
    (handle-delete storage index id nil))
-  ([storage index id {:keys [branch params request flags metadata origin user] :as ctx}]
+  ([storage index id {:keys [branch params request flags metadata origin user]}]
    (let [params (or params {})
          branch-name (sanitize-branch (or branch (:branch params)))
          meta-base (or metadata {})
@@ -175,7 +175,7 @@
     (.deleteOnExit)))
 
 (defn handle-restore
-  [storage temp-upload {:keys [filename format request flags metadata origin user branch params] :as ctx}]
+  [storage temp-upload {:keys [filename format request flags metadata origin user branch params]}]
   (try
     (if temp-upload
       (let [tmp (temp-file "chrondb-restore" (str "-" (or filename "backup")))
@@ -212,7 +212,7 @@
       {:status 500 :body {:error (.getMessage e)}})))
 
 (defn handle-import
-  [storage temp-upload {:keys [filename verify request flags metadata origin user branch params] :as ctx}]
+  [storage temp-upload {:keys [filename verify request flags metadata origin user branch params]}]
   (try
     (if temp-upload
       (let [tmp (temp-file "chrondb-import" (str "-" (or filename "bundle")))
@@ -281,17 +281,17 @@
                            rest
                            vec)
                       history)
-          limited (if (and limit-val (pos? limit-val))
-                    (vec (take limit-val filtered))
-                    filtered)
-          status (if (seq history) 200 404)]
-      {:status status
-       :body {:id id
-              :branch branch-name
-              :since since-val
-              :count (count limited)
-              :truncated? (and limit-val (> (count filtered) (count limited)))
-              :history limited}})
+           limited (if (and limit-val (pos? limit-val))
+                     (vec (take limit-val filtered))
+                     filtered)
+           status (if (seq history) 200 404)]
+       {:status status
+        :body {:id id
+               :branch branch-name
+               :since since-val
+               :count (count limited)
+               :truncated? (and limit-val (> (count filtered) (count limited)))
+               :history limited}})
      (catch Exception e
        {:status 500 :body {:error (.getMessage e)}}))))
 
@@ -339,7 +339,7 @@
                doc-ids (->> docs (map :id) (remove nil?) (take 20) vec)
                meta-base (merge {:document-count (count docs)} (or metadata {}))
                meta-extra (cond-> meta-base
-                             (seq doc-ids) (assoc :document-ids doc-ids))
+                            (seq doc-ids) (assoc :document-ids doc-ids))
                operation-flags (concat ["bulk-load"] (or flags []))
                tx-opts (build-transaction-options {:request request
                                                    :branch branch-name
