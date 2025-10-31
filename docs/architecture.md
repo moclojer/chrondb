@@ -44,6 +44,25 @@ ChronDB is built in layers:
 4. Indices are updated to reflect changes
 5. Reads can access any point in time using specific commits
 
+### Transaction Metadata via Git Notes
+
+Every commit recorded by ChronDB receives a Git note under the `chrondb` ref. The note payload is JSON and contains:
+
+- A transaction identifier (`tx_id`) shared by all commits that belong to the same logical operation
+- The origin (for example `rest`, `redis`, `sql`, `cli`)
+- Optional user information and request correlation ids
+- Semantic flags such as `bulk-load`, `rollback`, `migration`, or `automated-merge`
+- Additional metadata supplied by the protocol handler (HTTP endpoint, Redis command, SQL table, etc.)
+
+These notes provide an append-only audit trail without mutating commit messages or tracked files. Operators can inspect them using standard tooling:
+
+```
+git log --show-notes=chrondb
+git notes --ref=chrondb show <commit>
+```
+
+Because they live outside the object graph, notes can be replicated, filtered, and queried independently of the document contents while preserving Git’s immutable history.
+
 ### Indexing Layer Details
 
 The Lucene layer receives document mutations from the storage layer and updates the appropriate secondary indexes. It maintains statistics about term distributions and query plans so that complex requests—such as multi-field boolean filters or temporal slices—can be executed without scanning entire collections. When a query arrives, the planner determines the optimal combination of indexes, warms the cache when necessary, and streams results back to the access layer. Geospatial fields are stored in BKD trees, while full-text fields use analyzers that can be tuned per collection.

@@ -10,9 +10,35 @@
             [chrondb.api.sql.execution.ast-converter :as ast-converter]
             [chrondb.query.ast :as ast]
             [chrondb.storage.protocol :as storage]
-            [chrondb.index.protocol :as index]))
+            [chrondb.index.protocol :as index]
+            [chrondb.transaction.core :as tx]))
 
 (declare handle-chrondb-function)
+
+(defn- sql-normalize-flags [flags]
+  (letfn [(spread [v]
+            (cond
+              (nil? v) []
+              (and (coll? v) (not (string? v))) (mapcat spread v)
+              :else [v]))]
+    (->> (spread flags)
+         (keep identity)
+         (map str)
+         (remove str/blank?)
+         distinct
+         vec
+         not-empty)))
+
+(defn- sql-tx-options [{:keys [operation id branch table flags metadata]}]
+  (let [base-meta (cond-> {:operation operation}
+                    id (assoc :document-id id)
+                    table (assoc :table table)
+                    branch (assoc :branch branch))
+        metadata (merge base-meta (or metadata {}))
+        normalized (sql-normalize-flags flags)]
+    (cond-> {:origin "sql"
+             :metadata metadata}
+      normalized (assoc :flags normalized))))
 
 ;; Funções não utilizadas comentadas para resolver warnings de lint
 #_(defn- get-documents-by-id
@@ -452,8 +478,13 @@
   [storage doc & [branch]]
   (let [doc-with-table (if (:_table doc)
                          doc
-                         (assoc doc :_table (first (str/split (:id doc) #":"))))]
-    (storage/save-document storage doc-with-table branch)))
+                         (assoc doc :_table (first (str/split (:id doc) #":"))))
+        tx-opts (sql-tx-options {:operation "insert"
+                                 :id (:id doc-with-table)
+                                 :table (:_table doc-with-table)
+                                 :branch branch})]
+    (tx/with-transaction [storage tx-opts]
+      (storage/save-document storage doc-with-table branch))))
 
 (defn handle-update
   "Handles an UPDATE query.
@@ -467,7 +498,12 @@
   (log/log-info (str "Updating document: " id " with changes: " updates))
   (if-let [doc (storage/get-document storage id branch)]
     (let [updated-doc (merge doc updates)
-          result (storage/save-document storage updated-doc branch)]
+          tx-opts (sql-tx-options {:operation "update"
+                                   :id id
+                                   :table (:_table updated-doc)
+                                   :branch branch})
+          result (tx/with-transaction [storage tx-opts]
+                   (storage/save-document storage updated-doc branch))]
       (log/log-info (str "Document updated successfully: " result))
       result)
     (do
@@ -477,7 +513,11 @@
 (defn handle-delete
   "Handles a document delete operation"
   [storage id & [branch]]
-  (storage/delete-document storage id branch))
+  (tx/with-transaction [storage (sql-tx-options {:operation "delete"
+                                                 :id id
+                                                 :branch branch
+                                                 :flags ["delete"]})]
+    (storage/delete-document storage id branch)))
 
 (defn handle-select-case
   "Handles an SQL SELECT query execution.

@@ -197,7 +197,10 @@
                            doc-content
                            "Save document"
                            (get-in config-map [:git :committer-name])
-                           (get-in config-map [:git :committer-email]))
+                           (get-in config-map [:git :committer-email])
+                           {:note (cond-> {:document-id (:id document)
+                                           :operation "save-document"}
+                                    table-name (assoc :metadata {:table table-name}))})
 
     (commit/push-changes (Git/wrap repository) config-map)
 
@@ -333,7 +336,11 @@
                                          nil
                                          "Delete document"
                                          (get-in config-map [:git :committer-name])
-                                         (get-in config-map [:git :committer-email]))
+                                         (get-in config-map [:git :committer-email])
+                                         {:note (cond-> {:document-id id
+                                                         :operation "delete-document"
+                                                         :flags ["delete"]}
+                                                  table-name (assoc :metadata {:table table-name}))})
 
                   (commit/push-changes git config-map)
 

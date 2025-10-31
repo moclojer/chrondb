@@ -3,9 +3,11 @@
             [chrondb.storage.git.core :as git-core]
             [chrondb.storage.git.document :as document]
             [chrondb.storage.git.commit :as git-commit]
+            [chrondb.storage.git.notes :as notes]
             [chrondb.storage.protocol :as protocol]
             [clojure.java.io :as io]
-            [clojure.test :refer [deftest is testing use-fixtures]]))
+            [clojure.test :refer [deftest is testing use-fixtures]])
+  (:import [org.eclipse.jgit.api Git]))
 
 (def test-repo-path "test-repo")
 (def test-clone-path "test-repo-clone")
@@ -42,6 +44,16 @@
       ;; Get document and verify contents
       (is (= doc (protocol/get-document storage "test:1")))
 
+      ;; Verify git note metadata
+      (let [repo (:repository storage)
+            git (Git/wrap repo)
+            head (-> repo (.resolve "refs/heads/main"))
+            note (notes/read-note git (.getName head))]
+        (is (= "save-document" (:operation note)))
+        (is (= "test:1" (:document_id note)))
+        (is (= "main" (:branch note)))
+        (is (= "test" (get-in note [:metadata :table]))))
+
       (protocol/close storage))))
 
 (deftest test-save-document-error-handling
@@ -71,6 +83,16 @@
       ;; Delete document and verify
       (is (true? (protocol/delete-document storage "test:delete")))
       (is (nil? (protocol/get-document storage "test:delete")))
+
+      ;; Check git note for delete operation
+      (let [repo (:repository storage)
+            git (Git/wrap repo)
+            head (-> repo (.resolve "refs/heads/main"))
+            note (notes/read-note git (.getName head))]
+        (is (= "delete-document" (:operation note)))
+        (is (= "test:delete" (:document_id note)))
+        (is (some #(= "delete" %) (:flags note)))
+        (is (= "test" (get-in note [:metadata :table]))))
 
       ;; Delete non-existent document
       (is (false? (protocol/delete-document storage "non-existent")))

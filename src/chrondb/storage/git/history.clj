@@ -19,6 +19,7 @@
              [chrondb.storage.git.path :as path]
              [chrondb.storage.git.commit :as commit]
              [chrondb.storage.git.document :as document]
+             [chrondb.transaction.core :as tx]
              [clojure.data.json :as json])
    (:import [java.util Date]
             [org.eclipse.jgit.api Git]
@@ -205,12 +206,9 @@
     (let [config-map (config/load-config)
           data-dir (get-in config-map [:storage :data-dir])
           rev-walk (RevWalk. repository)
-          ;; Split logic - extract table if ID has table prefix (e.g., "user:1")
+          ;; Extract potential table hint (used later for metadata enrichment)
           [table-hint id-only] (path/extract-table-and-id id)
-          ;; Try to find path based on table hint first
-          doc-path (if table-hint
-                     (path/get-file-path data-dir id-only table-hint)
-                     (document/get-document-path repository id))]
+          doc-path (document/get-document-path repository id)]
 
       (if-not doc-path
         nil
@@ -283,13 +281,21 @@
                          (path/get-file-path (:data-dir storage) id))
               message (str "Restore document " id " to version " clean-hash)]
 
+          (when (tx/in-transaction?)
+            (tx/add-flags! "rollback"))
+
           (commit/commit-virtual (Git/wrap repository)
                                  branch-name
                                  doc-path
                                  (json/write-str doc)
                                  message
                                  (get-in config-map [:git :committer-name])
-                                 (get-in config-map [:git :committer-email]))
+                                 (get-in config-map [:git :committer-email])
+                                 {:note (cond-> {:document-id id
+                                                 :operation "restore-document"
+                                                 :flags ["rollback"]
+                                                 :metadata {:source-commit clean-hash}}
+                                          table-name (update :metadata merge {:table table-name}))})
 
           (commit/push-changes (Git/wrap repository) config-map)
           doc)))))

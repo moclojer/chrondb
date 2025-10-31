@@ -15,6 +15,8 @@
 (ns chrondb.storage.git.commit
   "Git commit operations for ChronDB storage"
   (:require [chrondb.config :as config]
+            [chrondb.storage.git.notes :as notes]
+            [chrondb.transaction.core :as tx]
             [chrondb.util.logging :as log]
             [clojure.string :as str])
   (:import [java.io ByteArrayInputStream]
@@ -139,52 +141,69 @@
         (.close inserter)))))
 
 (defn commit-virtual
-  "Commits changes virtually without writing to the file system."
-  [^Git git branch-name path content message committer-name committer-email]
-  (let [^Repository repo (.getRepository git)
-        head-id (.resolve repo (str branch-name "^{commit}"))
-        author (build-person-ident committer-name committer-email)
-        ^ObjectInserter object-inserter (.newObjectInserter repo)]
-    (try
-      (let [^DirCache index (create-temporary-index git head-id path content)
-            index-tree-id (.writeTree index object-inserter)
-            commit (doto (CommitBuilder.)
-                     (.setAuthor author)
-                     (.setCommitter author)
-                     (.setEncoding Constants/CHARACTER_ENCODING)
-                     (.setMessage message)
-                     (.setTreeId index-tree-id))]
+  "Commits changes virtually without writing to the file system.
+   Accepts an optional options map supporting :note overrides that will be merged
+   with the active transaction context and recorded as a git-note."
+  ([^Git git branch-name path content message committer-name committer-email]
+   (commit-virtual git branch-name path content message committer-name committer-email nil))
+  ([^Git git branch-name path content message committer-name committer-email {:keys [note]}]
+   (let [^Repository repo (.getRepository git)
+         head-id (.resolve repo (str branch-name "^{commit}"))
+         author (build-person-ident committer-name committer-email)
+         ^ObjectInserter object-inserter (.newObjectInserter repo)]
+     (try
+       (let [^DirCache index (create-temporary-index git head-id path content)
+             index-tree-id (.writeTree index object-inserter)
+             commit (doto (CommitBuilder.)
+                      (.setAuthor author)
+                      (.setCommitter author)
+                      (.setEncoding Constants/CHARACTER_ENCODING)
+                      (.setMessage message)
+                      (.setTreeId index-tree-id))]
 
-        (when head-id
-          (.setParentId commit head-id))
+         (when head-id
+           (.setParentId commit head-id))
 
-        (let [commit-id (.insert object-inserter commit)]
-          (.flush object-inserter)
+         (let [commit-id (.insert object-inserter commit)]
+           (.flush object-inserter)
 
-          (let [rev-walk (RevWalk. repo)]
-            (try
-              (let [rev-commit (.parseCommit rev-walk commit-id)
-                    ref-update (.updateRef repo (str "refs/heads/" branch-name))]
+           (let [rev-walk (RevWalk. repo)]
+             (try
+               (let [rev-commit (.parseCommit rev-walk commit-id)
+                     ref-update (.updateRef repo (str "refs/heads/" branch-name))]
 
-                (if (nil? head-id)
-                  (.setExpectedOldObjectId ref-update (ObjectId/zeroId))
-                  (.setExpectedOldObjectId ref-update head-id))
+                 (if (nil? head-id)
+                   (.setExpectedOldObjectId ref-update (ObjectId/zeroId))
+                   (.setExpectedOldObjectId ref-update head-id))
 
-                (.setNewObjectId ref-update commit-id)
-                (.setRefLogMessage ref-update (str "commit: " (.getShortMessage rev-commit)) false)
+                 (.setNewObjectId ref-update commit-id)
+                 (.setRefLogMessage ref-update (str "commit: " (.getShortMessage rev-commit)) false)
 
-                (let [result (.forceUpdate ref-update)]
-                  (when-not (or (= result RefUpdate$Result/NEW)
-                                (= result RefUpdate$Result/FORCED)
-                                (= result RefUpdate$Result/FAST_FORWARD))
-                    (throw (Exception. (str "Failed to update ref: " result))))))
-              (finally
-                (.close rev-walk))))
+                 (let [result (.forceUpdate ref-update)]
+                   (when-not (or (= result RefUpdate$Result/NEW)
+                                 (= result RefUpdate$Result/FORCED)
+                                 (= result RefUpdate$Result/FAST_FORWARD))
+                     (throw (Exception. (str "Failed to update ref: " result))))))
+               (finally
+                 (.close rev-walk))))
 
-          ;; Return the commit ID as a properly formatted string
-          (.getName commit-id)))
-      (finally
-        (.close object-inserter)))))
+           (let [commit-hash (.getName commit-id)
+                 note-overrides (merge {:commit-id commit-hash
+                                        :commit-message message
+                                        :branch branch-name}
+                                       (when path {:path path})
+                                       (or note {}))]
+             (try
+               (let [payload (tx/context-for-commit note-overrides)]
+                 (notes/add-git-note git commit-hash payload))
+               (catch Exception e
+                 (log/log-error "Failed to attach git note" e)
+                 (throw e))))
+
+           ;; Return the commit ID as a properly formatted string
+           (.getName commit-id)))
+       (finally
+         (.close object-inserter))))))
 
 (defn push-changes
   "Pushes changes to the remote repository if a remote exists and push is enabled.

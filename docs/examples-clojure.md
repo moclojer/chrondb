@@ -147,6 +147,27 @@ ChronDB supports atomic transactions:
 ;; If any operation fails, all changes are rolled back
 ```
 
+You can customise the transaction metadata written to Git notes via the `chrondb.transaction.core` helpers:
+
+```clojure
+(require '[chrondb.transaction.core :as tx])
+
+(tx/with-transaction [db {:origin "cli"
+                          :user "admin"
+                          :flags ["migration"]
+                          :metadata {:request "seed-dataset"}}]
+  ;; Flags can be appended dynamically as context evolves
+  (tx/add-flags! "bulk-load")
+  (tx/merge-metadata! {:batch-size 3})
+
+  (doseq [doc [{:id "product:1" :name "Laptop" :price 1200}
+               {:id "product:2" :name "Phone" :price 800}
+               {:id "product:3" :name "Tablet" :price 600}]]
+    (chrondb/save db (:id doc) doc)))
+
+;; Inspect the resulting Git notes with: git log --show-notes=chrondb
+```
+
 ## Advanced Features
 
 ### Custom Hooks
