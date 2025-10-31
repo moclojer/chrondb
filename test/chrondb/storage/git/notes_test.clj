@@ -9,7 +9,7 @@
   (:import [java.io File]
            [org.eclipse.jgit.api Git]))
 
-(def test-repo-path "notes-test-repo")
+(def test-repo-path "data/notes-test-repo")
 
 (def test-config
   {:git {:default-branch "main"
