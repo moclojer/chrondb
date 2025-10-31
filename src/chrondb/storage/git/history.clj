@@ -203,11 +203,9 @@
       (log/log-warn "Missing required parameters for get-document-at-commit")
       nil)
 
-    (let [config-map (config/load-config)
-          data-dir (get-in config-map [:storage :data-dir])
-          rev-walk (RevWalk. repository)
+    (let [rev-walk (RevWalk. repository)
           ;; Extract potential table hint (used later for metadata enrichment)
-          [table-hint id-only] (path/extract-table-and-id id)
+          [table-hint _id-only] (path/extract-table-and-id id)
           doc-path (document/get-document-path repository id)]
 
       (if-not doc-path
