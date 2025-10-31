@@ -167,6 +167,19 @@
          (let [commit-id (.insert object-inserter commit)]
            (.flush object-inserter)
 
+           (let [commit-hash (.getName commit-id)
+                 note-overrides (merge {:commit-id commit-hash
+                                        :commit-message message
+                                        :branch branch-name}
+                                       (when path {:path path})
+                                       (or note {}))
+                 payload (tx/context-for-commit note-overrides)]
+             (try
+               (notes/add-git-note git commit-hash payload)
+               (catch Exception e
+                 (log/log-error "Failed to attach git note" e)
+                 (throw e))))
+
            (let [rev-walk (RevWalk. repo)]
              (try
                (let [rev-commit (.parseCommit rev-walk commit-id)
@@ -186,19 +199,6 @@
                      (throw (Exception. (str "Failed to update ref: " result))))))
                (finally
                  (.close rev-walk))))
-
-           (let [commit-hash (.getName commit-id)
-                 note-overrides (merge {:commit-id commit-hash
-                                        :commit-message message
-                                        :branch branch-name}
-                                       (when path {:path path})
-                                       (or note {}))]
-             (try
-               (let [payload (tx/context-for-commit note-overrides)]
-                 (notes/add-git-note git commit-hash payload))
-               (catch Exception e
-                 (log/log-error "Failed to attach git note" e)
-                 (throw e))))
 
            ;; Return the commit ID as a properly formatted string
            (.getName commit-id)))

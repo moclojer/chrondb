@@ -2,6 +2,7 @@
   (:require [chrondb.config :as config]
             [chrondb.storage.git.core :as git-core]
             [chrondb.storage.git.commit :as commit]
+            [chrondb.storage.git.notes :as notes]
             [chrondb.storage.protocol :as protocol]
             [clojure.java.io :as io]
             [clojure.test :refer [deftest is testing use-fixtures]])
@@ -126,3 +127,41 @@
         (is (= "feature" (.getName result))))
 
       (protocol/close storage))))
+
+(deftest test-commit-virtual-note-failure-does-not-advance-ref
+  (testing "Commit ref is not advanced when git-note attachment fails"
+    (let [storage (git-core/create-git-storage test-repo-path)
+          repository (:repository storage)
+          git (Git/wrap repository)
+          branch-name "main"
+          path-one "test-a.txt"
+          path-two "test-b.txt"
+          content "initial content"
+          committer-name "Test User"
+          committer-email "test@example.com"]
+      (try
+        (let [initial-commit (commit/commit-virtual git
+                                                    branch-name
+                                                    path-one
+                                                    content
+                                                    "Initial commit"
+                                                    committer-name
+                                                    committer-email)
+              head-before (.resolve repository (str branch-name "^{commit}"))]
+          (is (some? initial-commit))
+          (is (= (ObjectId/fromString initial-commit) head-before))
+
+          (with-redefs [notes/add-git-note (fn [& _] (throw (ex-info "note failure" {})))]
+            (is (thrown? Exception
+                         (commit/commit-virtual git
+                                                branch-name
+                                                path-two
+                                                "second content"
+                                                "Second commit"
+                                                committer-name
+                                                committer-email))))
+
+          (let [head-after (.resolve repository (str branch-name "^{commit}"))]
+            (is (= head-before head-after))))
+        (finally
+          (protocol/close storage))))))
