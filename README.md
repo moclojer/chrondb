@@ -114,7 +114,6 @@ Complete documentation is available at [chrondb.moclojer.com](https://chrondb.mo
 
 ## 💬 Community
 
-- [Discord Community](https://discord.com/channels/1099017682487087116/1353399752636497992) - Get help and chat with the team
 - [GitHub Discussions](https://github.com/moclojer/chrondb/discussions) - Share ideas and use cases
 - [GitHub Issues](https://github.com/moclojer/chrondb/issues) - Report bugs and request features
 - [Reddit](https://www.reddit.com/r/chrondb/)
