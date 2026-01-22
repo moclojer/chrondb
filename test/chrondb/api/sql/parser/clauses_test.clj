@@ -17,12 +17,21 @@
          (parse-where-condition "SELECT * FROM user WHERE name LIKE '%Bob%'"))))
 
 (deftest parse-between-condition
-  ;; BETWEEN parsing not currently implemented in parse-where-condition
-  (is (empty? (parse-where-condition "SELECT * FROM user WHERE age BETWEEN 20 AND 30"))))
+  ;; BETWEEN is now implemented
+  (let [result (parse-where-condition "SELECT * FROM user WHERE age BETWEEN 20 AND 30")]
+    (is (= 1 (count result)))
+    (is (= :between (:type (first result))))
+    (is (= "age" (:field (first result))))
+    (is (= "20" (:lower (first result))))
+    (is (= "30" (:upper (first result))))))
 
 (deftest parse-in-condition
-  ;; IN parsing not currently implemented in parse-where-condition
-  (is (empty? (parse-where-condition "SELECT * FROM user WHERE name IN ('Alice','Bob')"))))
+  ;; IN is now implemented
+  (let [result (parse-where-condition "SELECT * FROM user WHERE name IN ('Alice','Bob')")]
+    (is (= 1 (count result)))
+    (is (= :in (:type (first result))))
+    (is (= "name" (:field (first result))))
+    (is (= 2 (count (:values (first result)))))))
 
 (deftest parse-fts-match
   (is (= [{:type :fts-match :field "content" :query "'hello'"}]
@@ -43,5 +52,33 @@
     (is (= "age" (:field (second result))))))
 
 (deftest parse-null-equals
-  ;; NULL comparisons may need special handling
-  (is (empty? (parse-where-condition "SELECT * FROM user WHERE deleted_at = NULL"))))
+  ;; Note: "field = NULL" is parsed as standard comparison (not same as IS NULL)
+  ;; This is technically valid parsing - semantically incorrect SQL should use IS NULL
+  (let [result (parse-where-condition "SELECT * FROM user WHERE deleted_at = NULL")]
+    (is (= 1 (count result)))
+    (is (= :standard (:type (first result))))
+    (is (= "deleted_at" (:field (first result))))
+    (is (= "=" (:op (first result))))
+    (is (= "NULL" (:value (first result))))))
+
+(deftest parse-is-null-condition
+  ;; IS NULL is now properly implemented
+  (let [result (parse-where-condition "SELECT * FROM user WHERE deleted_at IS NULL")]
+    (is (= 1 (count result)))
+    (is (= :is-null (:type (first result))))
+    (is (= "deleted_at" (:field (first result))))))
+
+(deftest parse-is-not-null-condition
+  ;; IS NOT NULL is now properly implemented
+  (let [result (parse-where-condition "SELECT * FROM user WHERE email IS NOT NULL")]
+    (is (= 1 (count result)))
+    (is (= :is-not-null (:type (first result))))
+    (is (= "email" (:field (first result))))))
+
+(deftest parse-not-in-condition
+  ;; NOT IN is now implemented
+  (let [result (parse-where-condition "SELECT * FROM user WHERE role NOT IN ('admin', 'superuser')")]
+    (is (= 1 (count result)))
+    (is (= :not-in (:type (first result))))
+    (is (= "role" (:field (first result))))
+    (is (= 2 (count (:values (first result)))))))

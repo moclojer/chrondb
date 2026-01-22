@@ -29,13 +29,70 @@
    Returns: An AST clause or nil"
   [condition]
   (let [field (keyword (:field condition))
-        op (str/lower-case (:op condition))
+        op (when (:op condition) (str/lower-case (:op condition)))
         value-str (:value condition)
-        clean-val (clean-value value-str)]
+        clean-val (when value-str (clean-value value-str))]
     (case (:type condition)
       ;; FTS conditions
       :fts-match
       (ast/fts field (:query condition))
+
+      ;; IS NULL - field does not exist
+      :is-null
+      (ast/missing field)
+
+      ;; IS NOT NULL - field exists
+      :is-not-null
+      (ast/exists field)
+
+      ;; IN (val1, val2, ...) - OR of multiple terms
+      :in
+      (let [values (:values condition)
+            clean-values (map clean-value values)
+            term-clauses (map #(ast/term field %) clean-values)]
+        (apply ast/or term-clauses))
+
+      ;; NOT IN (val1, val2, ...) - must not match any value
+      :not-in
+      (let [values (:values condition)
+            clean-values (map clean-value values)
+            term-clauses (map #(ast/term field %) clean-values)]
+        (ast/boolean {:must [(ast/match-all)]
+                      :must-not term-clauses}))
+
+      ;; BETWEEN lower AND upper - range query inclusive
+      :between
+      (let [lower-str (:lower condition)
+            upper-str (:upper condition)
+            clean-lower (when lower-str (clean-value lower-str))
+            clean-upper (when upper-str (clean-value upper-str))
+            lower-num (when clean-lower (parse-number clean-lower))
+            upper-num (when clean-upper (parse-number clean-upper))]
+        (cond
+          ;; Both are numbers of same type
+          (and lower-num upper-num (= (:type lower-num) (:type upper-num)))
+          (if (= (:type lower-num) :long)
+            (ast/range-long field (:value lower-num) (:value upper-num)
+                            {:include-lower? true :include-upper? true})
+            (ast/range-double field (:value lower-num) (:value upper-num)
+                              {:include-lower? true :include-upper? true}))
+          ;; At least one is a number
+          (or lower-num upper-num)
+          (let [use-double? (or (= (:type lower-num) :double)
+                                (= (:type upper-num) :double))]
+            (if use-double?
+              (ast/range-double field
+                                (if lower-num (:value lower-num) (some-> clean-lower Double/parseDouble))
+                                (if upper-num (:value upper-num) (some-> clean-upper Double/parseDouble))
+                                {:include-lower? true :include-upper? true})
+              (ast/range-long field
+                              (if lower-num (:value lower-num) (some-> clean-lower Long/parseLong))
+                              (if upper-num (:value upper-num) (some-> clean-upper Long/parseLong))
+                              {:include-lower? true :include-upper? true})))
+          ;; String range
+          :else
+          (ast/range field clean-lower clean-upper
+                     {:include-lower? true :include-upper? true})))
 
       ;; Standard conditions
       :standard
