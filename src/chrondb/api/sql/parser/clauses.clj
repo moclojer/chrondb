@@ -136,15 +136,19 @@
                     rest-after-paren (drop 4 remaining)
                     values-and-rest (split-with #(not= ")" %) rest-after-paren)
                     value-tokens (first values-and-rest)
-                    ;; Filter out commas and clean values
-                    values (->> value-tokens
-                                (remove #(= "," %))
-                                (mapv str))
-                    ;; Skip past closing paren
-                    remaining-after (rest (second values-and-rest))
-                    condition {:type :not-in :field field-name :values values}]
-                (log/log-info (str "Found NOT IN condition: " (pr-str condition)))
-                (recur remaining-after (conj conditions condition)))
+                    has-closing-paren? (seq (second values-and-rest))]
+                (if (not has-closing-paren?)
+                  (do (log/log-error (str "Invalid NOT IN: missing closing parenthesis for field " field-name))
+                      (recur (rest remaining) conditions))
+                  (let [;; Filter out commas and clean values
+                        values (->> value-tokens
+                                    (remove #(= "," %))
+                                    (mapv str))
+                        ;; Skip past closing paren
+                        remaining-after (rest (second values-and-rest))
+                        condition {:type :not-in :field field-name :values values}]
+                    (log/log-info (str "Found NOT IN condition: " (pr-str condition)))
+                    (recur remaining-after (conj conditions condition)))))
 
               ;; Check for IN (field IN (val1, val2, ...))
               (and (>= (count remaining) 4)
@@ -155,15 +159,19 @@
                     rest-after-paren (drop 3 remaining)
                     values-and-rest (split-with #(not= ")" %) rest-after-paren)
                     value-tokens (first values-and-rest)
-                    ;; Filter out commas and clean values
-                    values (->> value-tokens
-                                (remove #(= "," %))
-                                (mapv str))
-                    ;; Skip past closing paren
-                    remaining-after (rest (second values-and-rest))
-                    condition {:type :in :field field-name :values values}]
-                (log/log-info (str "Found IN condition: " (pr-str condition)))
-                (recur remaining-after (conj conditions condition)))
+                    has-closing-paren? (seq (second values-and-rest))]
+                (if (not has-closing-paren?)
+                  (do (log/log-error (str "Invalid IN: missing closing parenthesis for field " field-name))
+                      (recur (rest remaining) conditions))
+                  (let [;; Filter out commas and clean values
+                        values (->> value-tokens
+                                    (remove #(= "," %))
+                                    (mapv str))
+                        ;; Skip past closing paren
+                        remaining-after (rest (second values-and-rest))
+                        condition {:type :in :field field-name :values values}]
+                    (log/log-info (str "Found IN condition: " (pr-str condition)))
+                    (recur remaining-after (conj conditions condition)))))
 
               ;; Check for BETWEEN (field BETWEEN val1 AND val2)
               (and (>= (count remaining) 5)
@@ -174,13 +182,16 @@
                     and-idx (first (keep-indexed
                                     (fn [idx tok]
                                       (when (= (str/lower-case tok) "and") idx))
-                                    (drop 3 remaining)))
-                    upper-val (when and-idx (nth (drop 3 remaining) (inc and-idx)))
-                    ;; Calculate how many tokens to skip
-                    tokens-to-skip (if and-idx (+ 5 and-idx) 5)
-                    condition {:type :between :field field-name :lower lower-val :upper upper-val}]
-                (log/log-info (str "Found BETWEEN condition: " (pr-str condition)))
-                (recur (drop tokens-to-skip remaining) (conj conditions condition)))
+                                    (drop 3 remaining)))]
+                (if (nil? and-idx)
+                  (do (log/log-error (str "Invalid BETWEEN: missing AND keyword for field " field-name))
+                      (recur (rest remaining) conditions))
+                  (let [upper-val (nth (drop 3 remaining) (inc and-idx))
+                        ;; Calculate how many tokens to skip
+                        tokens-to-skip (+ 5 and-idx)
+                        condition {:type :between :field field-name :lower lower-val :upper upper-val}]
+                    (log/log-info (str "Found BETWEEN condition: " (pr-str condition)))
+                    (recur (drop tokens-to-skip remaining) (conj conditions condition)))))
 
               ;; Check for IS NOT NULL (field IS NOT NULL)
               (and (>= (count remaining) 4)
