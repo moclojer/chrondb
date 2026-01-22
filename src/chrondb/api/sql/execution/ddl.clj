@@ -384,10 +384,9 @@
 
   (try
     (let [namespace (:namespace parsed)
-          schema-json (:schema parsed)
+          schema-json (:schema-json parsed)
           mode (or (:mode parsed) :strict)
-          schema (:schema parsed)
-          branch-name (normalize-schema-to-branch schema)
+          branch-name nil
           repository (:repository storage)
           _ (require 'chrondb.validation.storage)
           _ (require 'clojure.data.json)

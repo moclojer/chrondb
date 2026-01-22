@@ -2,6 +2,7 @@
   "JSON Schema parsing, caching, and validation using networknt/json-schema-validator"
   (:require [clojure.data.json :as json]
             [clojure.string :as str]
+            [chrondb.config :as config]
             [chrondb.validation.errors :as errors]
             [chrondb.util.logging :as log])
   (:import [com.networknt.schema JsonSchemaFactory SpecVersion$VersionFlag]
@@ -66,7 +67,8 @@
    - branch: The git branch
    Returns: A vector [namespace branch]"
   [namespace branch]
-  [(or namespace "") (or branch "main")])
+  (let [default-branch (get-in (config/load-config) [:git :default-branch] "main")]
+    [(or namespace "") (or branch default-branch)]))
 
 (defn get-cached-schema
   "Get a cached schema validator if available.

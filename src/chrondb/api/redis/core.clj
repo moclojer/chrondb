@@ -170,7 +170,16 @@
     (write-error writer "ERR wrong number of arguments for 'set' command")
     (let [key (first args)
           value (second args)
-          doc {:id key :value value}]
+          ;; Try to parse value as JSON so validation can see business object fields
+          ;; If parsing fails, use empty map as base (validation will only see :id and :value)
+          parsed-json (try
+                        (when (string? value)
+                          (json/read-str value :key-fn keyword))
+                        (catch Exception _
+                          nil))
+          ;; Build doc with parsed fields for validation, but keep original :value for storage
+          base-doc (if (map? parsed-json) parsed-json {})
+          doc (assoc base-doc :id key :value value)]
       (try
         (execute-redis-write storage "SET" args {:metadata {:key key}}
                              (fn []
