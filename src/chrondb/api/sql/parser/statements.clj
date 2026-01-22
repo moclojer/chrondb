@@ -2,7 +2,8 @@
   "Functions for parsing complete SQL statements"
   (:require [clojure.string :as str]
             [chrondb.api.sql.parser.tokenizer :as tokenizer]
-            [chrondb.api.sql.parser.clauses :as clauses]))
+            [chrondb.api.sql.parser.clauses :as clauses]
+            [chrondb.api.sql.parser.ddl :as ddl]))
 
 (defn parse-select-query
   "Parses a SQL SELECT query.
@@ -283,9 +284,62 @@
    Returns: A map representing the parsed query structure"
   [query]
   (let [tokens (tokenizer/tokenize-sql query)
-        first-token (when (not-empty tokens) (str/lower-case (first tokens)))]
+        first-token (when (not-empty tokens) (str/lower-case (first tokens)))
+        second-token (when (> (count tokens) 1) (str/lower-case (second tokens)))]
     (cond
-      ;; Tratamento específico para as funções chrondb
+      ;; DDL: CREATE TABLE
+      (and (= first-token "create") (= second-token "table"))
+      (ddl/parse-create-table tokens)
+
+      ;; DDL: DROP TABLE
+      (and (= first-token "drop") (= second-token "table"))
+      (ddl/parse-drop-table tokens)
+
+      ;; DDL: SHOW TABLES
+      (and (= first-token "show") (= second-token "tables"))
+      (ddl/parse-show-tables tokens)
+
+      ;; DDL: SHOW SCHEMAS / SHOW DATABASES
+      (and (= first-token "show")
+           (or (= second-token "schemas")
+               (= second-token "databases")))
+      (ddl/parse-show-schemas tokens)
+
+      ;; DDL: DESCRIBE table
+      (= first-token "describe")
+      (ddl/parse-describe tokens)
+
+      ;; DDL: SHOW COLUMNS FROM table
+      (and (= first-token "show") (= second-token "columns"))
+      (ddl/parse-describe tokens)
+
+      ;; ChronDB branch functions: SELECT * FROM chrondb_branch_list()
+      (and (= first-token "select")
+           (> (count tokens) 3)
+           (= (str/lower-case (nth tokens 2)) "from")
+           (let [function-name (str/lower-case (nth tokens 3))]
+             (or (.startsWith function-name "chrondb_branch_list")
+                 (.startsWith function-name "chrondb_branch_create")
+                 (.startsWith function-name "chrondb_branch_checkout")
+                 (.startsWith function-name "chrondb_branch_merge"))))
+      (let [func-name (str/lower-case (nth tokens 3))]
+        (cond
+          (.startsWith func-name "chrondb_branch_list")
+          (ddl/parse-branch-function tokens "chrondb_branch_list")
+
+          (.startsWith func-name "chrondb_branch_create")
+          (ddl/parse-branch-function tokens "chrondb_branch_create")
+
+          (.startsWith func-name "chrondb_branch_checkout")
+          (ddl/parse-branch-function tokens "chrondb_branch_checkout")
+
+          (.startsWith func-name "chrondb_branch_merge")
+          (ddl/parse-branch-function tokens "chrondb_branch_merge")
+
+          :else
+          {:type :unknown, :message (str "Unknown ChronDB branch function: " func-name)}))
+
+      ;; Tratamento específico para as funções chrondb (history, at, diff)
       (and (= first-token "select")
            (> (count tokens) 3) ;; Precisa ter pelo menos SELECT * FROM FUNC
            (= (str/lower-case (nth tokens 2)) "from")

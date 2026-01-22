@@ -8,6 +8,7 @@
             [chrondb.api.sql.execution.functions :as functions]
             [chrondb.api.sql.execution.join :as join]
             [chrondb.api.sql.execution.ast-converter :as ast-converter]
+            [chrondb.api.sql.execution.ddl :as ddl]
             [chrondb.query.ast :as ast]
             [chrondb.storage.protocol :as storage]
             [chrondb.index.protocol :as index]
@@ -867,9 +868,36 @@
   (log/log-info (str "Executing query: " sql))
   (try
     (let [parsed (statements/parse-sql-query sql)
-          query-type (:type parsed)]
+          query-type (:type parsed)
+          query-function (:function parsed)]
       (log/log-info (str "Parsed query type: " query-type ", Details: " parsed))
       (cond
+        ;; DDL: CREATE TABLE
+        (= query-type :create-table)
+        (ddl/handle-create-table storage out parsed)
+
+        ;; DDL: DROP TABLE
+        (= query-type :drop-table)
+        (ddl/handle-drop-table storage out parsed)
+
+        ;; DDL: SHOW TABLES
+        (= query-type :show-tables)
+        (ddl/handle-show-tables storage out parsed)
+
+        ;; DDL: SHOW SCHEMAS
+        (= query-type :show-schemas)
+        (ddl/handle-show-schemas storage out parsed)
+
+        ;; DDL: DESCRIBE
+        (= query-type :describe)
+        (ddl/handle-describe storage out parsed)
+
+        ;; ChronDB branch functions
+        (and (= query-type :chrondb-function)
+             (contains? #{:branch-list :branch-create :branch-checkout :branch-merge} query-function))
+        (ddl/handle-chrondb-branch-function storage out parsed)
+
+        ;; ChronDB time-travel functions (history, at, diff)
         (= query-type :chrondb-function)
         (handle-chrondb-function storage index out parsed)
 

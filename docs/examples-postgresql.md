@@ -38,12 +38,22 @@ For example:
 
 ChronDB supports the following SQL operations:
 
+### DML (Data Manipulation Language)
 - `SELECT` - Query documents
 - `INSERT` - Create documents
 - `UPDATE` - Update documents
 - `DELETE` - Delete documents
-- `CREATE TABLE` - Create collection (optional, schemas are inferred)
-- `DROP TABLE` - Delete collection
+
+### DDL (Data Definition Language)
+**Note:** ChronDB is schemaless by default. `CREATE TABLE` is optional - you can insert data directly without defining a schema first.
+
+- `CREATE TABLE` - Create table with explicit schema (optional)
+- `CREATE TABLE IF NOT EXISTS` - Create table only if it doesn't exist
+- `DROP TABLE` - Delete table schema
+- `DROP TABLE IF EXISTS` - Delete table only if it exists
+- `SHOW TABLES` - List all tables (both schemaless and schema-defined)
+- `SHOW SCHEMAS` - List all schemas (Git branches)
+- `DESCRIBE table` / `SHOW COLUMNS FROM table` - Show table structure (infers from data if no schema)
 
 ## Special Functions
 
@@ -142,6 +152,46 @@ SELECT * FROM chrondb_diff('user', '1',
                          '2023-10-15T14:30:00Z');
 ```
 
+### DDL Operations
+
+```sql
+-- Create a table with explicit schema
+CREATE TABLE users (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT UNIQUE,
+    age INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create table only if it doesn't exist
+CREATE TABLE IF NOT EXISTS products (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    price INTEGER DEFAULT 0
+);
+
+-- List all tables
+SHOW TABLES;
+
+-- List tables from a specific schema (branch)
+SHOW TABLES FROM feature_branch;
+
+-- List all schemas (branches)
+SHOW SCHEMAS;
+
+-- Describe table structure
+DESCRIBE users;
+-- or
+SHOW COLUMNS FROM users;
+
+-- Drop a table
+DROP TABLE users;
+
+-- Drop table only if it exists
+DROP TABLE IF EXISTS old_table;
+```
+
 ### Branch Operations
 
 ```sql
@@ -149,13 +199,16 @@ SELECT * FROM chrondb_diff('user', '1',
 SELECT * FROM chrondb_branch_list();
 
 -- Create a new branch
-SELECT chrondb_branch_create('feature-reporting');
+SELECT * FROM chrondb_branch_create('feature-reporting');
 
 -- Switch to a branch
-SELECT chrondb_branch_checkout('feature-reporting');
+SELECT * FROM chrondb_branch_checkout('feature-reporting');
 
 -- Merge branches
-SELECT chrondb_branch_merge('feature-reporting', 'main');
+SELECT * FROM chrondb_branch_merge('feature-reporting', 'main');
+
+-- Create table in a specific branch/schema
+CREATE TABLE feature_branch.new_feature_data (id TEXT);
 ```
 
 ### Advanced Queries
@@ -495,31 +548,28 @@ async function compareUserVersions(id, timestamp1, timestamp2) {
 async function listBranches() {
   const text = 'SELECT * FROM chrondb_branch_list()';
   const rows = await query(text);
-  return rows.map(row => row.name);
+  return rows.map(row => row.branch_name);
 }
 
 // Create a branch
 async function createBranch(name) {
-  const text = 'SELECT chrondb_branch_create($1)';
-  const values = [name];
-  await query(text, values);
-  return true;
+  const text = `SELECT * FROM chrondb_branch_create('${name}')`;
+  const rows = await query(text);
+  return rows[0].success === 'true';
 }
 
 // Switch to a branch
 async function switchBranch(name) {
-  const text = 'SELECT chrondb_branch_checkout($1)';
-  const values = [name];
-  await query(text, values);
-  return true;
+  const text = `SELECT * FROM chrondb_branch_checkout('${name}')`;
+  const rows = await query(text);
+  return rows[0].success === 'true';
 }
 
 // Merge branches
 async function mergeBranches(source, target) {
-  const text = 'SELECT chrondb_branch_merge($1, $2)';
-  const values = [source, target];
-  await query(text, values);
-  return true;
+  const text = `SELECT * FROM chrondb_branch_merge('${source}', '${target}')`;
+  const rows = await query(text);
+  return rows[0].success === 'true';
 }
 ```
 
