@@ -863,65 +863,68 @@
    - index: The index implementation
    - out: The output stream to write results to
    - sql: The SQL query string
+   - session-context: Optional atom with session state (e.g., current branch)
    Returns: nil"
-  [storage index ^java.io.OutputStream out sql]
-  (log/log-info (str "Executing query: " sql))
-  (try
-    (let [parsed (statements/parse-sql-query sql)
-          query-type (:type parsed)
-          query-function (:function parsed)]
-      (log/log-info (str "Parsed query type: " query-type ", Details: " parsed))
-      (cond
-        ;; DDL: CREATE TABLE
-        (= query-type :create-table)
-        (ddl/handle-create-table storage out parsed)
+  ([storage index ^java.io.OutputStream out sql]
+   (handle-query storage index out sql nil))
+  ([storage index ^java.io.OutputStream out sql session-context]
+   (log/log-info (str "Executing query: " sql))
+   (try
+     (let [parsed (statements/parse-sql-query sql)
+           query-type (:type parsed)
+           query-function (:function parsed)]
+       (log/log-info (str "Parsed query type: " query-type ", Details: " parsed))
+       (cond
+         ;; DDL: CREATE TABLE
+         (= query-type :create-table)
+         (ddl/handle-create-table storage out parsed)
 
-        ;; DDL: DROP TABLE
-        (= query-type :drop-table)
-        (ddl/handle-drop-table storage out parsed)
+         ;; DDL: DROP TABLE
+         (= query-type :drop-table)
+         (ddl/handle-drop-table storage out parsed)
 
-        ;; DDL: SHOW TABLES
-        (= query-type :show-tables)
-        (ddl/handle-show-tables storage out parsed)
+         ;; DDL: SHOW TABLES
+         (= query-type :show-tables)
+         (ddl/handle-show-tables storage out parsed)
 
-        ;; DDL: SHOW SCHEMAS
-        (= query-type :show-schemas)
-        (ddl/handle-show-schemas storage out parsed)
+         ;; DDL: SHOW SCHEMAS
+         (= query-type :show-schemas)
+         (ddl/handle-show-schemas storage out parsed)
 
-        ;; DDL: DESCRIBE
-        (= query-type :describe)
-        (ddl/handle-describe storage out parsed)
+         ;; DDL: DESCRIBE
+         (= query-type :describe)
+         (ddl/handle-describe storage out parsed)
 
-        ;; ChronDB branch functions
-        (and (= query-type :chrondb-function)
-             (contains? #{:branch-list :branch-create :branch-checkout :branch-merge} query-function))
-        (ddl/handle-chrondb-branch-function storage out parsed)
+         ;; ChronDB branch functions
+         (and (= query-type :chrondb-function)
+              (contains? #{:branch-list :branch-create :branch-checkout :branch-merge} query-function))
+         (ddl/handle-chrondb-branch-function storage out parsed session-context)
 
-        ;; ChronDB time-travel functions (history, at, diff)
-        (= query-type :chrondb-function)
-        (handle-chrondb-function storage index out parsed)
+         ;; ChronDB time-travel functions (history, at, diff)
+         (= query-type :chrondb-function)
+         (handle-chrondb-function storage index out parsed)
 
-        (= query-type :select)
-        (handle-select-case storage index out parsed)
+         (= query-type :select)
+         (handle-select-case storage index out parsed)
 
-        (= query-type :insert)
-        (handle-insert-case storage index out parsed)
+         (= query-type :insert)
+         (handle-insert-case storage index out parsed)
 
-        (= query-type :update)
-        (handle-update-case storage index out parsed)
+         (= query-type :update)
+         (handle-update-case storage index out parsed)
 
-        (= query-type :delete)
-        (handle-delete-case storage index out parsed)
+         (= query-type :delete)
+         (handle-delete-case storage index out parsed)
 
-        :else
-        (do (log/log-error (str "Unknown or invalid query type: " query-type " for SQL: " sql))
-            (messages/send-error-response out (str "Unknown or invalid command: " sql))
-            (messages/send-command-complete out "UNKNOWN" 0)
-            (messages/send-ready-for-query out \I))))
-    (catch Exception e
-      (let [sw (java.io.StringWriter.)
-            pw (java.io.PrintWriter. sw)]
-        (.printStackTrace e pw)
-        (log/log-error (str "Error handling query: " sql " - Error: " (.getMessage e) "\n" (.toString sw))))
-      (messages/send-error-response out (str "Error processing query: " (.getMessage e)))
-      (messages/send-ready-for-query out \E))))
+         :else
+         (do (log/log-error (str "Unknown or invalid query type: " query-type " for SQL: " sql))
+             (messages/send-error-response out (str "Unknown or invalid command: " sql))
+             (messages/send-command-complete out "UNKNOWN" 0)
+             (messages/send-ready-for-query out \I))))
+     (catch Exception e
+       (let [sw (java.io.StringWriter.)
+             pw (java.io.PrintWriter. sw)]
+         (.printStackTrace e pw)
+         (log/log-error (str "Error handling query: " sql " - Error: " (.getMessage e) "\n" (.toString sw))))
+       (messages/send-error-response out (str "Error processing query: " (.getMessage e)))
+       (messages/send-ready-for-query out \E)))))

@@ -97,6 +97,12 @@
   [repository branch]
   (let [config-map (config/load-config)
         branch-name (or branch (get-in config-map [:git :default-branch]))
+        data-dir (get-in config-map [:storage :data-dir] "data")
+        ;; Normalize data-dir for path comparison (ensure trailing slash)
+        data-dir-prefix (when (and data-dir (not (str/blank? data-dir)))
+                          (if (str/ends-with? data-dir "/")
+                            data-dir
+                            (str data-dir "/")))
         head-id (.resolve repository (str branch-name "^{commit}"))]
 
     (if head-id
@@ -111,9 +117,16 @@
             (if (.next tree-walk)
               (let [path (.getPathString tree-walk)
                     ;; Skip _schema directory
-                    skip? (str/starts-with? path "_schema/")
+                    skip? (or (str/starts-with? path "_schema/")
+                              (and data-dir-prefix
+                                   (str/starts-with? path (str data-dir-prefix "_schema/"))))
+                    ;; Remove data-dir prefix if present
+                    clean-path (if (and data-dir-prefix
+                                        (str/starts-with? path data-dir-prefix))
+                                 (subs path (count data-dir-prefix))
+                                 path)
                     ;; Extract table name from path like "users/users_COLON_1.json"
-                    parts (str/split path #"/")
+                    parts (str/split clean-path #"/")
                     table-name (when (and (not skip?) (> (count parts) 0))
                                  (first parts))]
                 (if (and table-name (not (str/blank? table-name)))
@@ -347,20 +360,26 @@
            :error :target-not-found}
 
           :else
-          ;; Perform the merge
-          (let [merge-result (-> git
-                                 (.merge)
-                                 (.include source-ref)
-                                 (.setMessage (str "Merge branch '" source-branch "' into " target-branch))
-                                 (.call))]
-            (if (.isSuccessful merge-result)
-              (do
-                (log/log-info (str "Merged " source-branch " into " target-branch))
-                {:success true
-                 :message (str "Merged " source-branch " into " target-branch)})
-              {:success false
-               :message "Merge failed - conflicts detected"
-               :error :merge-conflict}))))
+          ;; Checkout target branch first, then perform the merge
+          (do
+            ;; Checkout target branch - JGit merge operates on HEAD
+            (-> git
+                (.checkout)
+                (.setName target-branch)
+                (.call))
+            (let [merge-result (-> git
+                                   (.merge)
+                                   (.include source-ref)
+                                   (.setMessage (str "Merge branch '" source-branch "' into " target-branch))
+                                   (.call))]
+              (if (.isSuccessful merge-result)
+                (do
+                  (log/log-info (str "Merged " source-branch " into " target-branch))
+                  {:success true
+                   :message (str "Merged " source-branch " into " target-branch)})
+                {:success false
+                 :message "Merge failed - conflicts detected"
+                 :error :merge-conflict})))))
       (catch Exception e
         (log/log-error (str "Failed to merge " source-branch " into " target-branch ": " (.getMessage e)))
         {:success false
