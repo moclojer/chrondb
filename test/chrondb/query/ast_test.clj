@@ -1,8 +1,8 @@
- (ns chrondb.query.ast-test
-   (:require [clojure.test :refer [deftest is testing]]
-             [chrondb.query.ast :as ast]))
+(ns chrondb.query.ast-test
+  (:require [clojure.test :refer [deftest is testing]]
+            [chrondb.query.ast :as ast]))
 
- (deftest match-and-term-clauses-test
+(deftest match-and-term-clauses-test
    (testing "match-all returns the expected clause"
      (is (= {:type :match-all}
             (ast/match-all))))
@@ -38,7 +38,7 @@
             (ast/missing :deleted_at)))
      (is (nil? (ast/missing nil)))))
 
- (deftest range-clauses-test
+(deftest range-clauses-test
    (testing "default range is inclusive with stringified bounds"
      (is (= {:type :range
              :field "timestamp"
@@ -80,7 +80,7 @@
              :value-type :double}
             (ast/range-double :score 0.1 0.9 {})))))
 
- (deftest boolean-node-test
+(deftest boolean-node-test
    (testing "empty boolean collapses to match-all"
      (is (= (ast/match-all)
             (ast/boolean {}))))
@@ -116,7 +116,7 @@
                :filter []}
               result)))))
 
- (deftest logical-combinators-test
+(deftest logical-combinators-test
    (testing "and collapses edge cases"
      (let [clause (ast/term :status "active")]
        (is (= (ast/match-all) (ast/and)))
@@ -146,17 +146,17 @@
                :should []
                :must-not [clause]
                :filter []}
-              (ast/not clause))))
+              (ast/not clause)))))
 
-   (testing "not defaults to match-all when clause is nil"
-     (is (= {:type :boolean
-             :must [(ast/match-all)]
-             :should []
-             :must-not [(ast/match-all)]
-             :filter []}
-            (ast/not nil)))))
+  (testing "not defaults to match-all when clause is nil"
+    (is (= {:type :boolean
+            :must [(ast/match-all)]
+            :should []
+            :must-not [(ast/match-all)]
+            :filter []}
+           (ast/not nil)))))
 
- (deftest sort-and-query-metadata-test
+(deftest sort-and-query-metadata-test
    (testing "sort descriptors infer defaults"
      (is (= {:field "timestamp" :direction :asc :type :string}
             (ast/sort-by :timestamp)))
@@ -221,6 +221,5 @@
       (is (= [sort-desc]
              (:sort (ast/with-sort base-query sort-desc))))
       (is (= [sort-desc]
-             (:sort (ast/with-sort base-query [sort-desc]))))))
-))
+             (:sort (ast/with-sort base-query [sort-desc])))))))
 

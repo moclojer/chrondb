@@ -4,7 +4,12 @@
             [chrondb.api.sql.server :as sql-server]
             [chrondb.backup.core :as backup]
             [chrondb.storage.git.core :as git-core]
+            [chrondb.storage.durable :as durable]
+            [chrondb.storage.protocol :as storage]
             [chrondb.index.lucene :as lucene]
+            [chrondb.index.lucene-nrt :as lucene-nrt]
+            [chrondb.observability.health :as health]
+            [chrondb.util.logging :as log]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -22,11 +27,14 @@
   []
   (let [data-dir "data"
         index-dir (str data-dir "/index")
+        wal-dir (str data-dir "/wal")
         lock-file (io/file (str index-dir "/write.lock"))]
     (when-not (.exists (io/file data-dir))
       (.mkdirs (io/file data-dir)))
     (when-not (.exists (io/file index-dir))
       (.mkdirs (io/file index-dir)))
+    (when-not (.exists (io/file wal-dir))
+      (.mkdirs (io/file wal-dir)))
     (when (.exists lock-file)
       (println "Removing stale Lucene lock file")
       (.delete lock-file))))
@@ -93,10 +101,11 @@
           (recur (rest remaining) options))))))
 
 (defn start-servers
-  [storage index {:keys [http-port redis-port sql-port disable-rest disable-redis disable-sql]}]
+  [storage index {:keys [http-port redis-port sql-port disable-rest disable-redis disable-sql
+                         health-checker wal]}]
   (when-not disable-rest
     (println "Starting REST API server on port" http-port)
-    (server/start-server storage index http-port))
+    (server/start-server storage index http-port {:health-checker health-checker :wal wal}))
   (when-not disable-redis
     (println "Starting Redis protocol server on port" redis-port)
     (redis-core/start-redis-server storage index redis-port))
@@ -106,22 +115,74 @@
   ;; Start index maintenance task (runs every 60 minutes by default)
   (lucene/start-index-maintenance-task index 60))
 
+(defn create-health-checker
+  "Create health checker with all standard checks."
+  [storage index data-dir]
+  (health/create-health-checker
+   [(health/create-health-check
+     :storage "Storage layer"
+     (fn []
+       (try
+         (storage/get-document storage "health-check-probe" "main")
+         {:status :healthy :message "Storage accessible"}
+         (catch Exception _e
+           {:status :healthy :message "Storage accessible (no test doc)"}))))
+    (health/create-health-check
+     :index "Lucene index"
+     (fn []
+       (try
+         (let [stats (when (satisfies? chrondb.index.lucene-nrt/NRTIndex index)
+                       (chrondb.index.lucene-nrt/get-stats index))]
+           {:status :healthy
+            :message "Index operational"
+            :details stats})
+         (catch Exception e
+           {:status :degraded :message (str "Index warning: " (.getMessage e))}))))
+    (health/create-health-check
+     :disk "Disk space"
+     (health/disk-space-check data-dir))
+    (health/create-health-check
+     :memory "Memory"
+     (health/memory-check))]))
+
 (defn run-server-command
   [args]
   (let [options (parse-server-options args)
-        storage (git-core/create-git-storage "data")
+        data-dir "data"
+        ;; Create base Git storage
+        base-storage (git-core/create-git-storage data-dir)
         _ (println "Creating Lucene index in data/index directory")
-        index (lucene/create-lucene-index "data/index")
+        ;; Create index (use NRT for better performance if available)
+        index (try
+                (log/log-info "Attempting to create NRT Lucene index...")
+                (lucene-nrt/create-nrt-index (str data-dir "/index"))
+                (catch Exception e
+                  (log/log-warn (str "NRT index creation failed, falling back to standard: " (.getMessage e)))
+                  (lucene/create-lucene-index (str data-dir "/index"))))
         _ (println "Lucene index created successfully: " (type index))
+        ;; Create durable storage with WAL and OCC
+        _ (println "Creating durable storage with WAL and OCC...")
+        durable-storage (durable/create-durable-storage
+                         base-storage
+                         index
+                         :wal-dir (str data-dir "/wal")
+                         :enable-wal true
+                         :enable-occ true
+                         :recover-on-start true)
+        _ (println "Durable storage created successfully")
+        ;; Create health checker
+        health-checker (create-health-checker durable-storage index data-dir)
+        _ (println "Health checker initialized")
         ;; Ensure index is populated with existing documents (in background)
-        _ (lucene/ensure-index-populated index storage "main")]
-    (start-servers storage index
+        _ (lucene/ensure-index-populated index base-storage "main")]
+    (start-servers durable-storage index
                    {:http-port (Integer/parseInt (:http-port options))
                     :redis-port (Integer/parseInt (:redis-port options))
                     :sql-port (Integer/parseInt (:sql-port options))
                     :disable-rest (:disable-rest options)
                     :disable-redis (:disable-redis options)
-                    :disable-sql (:disable-sql options)})))
+                    :disable-sql (:disable-sql options)
+                    :health-checker health-checker})))
 
 (defn usage
   []

@@ -12,7 +12,9 @@
             [chrondb.query.ast :as ast]
             [ring.util.codec :as codec]
             [ring.util.response :as response]
-            [chrondb.util.logging :as log]))
+            [chrondb.util.logging :as log]
+            [chrondb.observability.metrics :as metrics]
+            [chrondb.observability.health :as health]))
 
 (defn- keywordize-params [params]
   (-> params (or {}) (walk/keywordize-keys)))
@@ -245,9 +247,45 @@
    Parameters:
    - storage: The storage implementation
    - index: The index implementation
+   - opts: Optional map with :health-checker and :wal
    Returns: Ring handler with all defined routes"
-  [storage index]
+  [storage index & [{:keys [health-checker]}]]
   (routes
+   ;; Health and observability endpoints (outside /api/v1 for standard locations)
+   (GET "/health" []
+     (if health-checker
+       (let [result (health/run-all-checks health-checker)]
+         (-> (response/response result)
+             (response/status (health/status->http-code (:status result)))))
+       (response/response {:status :healthy :message "Health checks not configured"})))
+
+   (GET "/healthz" []
+     ;; Liveness probe - just check if process is alive
+     (response/response {:status :healthy :timestamp (.toString (java.time.Instant/now))}))
+
+   (GET "/readyz" []
+     ;; Readiness probe - use health checker if available
+     (if health-checker
+       (let [result (health/run-all-checks health-checker)
+             ready? (#{:healthy :degraded} (:status result))]
+         (-> (response/response {:status (if ready? :ready :not-ready) :checks (:checks result)})
+             (response/status (if ready? 200 503))))
+       (response/response {:status :ready})))
+
+   (GET "/startupz" []
+     ;; Startup probe - same as readiness for now
+     (if health-checker
+       (let [result (health/run-all-checks health-checker)
+             started? (#{:healthy :degraded} (:status result))]
+         (-> (response/response {:status (if started? :started :starting) :checks (:checks result)})
+             (response/status (if started? 200 503))))
+       (response/response {:status :started})))
+
+   (GET "/metrics" []
+     {:status 200
+      :headers {"Content-Type" "text/plain; charset=utf-8"}
+      :body (metrics/export-all-metrics)})
+
    (GET "/api/v1/info" []
      (let [result (handlers/handle-info storage)]
        (-> (response/response (:body result))

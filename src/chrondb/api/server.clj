@@ -49,9 +49,10 @@
    Parameters:
    - storage: The storage implementation
    - index: The index implementation
+   - opts: Optional map with :health-checker and :wal
    Returns: A Ring handler with all middleware applied"
-  [storage index]
-  (-> (routes/create-routes storage index)
+  [storage index & [opts]]
+  (-> (routes/create-routes storage index opts)
       wrap-multipart-params
       wrap-json-body-custom
       wrap-json-response))
@@ -62,7 +63,8 @@
    - storage: The storage implementation
    - index: The index implementation
    - port: The port number to listen on
+   - opts: Optional map with :health-checker and :wal
    Returns: The Jetty server instance"
-  [storage index port]
+  [storage index port & [opts]]
   (println "Starting server on port" port)
-  (jetty/run-jetty (create-app storage index) {:port port :join? false}))
+  (jetty/run-jetty (create-app storage index opts) {:port port :join? false}))
