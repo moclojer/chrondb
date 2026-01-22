@@ -6,7 +6,15 @@
   {:git {:committer-name "ChronDB"
          :committer-email "chrondb@example.com"
          :default-branch "main"
-         :sign-commits false}
+         :sign-commits false
+         ;; Remote repository settings
+         :remote-url nil        ; e.g. "git@github.com:org/repo.git"
+         :push-enabled true     ; Enable/disable push after commits
+         :push-notes true       ; Push transaction notes (refs/notes/chrondb)
+         :push-mode :sync       ; :sync (per-commit), :batch (deferred)
+         :pull-on-start true    ; Pull from remote on storage initialization
+         ;; SSH settings (used when remote-url starts with "git@")
+         :ssh {}}
    :storage {:data-dir "data"}
    :logging {:level :info  ; :debug, :info, :warn, :error
              :output :stdout  ; :stdout, :file

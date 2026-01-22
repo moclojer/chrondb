@@ -1,8 +1,24 @@
 {:git {:committer-name "ChronDB"
       :committer-email "chrondb@example.com"
       :default-branch "main"
-      :sign-commits false}
+      :sign-commits false
+
+      ;; Remote repository configuration
+      ;; Uncomment and set :remote-url to enable remote sync
+      ;; :remote-url "git@github.com:your-org/your-db-repo.git"
+
+      :push-enabled true    ; Push commits to remote after each write
+      :push-notes true      ; Include transaction metadata (refs/notes/chrondb)
+      :push-mode :sync      ; :sync = push per commit, :batch = deferred push
+      :pull-on-start true   ; Fetch latest from remote on initialization
+
+      ;; SSH settings (only needed for git@ URLs)
+      ;; :ssh {:ssh-dir "/path/to/.ssh"
+      ;;       :auth-methods "publickey"}
+      }
+
  :storage {:data-dir "data"}
- :logging {:level :info  ; :debug, :info, :warn, :error
-          :output :stdout  ; :stdout, :file
-          :file "chrondb.log"}} 
+
+ :logging {:level :info       ; :debug, :info, :warn, :error
+           :output :stdout    ; :stdout, :file
+           :file "chrondb.log"}}

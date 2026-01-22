@@ -16,6 +16,7 @@
   "Git commit operations for ChronDB storage"
   (:require [chrondb.config :as config]
             [chrondb.storage.git.notes :as notes]
+            [chrondb.storage.git.remote :as remote]
             [chrondb.transaction.core :as tx]
             [chrondb.util.logging :as log]
             [clojure.string :as str])
@@ -26,7 +27,6 @@
            [org.eclipse.jgit.lib ConfigConstants Constants ObjectId ObjectInserter Repository StoredConfig]
            [org.eclipse.jgit.lib CommitBuilder FileMode RefUpdate$Result]
            [org.eclipse.jgit.revwalk RevWalk]
-           [org.eclipse.jgit.transport RefSpec]
            [org.eclipse.jgit.treewalk CanonicalTreeParser TreeWalk]
            [org.eclipse.jgit.util SystemReader]))
 
@@ -207,34 +207,18 @@
 
 (defn push-changes
   "Pushes changes to the remote repository if a remote exists and push is enabled.
-   Returns true if push was successful or skipped, false otherwise."
+   Delegates to chrondb.storage.git.remote/push-to-remote which handles:
+   - Batch mode (deferred push)
+   - Git notes push (transaction metadata)
+   - SSH transport initialization
+   Returns true if push was successful or skipped."
   [git config-map]
-  (let [push-enabled (get-in config-map [:git :push-enabled] true)]
-    (if-not push-enabled
-      (do
-        (log/log-info "Push disabled, skipping...")
-        true)
-      (try
-        (log/log-info "Pushing changes...")
-        (let [repo (.getRepository git)
-              remotes (.getRemoteNames repo)]
-          (if (contains? (set remotes) "origin")
-            (do
-              (-> git
-                  (.push)
-                  (.setRemote "origin")
-                  (.setRefSpecs [(RefSpec. (str "+refs/heads/" (get-in config-map [:git :default-branch])
-                                                ":refs/heads/" (get-in config-map [:git :default-branch])))])
-                  (.setForce true)
-                  (.call))
-              true)
-            (do
-              (log/log-info "No remote repository found, skipping push")
-              true)))
-        (catch Exception e
-          (log/log-warn "Push failed:" (.getMessage e))
-          ;; Return true to allow tests to continue
-          true)))))
+  (try
+    (let [result (remote/push-to-remote git config-map)]
+      (not= result :failed))
+    (catch Exception e
+      (log/log-warn (str "Push failed: " (.getMessage e)))
+      true)))
 
 (defn normalize-commit-hash
   "Normalize a commit hash string to extract just the hash part."

@@ -43,22 +43,23 @@
     (let [all-values (mapv #(get % (keyword field)) docs)
           _ (log/log-info (str "All values for field '" field "': " all-values))
 
-          ;; Extract numeric part from field values (useful for IDs with prefixes like "user:1")
+          ;; Extract numeric values from field data
           numeric-values (keep (fn [v]
                                  (try
-                                   (if (string? v)
-                                     ; Handle both plain IDs and prefixed IDs
-                                     (cond
-                                       ; Try to extract numeric part from prefixed IDs like "user:1"
-                                       (re-find #".*:(\d+)$" v)
-                                       (Double/parseDouble (second (re-find #".*:(\d+)$" v)))
-
-                                       ; Try to parse as plain numeric ID
-                                       (re-matches #"^\d+(\.\d+)?$" v)
-                                       (Double/parseDouble v)
-
-                                       :else nil)
-                                     (when (number? v) v))
+                                   (cond
+                                     (number? v) (double v)
+                                     (string? v)
+                                     (let [trimmed (str/trim v)]
+                                       (cond
+                                         (str/blank? trimmed) nil
+                                         ;; Direct numeric parse (integers, decimals, negatives)
+                                         (re-matches #"^-?\d+(\.\d+)?$" trimmed)
+                                         (Double/parseDouble trimmed)
+                                         ;; Extract numeric suffix from prefixed IDs like "user:1"
+                                         (re-find #":(\d+)$" trimmed)
+                                         (Double/parseDouble (second (re-find #":(\d+)$" trimmed)))
+                                         :else nil))
+                                     :else nil)
                                    (catch Exception _
                                      nil)))
                                all-values)

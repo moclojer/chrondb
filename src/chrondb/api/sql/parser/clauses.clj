@@ -19,6 +19,10 @@
         columns
         (let [token (str/lower-case (first remaining))]
           (cond
+            ;; Skip comma separators between columns
+            (= token ",")
+            (recur (rest remaining) columns)
+
             ;; All columns
             (= token "*")
             (recur (rest remaining)
@@ -247,8 +251,11 @@
                  fields []]
             (if (empty? remaining)
               fields
-              (recur (rest remaining)
-                     (conj fields {:column (first remaining)})))))
+              (let [tok (first remaining)]
+                (if (= tok ",")
+                  (recur (rest remaining) fields)
+                  (recur (rest remaining)
+                         (conj fields {:column tok})))))))
         nil))))
 
 (defn parse-order-by
