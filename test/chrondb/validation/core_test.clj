@@ -2,6 +2,7 @@
   "Unit tests for validation core orchestration"
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [clojure.java.io :as io]
+            [clojure.string :as str]
             [chrondb.config :as config]
             [chrondb.storage.git.core :as git-core]
             [chrondb.storage.protocol :as protocol]
@@ -220,6 +221,6 @@
                       {:id "1"}
                       nil)]
           (is (not (:valid result)))
-          (is (some #(clojure.string/includes? (:message %) "No validation schema") (:errors result))))
+          (is (some #(str/includes? (:message %) "No validation schema") (:errors result))))
         (finally
           (protocol/close git-storage))))))

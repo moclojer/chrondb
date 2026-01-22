@@ -1,6 +1,7 @@
 (ns chrondb.validation.schema-test
   "Unit tests for JSON Schema parsing and validation"
   (:require [clojure.test :refer [deftest is testing]]
+            [clojure.string :as str]
             [chrondb.validation.schema :as schema]))
 
 (def simple-schema
@@ -43,7 +44,7 @@
           errors (schema/validate-against-schema validator doc)]
       (is (seq errors))
       (is (= 1 (count errors)))
-      (is (some #(clojure.string/includes? (:message %) "email") errors))))
+      (is (some #(str/includes? (:message %) "email") errors))))
 
   (testing "Multiple validation errors"
     (let [validator (schema/parse-json-schema simple-schema)
