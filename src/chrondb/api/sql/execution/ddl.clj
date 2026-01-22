@@ -1,7 +1,6 @@
 (ns chrondb.api.sql.execution.ddl
   "DDL (Data Definition Language) execution handlers"
-  (:require [clojure.string :as str]
-            [chrondb.util.logging :as log]
+  (:require [chrondb.util.logging :as log]
             [chrondb.api.sql.protocol.messages :as messages]
             [chrondb.api.sql.schema.core :as schema-core]))
 
