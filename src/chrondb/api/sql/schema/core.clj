@@ -6,7 +6,7 @@
             [chrondb.storage.protocol :as storage-protocol]
             [chrondb.config :as config])
   (:import [org.eclipse.jgit.api Git]
-           [org.eclipse.jgit.lib Repository Constants]
+           [org.eclipse.jgit.lib Constants]
            [org.eclipse.jgit.revwalk RevWalk]
            [org.eclipse.jgit.treewalk TreeWalk]
            [org.eclipse.jgit.treewalk.filter PathSuffixFilter]))
@@ -269,8 +269,7 @@
       (throw (Exception. "Repository is closed")))
 
     (try
-      (let [git (Git/wrap repository)
-            existing-ref (.exactRef repository (str "refs/heads/" branch-name))]
+      (let [existing-ref (.exactRef repository (str "refs/heads/" branch-name))]
         (if existing-ref
           {:success false
            :message (str "Branch " branch-name " already exists")
@@ -348,21 +347,20 @@
            :error :target-not-found}
 
           :else
-          (do
-            ;; Perform the merge
-            (let [merge-result (-> git
-                                   (.merge)
-                                   (.include source-ref)
-                                   (.setMessage (str "Merge branch '" source-branch "' into " target-branch))
-                                   (.call))]
-              (if (.isSuccessful merge-result)
-                (do
-                  (log/log-info (str "Merged " source-branch " into " target-branch))
-                  {:success true
-                   :message (str "Merged " source-branch " into " target-branch)})
-                {:success false
-                 :message "Merge failed - conflicts detected"
-                 :error :merge-conflict})))))
+          ;; Perform the merge
+          (let [merge-result (-> git
+                                 (.merge)
+                                 (.include source-ref)
+                                 (.setMessage (str "Merge branch '" source-branch "' into " target-branch))
+                                 (.call))]
+            (if (.isSuccessful merge-result)
+              (do
+                (log/log-info (str "Merged " source-branch " into " target-branch))
+                {:success true
+                 :message (str "Merged " source-branch " into " target-branch)})
+              {:success false
+               :message "Merge failed - conflicts detected"
+               :error :merge-conflict}))))
       (catch Exception e
         (log/log-error (str "Failed to merge " source-branch " into " target-branch ": " (.getMessage e)))
         {:success false
