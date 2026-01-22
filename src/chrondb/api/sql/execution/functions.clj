@@ -47,7 +47,7 @@
           numeric-values (keep (fn [v]
                                  (try
                                    (cond
-                                     (number? v) (double v)
+                                     (number? v) v
                                      (string? v)
                                      (let [trimmed (str/trim v)]
                                        (cond
