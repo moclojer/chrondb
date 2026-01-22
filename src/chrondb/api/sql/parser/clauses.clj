@@ -126,31 +126,80 @@
                   (do (log/log-warn (str "Operador @@ seguido de algo diferente de to_tsquery: " to_tsquery-prefix))
                       (recur (rest remaining) conditions))))
 
-              ;; Skip IN conditions (not implemented)
-              (and (>= (count remaining) 2)
-                   (= (str/lower-case (second remaining)) "in"))
-              (do
-                (log/log-warn "IN condition parsing not yet implemented, skipping")
-                (recur (drop-while #(not (constants/LOGICAL_OPERATORS (str/lower-case %))) remaining) conditions))
+              ;; Check for NOT IN (field NOT IN (val1, val2, ...))
+              (and (>= (count remaining) 5)
+                   (= (str/lower-case (second remaining)) "not")
+                   (= (str/lower-case (nth remaining 2)) "in")
+                   (= (nth remaining 3) "("))
+              (let [field-name token1
+                    ;; Find values between parentheses
+                    rest-after-paren (drop 4 remaining)
+                    values-and-rest (split-with #(not= ")" %) rest-after-paren)
+                    value-tokens (first values-and-rest)
+                    ;; Filter out commas and clean values
+                    values (->> value-tokens
+                                (remove #(= "," %))
+                                (mapv str))
+                    ;; Skip past closing paren
+                    remaining-after (rest (second values-and-rest))
+                    condition {:type :not-in :field field-name :values values}]
+                (log/log-info (str "Found NOT IN condition: " (pr-str condition)))
+                (recur remaining-after (conj conditions condition)))
 
-              ;; Skip BETWEEN conditions (not implemented)
-              (and (>= (count remaining) 2)
+              ;; Check for IN (field IN (val1, val2, ...))
+              (and (>= (count remaining) 4)
+                   (= (str/lower-case (second remaining)) "in")
+                   (= (nth remaining 2) "("))
+              (let [field-name token1
+                    ;; Find values between parentheses
+                    rest-after-paren (drop 3 remaining)
+                    values-and-rest (split-with #(not= ")" %) rest-after-paren)
+                    value-tokens (first values-and-rest)
+                    ;; Filter out commas and clean values
+                    values (->> value-tokens
+                                (remove #(= "," %))
+                                (mapv str))
+                    ;; Skip past closing paren
+                    remaining-after (rest (second values-and-rest))
+                    condition {:type :in :field field-name :values values}]
+                (log/log-info (str "Found IN condition: " (pr-str condition)))
+                (recur remaining-after (conj conditions condition)))
+
+              ;; Check for BETWEEN (field BETWEEN val1 AND val2)
+              (and (>= (count remaining) 5)
                    (= (str/lower-case (second remaining)) "between"))
-              (do
-                (log/log-warn "BETWEEN condition parsing not yet implemented, skipping")
-                (let [rest-tokens (drop 2 remaining)
-                      after-between (drop-while (fn [tok]
-                                                   (and tok
-                                                        (not (constants/LOGICAL_OPERATORS (str/lower-case tok)))))
-                                                 rest-tokens)]
-                  (recur after-between conditions)))
+              (let [field-name token1
+                    lower-val (nth remaining 2)
+                    ;; Find AND keyword position
+                    and-idx (first (keep-indexed
+                                    (fn [idx tok]
+                                      (when (= (str/lower-case tok) "and") idx))
+                                    (drop 3 remaining)))
+                    upper-val (when and-idx (nth (drop 3 remaining) (inc and-idx)))
+                    ;; Calculate how many tokens to skip
+                    tokens-to-skip (if and-idx (+ 5 and-idx) 5)
+                    condition {:type :between :field field-name :lower lower-val :upper upper-val}]
+                (log/log-info (str "Found BETWEEN condition: " (pr-str condition)))
+                (recur (drop tokens-to-skip remaining) (conj conditions condition)))
 
-              ;; Skip NULL comparisons (not implemented)
+              ;; Check for IS NOT NULL (field IS NOT NULL)
+              (and (>= (count remaining) 4)
+                   (= (str/lower-case (second remaining)) "is")
+                   (= (str/lower-case (nth remaining 2)) "not")
+                   (= (str/lower-case (nth remaining 3)) "null"))
+              (let [field-name token1
+                    condition {:type :is-not-null :field field-name}]
+                (log/log-info (str "Found IS NOT NULL condition: " (pr-str condition)))
+                (recur (drop 4 remaining) (conj conditions condition)))
+
+              ;; Check for IS NULL (field IS NULL)
               (and (>= (count remaining) 3)
+                   (= (str/lower-case (second remaining)) "is")
                    (= (str/lower-case (nth remaining 2)) "null"))
-              (do
-                (log/log-warn "NULL comparison parsing not yet implemented, skipping")
-                (recur (drop 3 remaining) conditions))
+              (let [field-name token1
+                    condition {:type :is-null :field field-name}]
+                (log/log-info (str "Found IS NULL condition: " (pr-str condition)))
+                (recur (drop 3 remaining) (conj conditions condition)))
 
               ;; Check for standard condition (field op value)
               (>= (count remaining) 3)
