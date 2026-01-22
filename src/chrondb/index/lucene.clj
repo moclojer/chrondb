@@ -146,12 +146,29 @@
 
 (defmethod ast->query :range
   [_ {:keys [field lower upper include-lower? include-upper? value-type]}]
-  (let [lower (when lower (str lower))
-        upper (when upper (str upper))]
-    (case value-type
-      :long (TermRangeQuery. field lower upper (boolean include-lower?) (boolean include-upper?))
-      :double (TermRangeQuery. field lower upper (boolean include-lower?) (boolean include-upper?))
-      (TermRangeQuery. field lower upper (boolean include-lower?) (boolean include-upper?)))))
+  (case value-type
+    :long (let [lower-val (if lower
+                            (let [v (Long/parseLong (str lower))]
+                              (if include-lower? v (inc v)))
+                            Long/MIN_VALUE)
+                upper-val (if upper
+                            (let [v (Long/parseLong (str upper))]
+                              (if include-upper? v (dec v)))
+                            Long/MAX_VALUE)]
+            (LongPoint/newRangeQuery field lower-val upper-val))
+    :double (let [lower-val (if lower
+                              (let [v (Double/parseDouble (str lower))]
+                                (if include-lower? v (Math/nextUp v)))
+                              Double/NEGATIVE_INFINITY)
+                  upper-val (if upper
+                              (let [v (Double/parseDouble (str upper))]
+                                (if include-upper? v (Math/nextDown v)))
+                              Double/POSITIVE_INFINITY)]
+              (DoublePoint/newRangeQuery field lower-val upper-val))
+    ;; Default: string-based TermRangeQuery
+    (let [lower-str (when lower (str lower))
+          upper-str (when upper (str upper))]
+      (TermRangeQuery. field lower-str upper-str (boolean include-lower?) (boolean include-upper?)))))
 
 (defmethod ast->query :exists
   [_ {:keys [field]}]

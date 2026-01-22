@@ -29,43 +29,52 @@
             [org.eclipse.jgit.treewalk.filter PathFilter]))
 
 (defn find-all-document-paths
-  "Find all possible paths for a document by searching for its encoded ID"
+  "Find all possible paths for a document by searching for its encoded ID.
+   Falls back to constructing expected paths if the document was deleted from HEAD."
   [repository id branch]
   (let [config-map (config/load-config)
         branch-ref (or branch (get-in config-map [:git :default-branch]))
         head-id (.resolve repository (str branch-ref "^{commit}"))
         [table-hint id-only] (path/extract-table-and-id id)
-        encoded-id (path/encode-path (or id-only id))]
+        encoded-id (path/encode-path (or id-only id))
+        data-dir (get-in config-map [:storage :data-dir])
+        tree-paths (when head-id
+                       (let [tree-walk (TreeWalk. repository)
+                             rev-walk (RevWalk. repository)
+                             paths (atom [])]
+                         (try
+                           (.addTree tree-walk (.parseTree rev-walk head-id))
+                           (.setRecursive tree-walk true)
+                           (.setFilter tree-walk (org.eclipse.jgit.treewalk.filter.PathSuffixFilter/create ".json"))
 
-    (when head-id
-      (let [tree-walk (TreeWalk. repository)
-            rev-walk (RevWalk. repository)
-            paths (atom [])
-            result (try
-                     (.addTree tree-walk (.parseTree rev-walk head-id))
-                     (.setRecursive tree-walk true)
-                     (.setFilter tree-walk (org.eclipse.jgit.treewalk.filter.PathSuffixFilter/create ".json"))
+                           (log/log-info (str "Searching for all possible document paths containing: " encoded-id))
 
-                     (log/log-info (str "Searching for all possible document paths containing: " encoded-id))
+                           (while (.next tree-walk)
+                             (let [path (.getPathString tree-walk)]
+                               (when (.contains path (str encoded-id))
+                                 (log/log-info (str "Found potential path for " id ": " path))
+                                 (swap! paths conj path))
+                               (when (and table-hint id-only (.contains path id-only))
+                                 (log/log-info (str "Found path with ID part: " path))
+                                 (swap! paths conj path))
+                               (when (and table-hint id-only (.contains path (str table-hint "_COLON_" id-only)))
+                                 (log/log-info (str "Found path with table and ID: " path))
+                                 (swap! paths conj path))))
 
-                     (while (.next tree-walk)
-                       (let [path (.getPathString tree-walk)]
-                         (when (.contains path (str encoded-id))
-                           (log/log-info (str "Found potential path for " id ": " path))
-                           (swap! paths conj path))
-                         (when (and table-hint id-only (.contains path id-only))
-                           (log/log-info (str "Found path with ID part: " path))
-                           (swap! paths conj path))
-                         (when (and table-hint id-only (.contains path (str table-hint "_COLON_" id-only)))
-                           (log/log-info (str "Found path with table and ID: " path))
-                           (swap! paths conj path))))
+                           (log/log-info (str "Found " (count @paths) " possible paths for document " id))
+                           (distinct @paths)
+                           (finally
+                             (.close tree-walk)
+                             (.close rev-walk)))))]
 
-                     (log/log-info (str "Found " (count @paths) " possible paths for document " id))
-                     (distinct @paths)
-                     (finally
-                       (.close tree-walk)
-                       (.close rev-walk)))]
-        result))))
+      ;; If no paths found in current tree, construct expected path (document may be deleted)
+      (if (seq tree-paths)
+        tree-paths
+        (let [constructed-path (if table-hint
+                                 (path/get-file-path data-dir id table-hint)
+                                 (path/get-file-path data-dir id))]
+          (log/log-info (str "Document not in current tree, using constructed path: " constructed-path))
+          [constructed-path]))))
 
 (defn get-document-history-for-path
   "Get document history for a specific path"
