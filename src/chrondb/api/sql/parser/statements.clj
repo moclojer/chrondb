@@ -287,13 +287,41 @@
         first-token (when (not-empty tokens) (str/lower-case (first tokens)))
         second-token (when (> (count tokens) 1) (str/lower-case (second tokens)))]
     (cond
+      ;; DDL: CREATE VALIDATION SCHEMA FOR namespace AS 'schema' MODE mode
+      (and (= first-token "create")
+           (= second-token "validation")
+           (> (count tokens) 2)
+           (= (str/lower-case (nth tokens 2)) "schema"))
+      (ddl/parse-create-validation-schema tokens)
+
       ;; DDL: CREATE TABLE
       (and (= first-token "create") (= second-token "table"))
       (ddl/parse-create-table tokens)
 
+      ;; DDL: DROP VALIDATION SCHEMA FOR namespace
+      (and (= first-token "drop")
+           (= second-token "validation")
+           (> (count tokens) 2)
+           (= (str/lower-case (nth tokens 2)) "schema"))
+      (ddl/parse-drop-validation-schema tokens)
+
       ;; DDL: DROP TABLE
       (and (= first-token "drop") (= second-token "table"))
       (ddl/parse-drop-table tokens)
+
+      ;; DDL: SHOW VALIDATION SCHEMAS (list all)
+      (and (= first-token "show")
+           (= second-token "validation")
+           (> (count tokens) 2)
+           (= (str/lower-case (nth tokens 2)) "schemas"))
+      (ddl/parse-show-validation-schemas tokens)
+
+      ;; DDL: SHOW VALIDATION SCHEMA FOR namespace
+      (and (= first-token "show")
+           (= second-token "validation")
+           (> (count tokens) 2)
+           (= (str/lower-case (nth tokens 2)) "schema"))
+      (ddl/parse-show-validation-schema tokens)
 
       ;; DDL: SHOW TABLES
       (and (= first-token "show") (= second-token "tables"))

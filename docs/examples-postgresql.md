@@ -55,6 +55,15 @@ ChronDB supports the following SQL operations:
 - `SHOW SCHEMAS` - List all schemas (Git branches)
 - `DESCRIBE table` / `SHOW COLUMNS FROM table` - Show table structure (infers from data if no schema)
 
+### Validation Schema DDL
+
+ChronDB supports optional JSON Schema validation per namespace:
+
+- `CREATE VALIDATION SCHEMA FOR namespace AS 'json-schema' MODE strict|warning` - Create validation schema
+- `DROP VALIDATION SCHEMA FOR namespace` - Delete validation schema
+- `SHOW VALIDATION SCHEMA FOR namespace` - Get validation schema
+- `SHOW VALIDATION SCHEMAS` - List all validation schemas
+
 ## Special Functions
 
 ChronDB provides special SQL functions to access version control features:
@@ -190,6 +199,64 @@ DROP TABLE users;
 
 -- Drop table only if it exists
 DROP TABLE IF EXISTS old_table;
+```
+
+### Schema Validation Operations
+
+ChronDB supports optional JSON Schema validation per namespace. See the [Schema Validation](validation.md) documentation for full details.
+
+```sql
+-- Create a validation schema with strict mode
+CREATE VALIDATION SCHEMA FOR users AS '{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["id", "email"],
+  "properties": {
+    "id": { "type": "string" },
+    "email": { "type": "string", "format": "email" },
+    "name": { "type": "string" },
+    "age": { "type": "integer", "minimum": 0 }
+  },
+  "additionalProperties": false
+}' MODE STRICT;
+
+-- Create a validation schema with warning mode (logs violations but allows writes)
+CREATE VALIDATION SCHEMA FOR products AS '{
+  "type": "object",
+  "required": ["id", "name"],
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "price": { "type": "number", "minimum": 0 }
+  }
+}' MODE WARNING;
+
+-- List all validation schemas
+SHOW VALIDATION SCHEMAS;
+
+-- Get a specific validation schema
+SHOW VALIDATION SCHEMA FOR users;
+
+-- Drop a validation schema
+DROP VALIDATION SCHEMA FOR users;
+```
+
+#### Validation Errors
+
+When inserting invalid data with a strict schema:
+
+```sql
+-- This will fail because email is required
+INSERT INTO users (id, name) VALUES ('1', 'John');
+-- ERROR: Validation failed for table 'users': $.email - required property 'email' not found
+
+-- This will fail because age must be >= 0
+INSERT INTO users (id, email, name, age) VALUES ('1', 'john@example.com', 'John', -5);
+-- ERROR: Validation failed for table 'users': $.age - must be >= 0
+
+-- Valid insert
+INSERT INTO users (id, email, name, age) VALUES ('1', 'john@example.com', 'John', 30);
+-- INSERT 0 1
 ```
 
 ### Branch Operations
@@ -948,3 +1015,121 @@ async function runOrderSystemExample() {
 
 // Run the example
 runOrderSystemExample();
+```
+
+## Schema Validation with JavaScript
+
+ChronDB supports optional JSON Schema validation per namespace. See the [Schema Validation](validation.md) documentation for full details.
+
+```javascript
+const { Pool } = require('pg');
+
+const pool = new Pool({
+  host: 'localhost',
+  port: 5432,
+  user: 'chrondb',
+  password: 'chrondb',
+  database: 'chrondb'
+});
+
+// Schema validation operations
+class SchemaValidation {
+  constructor() {
+    this.pool = pool;
+  }
+
+  async query(text, params) {
+    const client = await this.pool.connect();
+    try {
+      const result = await client.query(text, params);
+      return result.rows;
+    } finally {
+      client.release();
+    }
+  }
+
+  // Create a validation schema
+  async createSchema(namespace, schema, mode = 'STRICT') {
+    const schemaJson = JSON.stringify(schema);
+    const text = `CREATE VALIDATION SCHEMA FOR ${namespace} AS '${schemaJson}' MODE ${mode}`;
+    return await this.query(text);
+  }
+
+  // Get a validation schema
+  async getSchema(namespace) {
+    const text = `SHOW VALIDATION SCHEMA FOR ${namespace}`;
+    return await this.query(text);
+  }
+
+  // List all validation schemas
+  async listSchemas() {
+    const text = 'SHOW VALIDATION SCHEMAS';
+    return await this.query(text);
+  }
+
+  // Drop a validation schema
+  async dropSchema(namespace) {
+    const text = `DROP VALIDATION SCHEMA FOR ${namespace}`;
+    return await this.query(text);
+  }
+}
+
+// Usage example
+async function schemaValidationExample() {
+  const validation = new SchemaValidation();
+
+  try {
+    // Create a validation schema for users
+    const userSchema = {
+      '$schema': 'http://json-schema.org/draft-07/schema#',
+      type: 'object',
+      required: ['id', 'email'],
+      properties: {
+        id: { type: 'string' },
+        email: { type: 'string', format: 'email' },
+        name: { type: 'string' },
+        age: { type: 'integer', minimum: 0 }
+      },
+      additionalProperties: false
+    };
+
+    await validation.createSchema('users', userSchema, 'STRICT');
+    console.log('Validation schema created');
+
+    // List all schemas
+    const schemas = await validation.listSchemas();
+    console.log('Validation schemas:', schemas);
+
+    // Get the specific schema
+    const schema = await validation.getSchema('users');
+    console.log('User schema:', schema);
+
+    // Try to insert valid data
+    await validation.query(
+      "INSERT INTO users (id, email, name, age) VALUES ($1, $2, $3, $4)",
+      ['1', 'john@example.com', 'John', 30]
+    );
+    console.log('Valid document inserted');
+
+    // Try to insert invalid data (will fail)
+    try {
+      await validation.query(
+        "INSERT INTO users (id, name) VALUES ($1, $2)",
+        ['2', 'Jane']
+      );
+    } catch (err) {
+      console.log('Expected validation error:', err.message);
+    }
+
+    // Drop the schema
+    await validation.dropSchema('users');
+    console.log('Validation schema dropped');
+
+  } catch (err) {
+    console.error('Error:', err);
+  } finally {
+    await pool.end();
+  }
+}
+
+schemaValidationExample();

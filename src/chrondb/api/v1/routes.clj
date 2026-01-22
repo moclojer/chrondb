@@ -4,7 +4,7 @@
   (:require [clojure.string :as str]
             [clojure.edn :as edn]
             [clojure.walk :as walk]
-            [compojure.core :refer [GET POST DELETE routes context]]
+            [compojure.core :refer [GET POST PUT DELETE routes context]]
             [compojure.route :as route]
             [chrondb.index.protocol :as index]
             [chrondb.storage.protocol :as storage]
@@ -295,6 +295,31 @@
        (-> (response/response (:body result))
            (response/status (:status result)))))
    (GET "/" [] (response/response {:message "Welcome to ChronDB"}))
+   (context "/api/v1/schemas/validation" []
+     (GET "/" {:as request}
+       (let [result (handlers/handle-list-validation-schemas storage (build-request-context request {:metadata {:endpoint "/api/v1/schemas/validation"}}))]
+         (-> (response/response (:body result))
+             (response/status (:status result)))))
+     (GET "/:namespace" [namespace :as request]
+       (let [result (handlers/handle-get-validation-schema storage namespace (build-request-context request {:metadata {:endpoint "/api/v1/schemas/validation/:namespace" :namespace namespace}}))]
+         (-> (response/response (:body result))
+             (response/status (:status result)))))
+     (PUT "/:namespace" [namespace :as {:keys [body] :as request}]
+       (let [result (handlers/handle-save-validation-schema storage namespace body (build-request-context request {:metadata {:endpoint "/api/v1/schemas/validation/:namespace" :namespace namespace}}))]
+         (-> (response/response (:body result))
+             (response/status (:status result)))))
+     (DELETE "/:namespace" [namespace :as request]
+       (let [result (handlers/handle-delete-validation-schema storage namespace (build-request-context request {:metadata {:endpoint "/api/v1/schemas/validation/:namespace" :namespace namespace}}))]
+         (-> (response/response (:body result))
+             (response/status (:status result)))))
+     (GET "/:namespace/history" [namespace :as request]
+       (let [result (handlers/handle-validation-schema-history storage namespace (build-request-context request {:metadata {:endpoint "/api/v1/schemas/validation/:namespace/history" :namespace namespace}}))]
+         (-> (response/response (:body result))
+             (response/status (:status result)))))
+     (POST "/:namespace/validate" [namespace :as {:keys [body] :as request}]
+       (let [result (handlers/handle-validate-document storage namespace body (build-request-context request {:metadata {:endpoint "/api/v1/schemas/validation/:namespace/validate" :namespace namespace}}))]
+         (-> (response/response (:body result))
+             (response/status (:status result))))))
    (context "/api/v1" []
      (POST "/save" {:keys [body] :as request}
        (handle-save storage index body (build-request-context request {:metadata {:endpoint "/api/v1/save"}})))

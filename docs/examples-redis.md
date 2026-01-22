@@ -44,6 +44,14 @@ In addition to standard Redis commands, ChronDB provides special commands:
 - `CHRONDB.BRANCH.CHECKOUT` - Switch to a branch
 - `CHRONDB.BRANCH.MERGE` - Merge branches
 
+### Schema Validation Commands
+
+- `SCHEMA.SET namespace schema [MODE strict|warning]` - Create or update a validation schema
+- `SCHEMA.GET namespace` - Get a validation schema
+- `SCHEMA.DEL namespace` - Delete a validation schema
+- `SCHEMA.LIST` - List all validation schemas
+- `SCHEMA.VALIDATE namespace document` - Validate a document without saving
+
 ## Examples with redis-cli
 
 ### Connecting to ChronDB
@@ -427,6 +435,122 @@ async function branchOperations() {
 
   } catch (err) {
     console.error('Error in branch operations:', err);
+  }
+}
+```
+
+## Schema Validation Examples
+
+ChronDB supports optional JSON Schema validation per namespace. See the [Schema Validation](validation.md) documentation for full details.
+
+### Validation with redis-cli
+
+```bash
+# Create a validation schema with strict mode
+SCHEMA.SET users '{"type":"object","required":["id","email"],"properties":{"id":{"type":"string"},"email":{"type":"string","format":"email"},"name":{"type":"string"},"age":{"type":"integer","minimum":0}}}' MODE strict
+# Output: OK
+
+# Get a validation schema
+SCHEMA.GET users
+# Output: {"namespace":"users","version":1,"mode":"strict","schema":{...}}
+
+# List all validation schemas
+SCHEMA.LIST
+# Output:
+# 1) "users"
+# 2) "products"
+
+# Validate a document without saving (valid)
+SCHEMA.VALIDATE users '{"id":"users:1","email":"john@example.com","name":"John"}'
+# Output: {"valid":true,"errors":[]}
+
+# Validate a document without saving (invalid - missing email)
+SCHEMA.VALIDATE users '{"id":"users:1","name":"John"}'
+# Output: {"valid":false,"errors":[{"path":"$.email","message":"required property 'email' not found","keyword":"required"}]}
+
+# Try to save an invalid document (will fail in strict mode)
+SET users:1 '{"id":"users:1","name":"John"}'
+# Output: -ERR VALIDATION_ERROR users: required property 'email' not found at $.email
+
+# Save a valid document
+SET users:1 '{"id":"users:1","email":"john@example.com","name":"John"}'
+# Output: OK
+
+# Delete a validation schema
+SCHEMA.DEL users
+# Output: (integer) 1
+```
+
+### Validation with JavaScript
+
+```javascript
+// Schema validation operations using ChronDB via Redis protocol
+async function schemaValidationOperations(client) {
+  try {
+    // Create a validation schema
+    const schema = {
+      type: 'object',
+      required: ['id', 'email'],
+      properties: {
+        id: { type: 'string' },
+        email: { type: 'string', format: 'email' },
+        name: { type: 'string' },
+        age: { type: 'integer', minimum: 0 }
+      }
+    };
+
+    await client.sendCommand([
+      'SCHEMA.SET',
+      'users',
+      JSON.stringify(schema),
+      'MODE',
+      'strict'
+    ]);
+    console.log('Schema created');
+
+    // List all schemas
+    const schemas = await client.sendCommand(['SCHEMA.LIST']);
+    console.log('Available schemas:', schemas);
+
+    // Get a specific schema
+    const userSchema = await client.sendCommand(['SCHEMA.GET', 'users']);
+    console.log('User schema:', JSON.parse(userSchema));
+
+    // Validate a document before saving
+    const validDoc = { id: 'users:1', email: 'john@example.com', name: 'John' };
+    const validResult = await client.sendCommand([
+      'SCHEMA.VALIDATE',
+      'users',
+      JSON.stringify(validDoc)
+    ]);
+    console.log('Validation result (valid):', JSON.parse(validResult));
+
+    // Try validating an invalid document
+    const invalidDoc = { id: 'users:2', name: 'Jane' }; // missing email
+    const invalidResult = await client.sendCommand([
+      'SCHEMA.VALIDATE',
+      'users',
+      JSON.stringify(invalidDoc)
+    ]);
+    console.log('Validation result (invalid):', JSON.parse(invalidResult));
+
+    // Save a valid document
+    await client.set('users:1', JSON.stringify(validDoc));
+    console.log('Valid document saved');
+
+    // Try to save an invalid document (will throw error in strict mode)
+    try {
+      await client.set('users:2', JSON.stringify(invalidDoc));
+    } catch (err) {
+      console.log('Expected validation error:', err.message);
+    }
+
+    // Delete the schema
+    const deleted = await client.sendCommand(['SCHEMA.DEL', 'users']);
+    console.log('Schema deleted:', deleted === 1);
+
+  } catch (err) {
+    console.error('Error in schema validation operations:', err);
   }
 }
 ```

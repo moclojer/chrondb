@@ -315,3 +315,85 @@
          :target-branch (second args)})
 
       nil)))
+
+(defn parse-create-validation-schema
+  "Parses a CREATE VALIDATION SCHEMA FOR namespace AS 'json-schema' MODE strict|warning statement.
+   Parameters:
+   - tokens: The sequence of query tokens
+   Returns: A map with :type, :namespace, :schema-json, and :mode"
+  [tokens]
+  (let [;; Find FOR keyword to get namespace
+        for-idx (tokenizer/find-token-index tokens "for")
+        namespace (when (and for-idx (< (inc for-idx) (count tokens)))
+                    (let [raw-name (nth tokens (inc for-idx))]
+                      (-> raw-name
+                          (str/replace #"['\"]" "")
+                          (str/replace #";$" "")
+                          (str/trim))))
+
+        ;; Find AS keyword to get schema JSON
+        as-idx (tokenizer/find-token-index tokens "as")
+        schema-json (when (and as-idx (< (inc as-idx) (count tokens)))
+                      (let [raw-schema (nth tokens (inc as-idx))]
+                        (-> raw-schema
+                            (str/replace #"^['\"]|['\"]$" "")
+                            (str/replace #";$" "")
+                            (str/trim))))
+
+        ;; Find MODE keyword to get validation mode
+        mode-idx (tokenizer/find-token-index tokens "mode")
+        mode (when (and mode-idx (< (inc mode-idx) (count tokens)))
+               (let [raw-mode (nth tokens (inc mode-idx))]
+                 (-> raw-mode
+                     (str/replace #"['\"]" "")
+                     (str/replace #";$" "")
+                     (str/trim)
+                     (str/lower-case)
+                     keyword)))]
+
+    {:type :create-validation-schema
+     :namespace namespace
+     :schema-json schema-json
+     :mode (or mode :strict)}))
+
+(defn parse-drop-validation-schema
+  "Parses a DROP VALIDATION SCHEMA FOR namespace statement.
+   Parameters:
+   - tokens: The sequence of query tokens
+   Returns: A map with :type and :namespace"
+  [tokens]
+  (let [;; Find FOR keyword to get namespace
+        for-idx (tokenizer/find-token-index tokens "for")
+        namespace (when (and for-idx (< (inc for-idx) (count tokens)))
+                    (let [raw-name (nth tokens (inc for-idx))]
+                      (-> raw-name
+                          (str/replace #"['\"]" "")
+                          (str/replace #";$" "")
+                          (str/trim))))]
+    {:type :drop-validation-schema
+     :namespace namespace}))
+
+(defn parse-show-validation-schema
+  "Parses a SHOW VALIDATION SCHEMA FOR namespace statement.
+   Parameters:
+   - tokens: The sequence of query tokens
+   Returns: A map with :type and :namespace"
+  [tokens]
+  (let [;; Find FOR keyword to get namespace
+        for-idx (tokenizer/find-token-index tokens "for")
+        namespace (when (and for-idx (< (inc for-idx) (count tokens)))
+                    (let [raw-name (nth tokens (inc for-idx))]
+                      (-> raw-name
+                          (str/replace #"['\"]" "")
+                          (str/replace #";$" "")
+                          (str/trim))))]
+    {:type :show-validation-schema
+     :namespace namespace}))
+
+(defn parse-show-validation-schemas
+  "Parses a SHOW VALIDATION SCHEMAS statement.
+   Parameters:
+   - tokens: The sequence of query tokens
+   Returns: A map with :type"
+  [_tokens]
+  {:type :show-validation-schemas})

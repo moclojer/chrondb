@@ -15,6 +15,7 @@
 ## Key Concepts
 
 * [Data Model](data-model)
+* [Schema Validation](validation)
 * [Version Control Features](version-control)
 * [Architecture](architecture)
 
