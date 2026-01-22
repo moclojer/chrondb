@@ -8,7 +8,7 @@
            [org.apache.lucene.analysis.standard StandardAnalyzer]
            [org.apache.lucene.document Document StringField TextField Field$Store LongPoint DoublePoint NumericDocValuesField DoubleDocValuesField]
            [org.apache.lucene.index IndexWriter IndexWriterConfig IndexWriterConfig$OpenMode DirectoryReader Term IndexNotFoundException]
-           [org.apache.lucene.search IndexSearcher Query ScoreDoc TopDocs BooleanQuery$Builder BooleanClause$Occur MatchAllDocsQuery TermQuery WildcardQuery TermRangeQuery Sort SortField SortField$Type TopFieldCollector TopScoreDocCollector DocValuesFieldExistsQuery]
+           [org.apache.lucene.search IndexSearcher Query ScoreDoc TopDocs BooleanQuery$Builder BooleanClause$Occur MatchAllDocsQuery TermQuery WildcardQuery TermRangeQuery Sort SortField SortField$Type TopFieldCollector TopScoreDocCollector]
            [org.apache.lucene.queryparser.classic QueryParser ParseException]
            [java.nio.file Paths]))
 
@@ -155,13 +155,17 @@
 
 (defmethod ast->query :exists
   [_ {:keys [field]}]
-  (DocValuesFieldExistsQuery. field))
+  ;; Use TermRangeQuery with open bounds to match any value
+  ;; This works for both string and text fields, unlike DocValuesFieldExistsQuery
+  ;; which only works for fields with doc values (numeric fields)
+  (TermRangeQuery. field nil nil true true))
 
 (defmethod ast->query :missing
   [_ {:keys [field]}]
+  ;; Match all documents that do NOT have any value in the field
   (let [builder (BooleanQuery$Builder.)]
     (.add builder (MatchAllDocsQuery.) BooleanClause$Occur/MUST)
-    (.add builder (DocValuesFieldExistsQuery. field) BooleanClause$Occur/MUST_NOT)
+    (.add builder (TermRangeQuery. field nil nil true true) BooleanClause$Occur/MUST_NOT)
     (.build builder)))
 
 (defmethod ast->query :boolean

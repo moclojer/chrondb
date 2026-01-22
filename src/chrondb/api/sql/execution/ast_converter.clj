@@ -50,15 +50,22 @@
       (let [values (:values condition)
             clean-values (map clean-value values)
             term-clauses (map #(ast/term field %) clean-values)]
-        (apply ast/or term-clauses))
+        (if (seq term-clauses)
+          (apply ast/or term-clauses)
+          ;; IN () with empty list should match no documents
+          (ast/boolean {:must [(ast/match-all)]
+                        :must-not [(ast/match-all)]})))
 
       ;; NOT IN (val1, val2, ...) - must not match any value
       :not-in
       (let [values (:values condition)
             clean-values (map clean-value values)
             term-clauses (map #(ast/term field %) clean-values)]
-        (ast/boolean {:must [(ast/match-all)]
-                      :must-not term-clauses}))
+        (if (seq term-clauses)
+          (ast/boolean {:must [(ast/match-all)]
+                        :must-not term-clauses})
+          ;; NOT IN () excludes nothing, matches all documents
+          (ast/match-all)))
 
       ;; BETWEEN lower AND upper - range query inclusive
       :between
