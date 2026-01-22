@@ -79,25 +79,33 @@
   ([storage index doc]
    (handle-save storage index doc nil))
   ([storage index doc {:keys [branch params request flags metadata origin user]}]
-   (let [params (or params {})
-         branch-name (sanitize-branch (or branch (:branch params)))
-         meta-base (or metadata {})
-         meta-extra (cond-> meta-base
-                      (:id doc) (assoc :document-id (:id doc)))
-         tx-opts (build-transaction-options {:request request
-                                             :branch branch-name
-                                             :flags flags
-                                             :metadata meta-extra
-                                             :origin origin
-                                             :user user})
-         saved (tx/with-transaction [storage tx-opts]
-                 (let [result (if branch-name
-                                (storage/save-document storage doc branch-name)
-                                (storage/save-document storage doc))]
-                   (index/index-document index result)
-                   result))]
-     {:status 200
-      :body saved})))
+   (try
+     (let [params (or params {})
+           branch-name (sanitize-branch (or branch (:branch params)))
+           meta-base (or metadata {})
+           meta-extra (cond-> meta-base
+                        (:id doc) (assoc :document-id (:id doc)))
+           tx-opts (build-transaction-options {:request request
+                                               :branch branch-name
+                                               :flags flags
+                                               :metadata meta-extra
+                                               :origin origin
+                                               :user user})
+           saved (tx/with-transaction [storage tx-opts]
+                   (let [result (if branch-name
+                                  (storage/save-document storage doc branch-name)
+                                  (storage/save-document storage doc))]
+                     (index/index-document index result)
+                     result))]
+       {:status 200
+        :body saved})
+     (catch clojure.lang.ExceptionInfo e
+       (let [data (ex-data e)]
+         (if (= :validation-error (:type data))
+           {:status 400 :body data}
+           {:status 500 :body {:error (.getMessage e)}})))
+     (catch Exception e
+       {:status 500 :body {:error (.getMessage e)}}))))
 
 (defn handle-delete
   "Delete document optionally from a specific branch."
@@ -378,3 +386,124 @@
          :body {:error (.getMessage e)}})
       (finally
         (.delete tmp)))))
+
+;; =============================================================================
+;; Validation Schema Handlers
+;; =============================================================================
+
+(defn handle-list-validation-schemas
+  "List all validation schemas."
+  ([storage]
+   (handle-list-validation-schemas storage nil))
+  ([storage {:keys [branch params]}]
+   (try
+     (let [params (or params {})
+           branch-name (sanitize-branch (or branch (:branch params)))
+           repository (:repository storage)
+           schemas (require 'chrondb.validation.storage)
+           list-fn (resolve 'chrondb.validation.storage/list-validation-schemas)
+           result (list-fn repository branch-name)]
+       {:status 200
+        :body {:schemas result
+               :count (count result)
+               :branch branch-name}})
+     (catch Exception e
+       {:status 500 :body {:error (.getMessage e)}}))))
+
+(defn handle-get-validation-schema
+  "Get a validation schema by namespace."
+  ([storage namespace]
+   (handle-get-validation-schema storage namespace nil))
+  ([storage namespace {:keys [branch params]}]
+   (try
+     (let [params (or params {})
+           branch-name (sanitize-branch (or branch (:branch params)))
+           repository (:repository storage)
+           _ (require 'chrondb.validation.storage)
+           get-fn (resolve 'chrondb.validation.storage/get-validation-schema)
+           result (get-fn repository namespace branch-name)]
+       (if result
+         {:status 200 :body result}
+         {:status 404 :body {:error "Validation schema not found"
+                             :namespace namespace
+                             :branch branch-name}}))
+     (catch Exception e
+       {:status 500 :body {:error (.getMessage e)}}))))
+
+(defn handle-save-validation-schema
+  "Create or update a validation schema."
+  ([storage namespace body]
+   (handle-save-validation-schema storage namespace body nil))
+  ([storage namespace body {:keys [branch params request user]}]
+   (try
+     (let [params (or params {})
+           branch-name (sanitize-branch (or branch (:branch params)))
+           repository (:repository storage)
+           mode (keyword (or (:mode body) "strict"))
+           schema-def (:schema body)
+           user-name (or user (some-> request :headers (get "x-chrondb-user")))
+           _ (require 'chrondb.validation.storage)
+           save-fn (resolve 'chrondb.validation.storage/save-validation-schema)
+           result (save-fn repository namespace schema-def mode user-name branch-name)]
+       {:status 200 :body result})
+     (catch Exception e
+       {:status 500 :body {:error (.getMessage e)}}))))
+
+(defn handle-delete-validation-schema
+  "Delete a validation schema."
+  ([storage namespace]
+   (handle-delete-validation-schema storage namespace nil))
+  ([storage namespace {:keys [branch params]}]
+   (try
+     (let [params (or params {})
+           branch-name (sanitize-branch (or branch (:branch params)))
+           repository (:repository storage)
+           _ (require 'chrondb.validation.storage)
+           delete-fn (resolve 'chrondb.validation.storage/delete-validation-schema)
+           result (delete-fn repository namespace branch-name)]
+       (if result
+         {:status 200 :body {:message "Validation schema deleted"
+                             :namespace namespace
+                             :branch branch-name}}
+         {:status 404 :body {:error "Validation schema not found"
+                             :namespace namespace
+                             :branch branch-name}}))
+     (catch Exception e
+       {:status 500 :body {:error (.getMessage e)}}))))
+
+(defn handle-validation-schema-history
+  "Get the history of a validation schema."
+  ([storage namespace]
+   (handle-validation-schema-history storage namespace nil))
+  ([storage namespace {:keys [branch params]}]
+   (try
+     (let [params (or params {})
+           branch-name (sanitize-branch (or branch (:branch params)))
+           repository (:repository storage)
+           _ (require 'chrondb.validation.storage)
+           history-fn (resolve 'chrondb.validation.storage/get-validation-schema-history)
+           result (history-fn repository namespace branch-name)]
+       {:status 200
+        :body {:namespace namespace
+               :branch branch-name
+               :history result
+               :count (count result)}})
+     (catch Exception e
+       {:status 500 :body {:error (.getMessage e)}}))))
+
+(defn handle-validate-document
+  "Validate a document against its namespace's schema (dry-run)."
+  ([storage namespace body]
+   (handle-validate-document storage namespace body nil))
+  ([storage namespace body {:keys [branch params]}]
+   (try
+     (let [params (or params {})
+           branch-name (sanitize-branch (or branch (:branch params)))
+           repository (:repository storage)
+           _ (require 'chrondb.validation.core)
+           validate-fn (resolve 'chrondb.validation.core/dry-run-validate)
+           result (validate-fn repository namespace body branch-name)]
+       {:status (if (:valid result) 200 400)
+        :body result})
+     (catch Exception e
+       {:status 500 :body {:error (.getMessage e)}}))))

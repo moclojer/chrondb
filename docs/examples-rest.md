@@ -446,3 +446,200 @@ async function userManagementExample() {
 // Run the example
 userManagementExample();
 ```
+
+## Schema Validation Operations
+
+ChronDB supports optional JSON Schema validation per namespace. See the [Schema Validation](validation.md) documentation for full details.
+
+### Managing Validation Schemas
+
+#### Create a Validation Schema
+
+```bash
+# Create schema with strict mode for the "users" namespace
+curl -X PUT http://localhost:3000/api/v1/schemas/validation/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mode": "strict",
+    "schema": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "required": ["id", "email"],
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string" },
+        "age": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  }'
+
+# Response
+# {"namespace":"users","version":1,"mode":"strict","schema":{...}}
+```
+
+#### List All Validation Schemas
+
+```bash
+curl http://localhost:3000/api/v1/schemas/validation
+
+# Response
+# [{"namespace":"users","version":1,"mode":"strict"},{"namespace":"products","version":2,"mode":"warning"}]
+```
+
+#### Get a Specific Schema
+
+```bash
+curl http://localhost:3000/api/v1/schemas/validation/users
+
+# Response
+# {"namespace":"users","version":1,"mode":"strict","schema":{...},"created_at":"2024-01-15T10:00:00Z"}
+```
+
+#### Get Schema History
+
+```bash
+curl http://localhost:3000/api/v1/schemas/validation/users/history
+
+# Response
+# [{"commit-id":"abc123","timestamp":"2024-01-15T10:00:00Z","message":"Updated validation schema for users"}]
+```
+
+#### Delete a Validation Schema
+
+```bash
+curl -X DELETE http://localhost:3000/api/v1/schemas/validation/users
+
+# Response
+# {"status":"success","namespace":"users"}
+```
+
+### Dry-Run Validation
+
+Test if a document is valid before saving:
+
+```bash
+# Valid document
+curl -X POST http://localhost:3000/api/v1/schemas/validation/users/validate \
+  -H "Content-Type: application/json" \
+  -d '{"id": "users:1", "email": "john@example.com", "name": "John"}'
+
+# Response (valid)
+# {"valid":true,"errors":[]}
+
+# Invalid document (missing required email)
+curl -X POST http://localhost:3000/api/v1/schemas/validation/users/validate \
+  -H "Content-Type: application/json" \
+  -d '{"id": "users:1", "name": "John"}'
+
+# Response (invalid)
+# {"valid":false,"errors":[{"path":"$.email","message":"required property 'email' not found","keyword":"required"}]}
+```
+
+### Validation Error Response
+
+When saving a document that fails validation in `strict` mode:
+
+```bash
+curl -X POST http://localhost:3000/api/v1/documents/users:1 \
+  -H "Content-Type: application/json" \
+  -d '{"name": "John", "age": -5}'
+
+# Response (HTTP 400)
+# {
+#   "error": "VALIDATION_ERROR",
+#   "namespace": "users",
+#   "document_id": "users:1",
+#   "mode": "strict",
+#   "violations": [
+#     {"path": "$.email", "message": "required property 'email' not found", "keyword": "required"},
+#     {"path": "$.age", "message": "must be >= 0", "keyword": "minimum"}
+#   ]
+# }
+```
+
+### JavaScript Validation Examples
+
+```javascript
+// Schema management functions
+const SchemaAPI = {
+  baseUrl: 'http://localhost:3000/api/v1',
+
+  async request(endpoint, method = 'GET', body = null) {
+    const options = {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      }
+    };
+    if (body) {
+      options.body = JSON.stringify(body);
+    }
+    const response = await fetch(`${this.baseUrl}/${endpoint}`, options);
+    return response.json();
+  },
+
+  // Create or update a validation schema
+  async setSchema(namespace, schema, mode = 'strict') {
+    return this.request(`schemas/validation/${namespace}`, 'PUT', { mode, schema });
+  },
+
+  // Get a validation schema
+  async getSchema(namespace) {
+    return this.request(`schemas/validation/${namespace}`);
+  },
+
+  // List all schemas
+  async listSchemas() {
+    return this.request('schemas/validation');
+  },
+
+  // Delete a schema
+  async deleteSchema(namespace) {
+    return this.request(`schemas/validation/${namespace}`, 'DELETE');
+  },
+
+  // Validate a document without saving
+  async validateDocument(namespace, document) {
+    return this.request(`schemas/validation/${namespace}/validate`, 'POST', document);
+  },
+
+  // Get schema history
+  async getSchemaHistory(namespace) {
+    return this.request(`schemas/validation/${namespace}/history`);
+  }
+};
+
+// Usage example
+async function schemaValidationExample() {
+  // Create a schema for users
+  const userSchema = {
+    type: 'object',
+    required: ['id', 'email'],
+    properties: {
+      id: { type: 'string' },
+      email: { type: 'string', format: 'email' },
+      name: { type: 'string' },
+      age: { type: 'integer', minimum: 0 }
+    },
+    additionalProperties: false
+  };
+
+  await SchemaAPI.setSchema('users', userSchema, 'strict');
+  console.log('Schema created');
+
+  // Validate a document before saving
+  const validDoc = { id: 'users:1', email: 'john@example.com', name: 'John' };
+  const validResult = await SchemaAPI.validateDocument('users', validDoc);
+  console.log('Valid document:', validResult.valid); // true
+
+  const invalidDoc = { id: 'users:2', name: 'Jane' }; // missing email
+  const invalidResult = await SchemaAPI.validateDocument('users', invalidDoc);
+  console.log('Invalid document:', invalidResult.valid); // false
+  console.log('Errors:', invalidResult.errors);
+}
+
+schemaValidationExample();
+```

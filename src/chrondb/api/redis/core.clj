@@ -171,11 +171,21 @@
     (let [key (first args)
           value (second args)
           doc {:id key :value value}]
-      (execute-redis-write storage "SET" args {:metadata {:key key}}
-                           (fn []
-                             (storage/save-document storage doc)
-                             (when index (index/index-document index doc))
-                             (.write writer RESP_OK))))))
+      (try
+        (execute-redis-write storage "SET" args {:metadata {:key key}}
+                             (fn []
+                               (storage/save-document storage doc)
+                               (when index (index/index-document index doc))
+                               (.write writer RESP_OK)))
+        (catch clojure.lang.ExceptionInfo e
+          (let [data (ex-data e)]
+            (if (= :validation-error (:type data))
+              (let [_ (require 'chrondb.validation.errors)
+                    format-fn (resolve 'chrondb.validation.errors/format-redis-error)]
+                (write-error writer (format-fn (:namespace data) (:violations data))))
+              (write-error writer (.getMessage e)))))
+        (catch Exception e
+          (write-error writer (.getMessage e)))))))
 
 (defn handle-del [storage writer args]
   (if (empty? args)
@@ -625,6 +635,98 @@
   [storage index writer args]
   (handle-search storage index writer args))
 
+;; =============================================================================
+;; Validation Schema Commands
+;; =============================================================================
+
+(defn handle-schema-set
+  "SCHEMA.SET namespace schema-json [MODE strict|warning]
+   Creates or updates a validation schema for a namespace."
+  [storage writer args]
+  (if (< (count args) 2)
+    (write-error writer "ERR wrong number of arguments for 'schema.set' command")
+    (try
+      (let [namespace (first args)
+            schema-json (second args)
+            mode-arg (when (>= (count args) 4)
+                       (let [key-arg (nth args 2)]
+                         (when (= "mode" (str/lower-case key-arg))
+                           (keyword (str/lower-case (nth args 3))))))
+            mode (or mode-arg :strict)
+            repository (:repository storage)
+            _ (require 'chrondb.validation.storage)
+            save-fn (resolve 'chrondb.validation.storage/save-validation-schema)
+            schema-def (json/read-str schema-json)
+            result (save-fn repository namespace schema-def mode nil nil)]
+        (write-simple-string writer "OK"))
+      (catch Exception e
+        (write-error writer (str "Schema error: " (.getMessage e)))))))
+
+(defn handle-schema-get
+  "SCHEMA.GET namespace
+   Gets the validation schema for a namespace."
+  [storage writer args]
+  (if (empty? args)
+    (write-error writer "ERR wrong number of arguments for 'schema.get' command")
+    (try
+      (let [namespace (first args)
+            repository (:repository storage)
+            _ (require 'chrondb.validation.storage)
+            get-fn (resolve 'chrondb.validation.storage/get-validation-schema)
+            result (get-fn repository namespace nil)]
+        (if result
+          (write-bulk-string writer (json/write-str result))
+          (.write writer RESP_NULL)))
+      (catch Exception e
+        (write-error writer (str "Schema error: " (.getMessage e)))))))
+
+(defn handle-schema-del
+  "SCHEMA.DEL namespace
+   Deletes the validation schema for a namespace."
+  [storage writer args]
+  (if (empty? args)
+    (write-error writer "ERR wrong number of arguments for 'schema.del' command")
+    (try
+      (let [namespace (first args)
+            repository (:repository storage)
+            _ (require 'chrondb.validation.storage)
+            delete-fn (resolve 'chrondb.validation.storage/delete-validation-schema)
+            result (delete-fn repository namespace nil)]
+        (write-integer writer (if result 1 0)))
+      (catch Exception e
+        (write-error writer (str "Schema error: " (.getMessage e)))))))
+
+(defn handle-schema-list
+  "SCHEMA.LIST
+   Lists all validation schemas."
+  [storage writer _args]
+  (try
+    (let [repository (:repository storage)
+          _ (require 'chrondb.validation.storage)
+          list-fn (resolve 'chrondb.validation.storage/list-validation-schemas)
+          result (list-fn repository nil)]
+      (write-array writer (mapv #(json/write-str %) result)))
+    (catch Exception e
+      (write-error writer (str "Schema error: " (.getMessage e))))))
+
+(defn handle-schema-validate
+  "SCHEMA.VALIDATE namespace doc-json
+   Validates a document against a namespace's schema (dry-run)."
+  [storage writer args]
+  (if (< (count args) 2)
+    (write-error writer "ERR wrong number of arguments for 'schema.validate' command")
+    (try
+      (let [namespace (first args)
+            doc-json (second args)
+            repository (:repository storage)
+            _ (require 'chrondb.validation.core)
+            validate-fn (resolve 'chrondb.validation.core/dry-run-validate)
+            doc (json/read-str doc-json :key-fn keyword)
+            result (validate-fn repository namespace doc nil)]
+        (write-bulk-string writer (json/write-str result)))
+      (catch Exception e
+        (write-error writer (str "Validation error: " (.getMessage e)))))))
+
 (defn process-command
   "Process a Redis command with the given arguments"
   [storage index writer command args]
@@ -662,6 +764,12 @@
       "ft.search" (handle-ft-search storage index writer args)
       "command" (handle-command storage index writer args)
       "info" (handle-info writer args)
+      ;; Schema validation commands
+      "schema.set" (handle-schema-set storage writer args)
+      "schema.get" (handle-schema-get storage writer args)
+      "schema.del" (handle-schema-del storage writer args)
+      "schema.list" (handle-schema-list storage writer args)
+      "schema.validate" (handle-schema-validate storage writer args)
       (write-error writer (str "unknown command '" cmd "'")))))
 
 ;; Client Connection Handling

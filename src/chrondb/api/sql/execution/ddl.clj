@@ -366,3 +366,166 @@
       (log/log-error (str "Unknown branch function: " (:function parsed)))
       (messages/send-error-response out (str "Unknown branch function: " (:function parsed)))
       (messages/send-ready-for-query out \I))))
+
+;; =============================================================================
+;; Validation Schema DDL Handlers
+;; =============================================================================
+
+(defn handle-create-validation-schema
+  "Handles a CREATE VALIDATION SCHEMA statement.
+   Syntax: CREATE VALIDATION SCHEMA FOR namespace AS 'json-schema' MODE strict|warning
+   Parameters:
+   - storage: The storage implementation
+   - out: Output stream to write results to
+   - parsed: The parsed query details
+   Returns: nil"
+  [storage out parsed]
+  (log/log-info (str "Handling CREATE VALIDATION SCHEMA FOR: " (:namespace parsed)))
+
+  (try
+    (let [namespace (:namespace parsed)
+          schema-json (:schema parsed)
+          mode (or (:mode parsed) :strict)
+          schema (:schema parsed)
+          branch-name (normalize-schema-to-branch schema)
+          repository (:repository storage)
+          _ (require 'chrondb.validation.storage)
+          _ (require 'clojure.data.json)
+          read-json (resolve 'clojure.data.json/read-str)
+          save-fn (resolve 'chrondb.validation.storage/save-validation-schema)
+          schema-def (read-json schema-json)
+          result (save-fn repository namespace schema-def mode nil branch-name)]
+
+      (log/log-info (str "Created validation schema for " namespace
+                         " (version " (:version result) ", mode " (:mode result) ")"))
+      (messages/send-command-complete out "CREATE VALIDATION SCHEMA" 0))
+
+    (catch Exception e
+      (let [sw (java.io.StringWriter.)
+            pw (java.io.PrintWriter. sw)]
+        (.printStackTrace e pw)
+        (log/log-error (str "Error in CREATE VALIDATION SCHEMA: " (.getMessage e) "\n" (.toString sw))))
+      (messages/send-error-response out (str "Error creating validation schema: " (.getMessage e)))))
+
+  (messages/send-ready-for-query out \I))
+
+(defn handle-drop-validation-schema
+  "Handles a DROP VALIDATION SCHEMA statement.
+   Syntax: DROP VALIDATION SCHEMA FOR namespace
+   Parameters:
+   - storage: The storage implementation
+   - out: Output stream to write results to
+   - parsed: The parsed query details
+   Returns: nil"
+  [storage out parsed]
+  (log/log-info (str "Handling DROP VALIDATION SCHEMA FOR: " (:namespace parsed)))
+
+  (try
+    (let [namespace (:namespace parsed)
+          schema (:schema parsed)
+          branch-name (normalize-schema-to-branch schema)
+          repository (:repository storage)
+          _ (require 'chrondb.validation.storage)
+          delete-fn (resolve 'chrondb.validation.storage/delete-validation-schema)
+          result (delete-fn repository namespace branch-name)]
+
+      (if result
+        (do
+          (log/log-info (str "Dropped validation schema for " namespace))
+          (messages/send-command-complete out "DROP VALIDATION SCHEMA" 0))
+        (do
+          (log/log-error (str "Validation schema not found for " namespace))
+          (messages/send-error-response out (str "Validation schema not found for: " namespace)))))
+
+    (catch Exception e
+      (let [sw (java.io.StringWriter.)
+            pw (java.io.PrintWriter. sw)]
+        (.printStackTrace e pw)
+        (log/log-error (str "Error in DROP VALIDATION SCHEMA: " (.getMessage e) "\n" (.toString sw))))
+      (messages/send-error-response out (str "Error dropping validation schema: " (.getMessage e)))))
+
+  (messages/send-ready-for-query out \I))
+
+(defn handle-show-validation-schema
+  "Handles a SHOW VALIDATION SCHEMA statement.
+   Syntax: SHOW VALIDATION SCHEMA FOR namespace
+   Parameters:
+   - storage: The storage implementation
+   - out: Output stream to write results to
+   - parsed: The parsed query details
+   Returns: nil"
+  [storage out parsed]
+  (log/log-info (str "Handling SHOW VALIDATION SCHEMA FOR: " (:namespace parsed)))
+
+  (try
+    (let [namespace (:namespace parsed)
+          schema (:schema parsed)
+          branch-name (normalize-schema-to-branch schema)
+          repository (:repository storage)
+          _ (require 'chrondb.validation.storage)
+          _ (require 'clojure.data.json)
+          write-json (resolve 'clojure.data.json/write-str)
+          get-fn (resolve 'chrondb.validation.storage/get-validation-schema)
+          result (get-fn repository namespace branch-name)
+          columns ["namespace" "version" "mode" "schema" "created_at" "created_by"]]
+
+      (messages/send-row-description out columns)
+
+      (if result
+        (do
+          (messages/send-data-row out [(:namespace result)
+                                        (str (:version result))
+                                        (:mode result)
+                                        (write-json (:schema result))
+                                        (str (:created_at result))
+                                        (or (:created_by result) "")])
+          (messages/send-command-complete out "SELECT" 1))
+        (messages/send-command-complete out "SELECT" 0)))
+
+    (catch Exception e
+      (let [sw (java.io.StringWriter.)
+            pw (java.io.PrintWriter. sw)]
+        (.printStackTrace e pw)
+        (log/log-error (str "Error in SHOW VALIDATION SCHEMA: " (.getMessage e) "\n" (.toString sw))))
+      (messages/send-error-response out (str "Error showing validation schema: " (.getMessage e)))))
+
+  (messages/send-ready-for-query out \I))
+
+(defn handle-show-validation-schemas
+  "Handles a SHOW VALIDATION SCHEMAS statement (list all).
+   Syntax: SHOW VALIDATION SCHEMAS
+   Parameters:
+   - storage: The storage implementation
+   - out: Output stream to write results to
+   - parsed: The parsed query details
+   Returns: nil"
+  [storage out parsed]
+  (log/log-info "Handling SHOW VALIDATION SCHEMAS")
+
+  (try
+    (let [schema (:schema parsed)
+          branch-name (normalize-schema-to-branch schema)
+          repository (:repository storage)
+          _ (require 'chrondb.validation.storage)
+          list-fn (resolve 'chrondb.validation.storage/list-validation-schemas)
+          result (list-fn repository branch-name)
+          columns ["namespace" "version" "mode" "created_at"]]
+
+      (messages/send-row-description out columns)
+
+      (doseq [vs result]
+        (messages/send-data-row out [(:namespace vs)
+                                      (str (:version vs))
+                                      (:mode vs)
+                                      (str (:created_at vs))]))
+
+      (messages/send-command-complete out "SELECT" (count result)))
+
+    (catch Exception e
+      (let [sw (java.io.StringWriter.)
+            pw (java.io.PrintWriter. sw)]
+        (.printStackTrace e pw)
+        (log/log-error (str "Error in SHOW VALIDATION SCHEMAS: " (.getMessage e) "\n" (.toString sw))))
+      (messages/send-error-response out (str "Error listing validation schemas: " (.getMessage e)))))
+
+  (messages/send-ready-for-query out \I))

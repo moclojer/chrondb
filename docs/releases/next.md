@@ -4,6 +4,15 @@ This is the first official release of ChronDB, a chronological key/value databas
 
 ## Main Features
 
+### Schema Validation
+
+- **Optional JSON Schema Validation** - Per-namespace validation with configurable modes (strict/warning/disabled) ([#55](https://github.com/moclojer/chrondb/issues/55))
+  - REST API endpoints for schema management (`/api/v1/schemas/validation`)
+  - Redis commands (`SCHEMA.SET`, `SCHEMA.GET`, `SCHEMA.DEL`, `SCHEMA.LIST`, `SCHEMA.VALIDATE`)
+  - SQL DDL statements (`CREATE/DROP/SHOW VALIDATION SCHEMA`)
+  - Supports JSON Schema Draft-07, 2019-09, and 2020-12
+  - Version-controlled schema history
+
 ### Communication Protocols
 
 - **PostgreSQL Protocol Support** - Implementation of the PostgreSQL protocol for communication with ChronDB, allowing compatibility with existing PostgreSQL tools and clients ([#16](https://github.com/moclojer/chrondb/pull/16))

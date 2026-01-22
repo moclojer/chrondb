@@ -18,6 +18,7 @@
              [chrondb.util.logging :as log]
              [chrondb.storage.git.path :as path]
              [chrondb.storage.git.commit :as commit]
+             [chrondb.validation.core :as validation]
              [clojure.data.json :as json]
              [clojure.string :as str])
    (:import [org.eclipse.jgit.api Git]
@@ -189,7 +190,9 @@
                    (path/get-file-path data-dir (:id document)))
         _ (log/log-info (str "Saving document to path: " doc-path))
         doc-content (json/write-str document)
-        branch-name (or branch (get-in config-map [:git :default-branch]))]
+        branch-name (or branch (get-in config-map [:git :default-branch]))
+        ;; Validate document if validation schema exists for namespace
+        _ (validation/validate-and-throw repository document branch-name)]
 
     (commit/commit-virtual (Git/wrap repository)
                            branch-name

@@ -895,6 +895,22 @@
          (= query-type :describe)
          (ddl/handle-describe storage out parsed)
 
+         ;; DDL: CREATE VALIDATION SCHEMA
+         (= query-type :create-validation-schema)
+         (ddl/handle-create-validation-schema storage out parsed)
+
+         ;; DDL: DROP VALIDATION SCHEMA
+         (= query-type :drop-validation-schema)
+         (ddl/handle-drop-validation-schema storage out parsed)
+
+         ;; DDL: SHOW VALIDATION SCHEMA FOR namespace
+         (= query-type :show-validation-schema)
+         (ddl/handle-show-validation-schema storage out parsed)
+
+         ;; DDL: SHOW VALIDATION SCHEMAS
+         (= query-type :show-validation-schemas)
+         (ddl/handle-show-validation-schemas storage out parsed)
+
          ;; ChronDB branch functions
          (and (= query-type :chrondb-function)
               (contains? #{:branch-list :branch-create :branch-checkout :branch-merge} query-function))
