@@ -400,7 +400,7 @@
      (let [params (or params {})
            branch-name (sanitize-branch (or branch (:branch params)))
            repository (:repository storage)
-           schemas (require 'chrondb.validation.storage)
+           _ (require 'chrondb.validation.storage)
            list-fn (resolve 'chrondb.validation.storage/list-validation-schemas)
            result (list-fn repository branch-name)]
        {:status 200

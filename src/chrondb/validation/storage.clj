@@ -255,13 +255,11 @@
    - namespace: The name of the table/namespace
    - branch: Optional branch name
    Returns: Sequence of commit information for the schema file"
-  [repository namespace branch]
+  [repository namespace _branch]
   (when-not repository
     (throw (Exception. "Repository is closed")))
 
-  (let [config-map (config/load-config)
-        branch-name (or branch (get-in config-map [:git :default-branch]))
-        path (validation-schema-path namespace)
+  (let [path (validation-schema-path namespace)
         git (Git/wrap repository)]
     (try
       (let [log-command (-> git

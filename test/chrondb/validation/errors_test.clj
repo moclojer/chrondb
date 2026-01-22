@@ -1,6 +1,7 @@
 (ns chrondb.validation.errors-test
   "Unit tests for validation error formatting"
   (:require [clojure.test :refer [deftest is testing]]
+            [clojure.string :as str]
             [chrondb.validation.errors :as errors]
             [chrondb.validation.schema :as schema]))
 
@@ -51,14 +52,14 @@
                   {:path "$.age" :message "must be >= 0" :keyword "minimum"}]
           formatted (errors/format-redis-error "users" errors)]
       (is (string? formatted))
-      (is (clojure.string/includes? formatted "users"))
-      (is (clojure.string/includes? formatted "email")))))
+      (is (str/includes? formatted "users"))
+      (is (str/includes? formatted "email")))))
 
 (deftest test-format-sql-error
   (testing "Format validation error for SQL protocol"
     (let [errors [{:path "$.email" :message "required property 'email' not found" :keyword "required"}]
           formatted (errors/format-sql-error "users" errors)]
       (is (string? formatted))
-      (is (clojure.string/includes? formatted "Validation failed"))
-      (is (clojure.string/includes? formatted "users"))
-      (is (clojure.string/includes? formatted "email")))))
+      (is (str/includes? formatted "Validation failed"))
+      (is (str/includes? formatted "users"))
+      (is (str/includes? formatted "email")))))

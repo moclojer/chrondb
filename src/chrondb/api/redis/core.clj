@@ -665,8 +665,8 @@
             repository (:repository storage)
             _ (require 'chrondb.validation.storage)
             save-fn (resolve 'chrondb.validation.storage/save-validation-schema)
-            schema-def (json/read-str schema-json)
-            result (save-fn repository namespace schema-def mode nil nil)]
+            schema-def (json/read-str schema-json)]
+        (save-fn repository namespace schema-def mode nil nil)
         (write-simple-string writer "OK"))
       (catch Exception e
         (write-error writer (str "Schema error: " (.getMessage e)))))))
