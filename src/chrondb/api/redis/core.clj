@@ -24,6 +24,29 @@
 (def RESP_OK "+OK\r\n")
 (def RESP_PONG "+PONG\r\n")
 
+;; RESP3 Protocol Constants
+(def RESP3_NULL "_")
+(def RESP3_DOUBLE ",")
+(def RESP3_BOOLEAN "#")
+(def RESP3_MAP "%")
+(def RESP3_SET "~")
+(def RESP3_VERBATIM_STRING "=")
+(def RESP3_BIG_NUMBER "(")
+(def RESP3_PUSH ">")
+
+;; Connection Context for RESP2/RESP3 protocol negotiation
+(defrecord ConnectionContext [protocol-version client-name])
+
+(defn create-connection-context
+  "Creates a new connection context with default RESP2 protocol"
+  []
+  (->ConnectionContext 2 nil))
+
+(defn resp3?
+  "Returns true if the connection is using RESP3 protocol"
+  [ctx]
+  (= 3 (:protocol-version ctx)))
+
 (defn- normalize-flags [flags]
   (letfn [(spread [value]
             (cond
@@ -89,6 +112,81 @@
           (number? el) (write-integer writer el)
           (nil? el) (.write writer RESP_NULL)
           :else (write-bulk-string writer (str el)))))))
+
+;; RESP3 Protocol Serialization Functions
+(defn write-null
+  "Writes a RESP3 null value"
+  [writer]
+  (.write writer (str RESP3_NULL CRLF)))
+
+(defn write-double
+  "Writes a RESP3 double value"
+  [writer d]
+  (if (Double/isInfinite d)
+    (if (pos? d)
+      (.write writer (str RESP3_DOUBLE "inf" CRLF))
+      (.write writer (str RESP3_DOUBLE "-inf" CRLF)))
+    (.write writer (str RESP3_DOUBLE d CRLF))))
+
+(defn write-boolean
+  "Writes a RESP3 boolean value"
+  [writer b]
+  (.write writer (str RESP3_BOOLEAN (if b "t" "f") CRLF)))
+
+(defn write-map
+  "Writes a RESP3 map value"
+  [writer m]
+  (.write writer (str RESP3_MAP (count m) CRLF))
+  (doseq [[k v] m]
+    (write-bulk-string writer (if (keyword? k) (name k) (str k)))
+    (cond
+      (string? v) (write-bulk-string writer v)
+      (integer? v) (write-integer writer v)
+      (float? v) (write-double writer v)
+      (boolean? v) (write-boolean writer v)
+      (nil? v) (write-null writer)
+      (map? v) (write-map writer v)
+      (coll? v) (write-array writer (vec v))
+      :else (write-bulk-string writer (str v)))))
+
+(defn write-set
+  "Writes a RESP3 set value"
+  [writer s]
+  (.write writer (str RESP3_SET (count s) CRLF))
+  (doseq [el s]
+    (cond
+      (string? el) (write-bulk-string writer el)
+      (number? el) (write-integer writer el)
+      (nil? el) (write-null writer)
+      :else (write-bulk-string writer (str el)))))
+
+(declare write-value)
+
+(defn write-value
+  "Universal value writer that dispatches based on context and value type.
+   Uses RESP3 types when in RESP3 mode, falls back to RESP2 otherwise."
+  [writer value ctx]
+  (let [resp3-mode (resp3? ctx)]
+    (cond
+      (nil? value) (if resp3-mode
+                     (write-null writer)
+                     (.write writer RESP_NULL))
+      (boolean? value) (if resp3-mode
+                         (write-boolean writer value)
+                         (write-bulk-string writer (if value "true" "false")))
+      (integer? value) (write-integer writer value)
+      (float? value) (if resp3-mode
+                       (write-double writer value)
+                       (write-bulk-string writer (str value)))
+      (string? value) (write-bulk-string writer value)
+      (map? value) (if resp3-mode
+                     (write-map writer value)
+                     (write-array writer (mapcat (fn [[k v]] [(if (keyword? k) (name k) (str k)) (str v)]) value)))
+      (set? value) (if resp3-mode
+                     (write-set writer (vec value))
+                     (write-array writer (vec value)))
+      (coll? value) (write-array writer (vec value))
+      :else (write-bulk-string writer (str value)))))
 
 ;; RESP Protocol Parsing Functions
 (defn read-line-resp [reader]
@@ -625,9 +723,320 @@
   [storage index writer args]
   (handle-search storage index writer args))
 
+;; HELLO command - RESP3 protocol negotiation
+(defn handle-hello
+  "HELLO command: negotiate protocol version and get server info.
+   Usage: HELLO [protover [AUTH username password] [SETNAME clientname]]
+   Returns server information as a map in RESP3 or array in RESP2."
+  [writer args ctx-atom]
+  (let [protover (when (seq args)
+                   (try (Integer/parseInt (first args))
+                        (catch NumberFormatException _ nil)))
+        ;; Parse optional AUTH and SETNAME
+        remaining (vec (rest args))
+        client-name (loop [idx 0]
+                      (if (>= idx (count remaining))
+                        nil
+                        (if (= "setname" (str/lower-case (str (nth remaining idx))))
+                          (when (< (inc idx) (count remaining))
+                            (nth remaining (inc idx)))
+                          (recur (inc idx)))))
+        ;; Update context if valid protocol version
+        _ (when (and protover (<= 2 protover 3))
+            (swap! ctx-atom assoc
+                   :protocol-version protover
+                   :client-name client-name))
+        ctx @ctx-atom
+        server-info {:server "chrondb"
+                     :version "1.0.0"
+                     :proto (:protocol-version ctx)
+                     :id (str (System/currentTimeMillis))
+                     :mode "standalone"
+                     :role "master"
+                     :modules []}]
+    (if (resp3? ctx)
+      (write-map writer server-info)
+      ;; RESP2: return as flat array
+      (write-array writer (mapcat (fn [[k v]]
+                                    [(if (keyword? k) (name k) (str k))
+                                     (if (coll? v)
+                                       (str v)
+                                       (str v))])
+                                  server-info)))))
+
+;; Pattern matching helpers for SCAN commands
+(defn glob->regex
+  "Converts a glob pattern to a Java regex pattern.
+   Supports: * (any chars), ? (single char), [abc] (char class)"
+  [pattern]
+  (let [sb (StringBuilder. "^")]
+    (doseq [c pattern]
+      (case c
+        \* (.append sb ".*")
+        \? (.append sb ".")
+        \[ (.append sb "[")
+        \] (.append sb "]")
+        \. (.append sb "\\.")
+        \\ (.append sb "\\\\")
+        \^ (.append sb "\\^")
+        \$ (.append sb "\\$")
+        \+ (.append sb "\\+")
+        \{ (.append sb "\\{")
+        \} (.append sb "\\}")
+        \| (.append sb "\\|")
+        \( (.append sb "\\(")
+        \) (.append sb "\\)")
+        (.append sb c)))
+    (.append sb "$")
+    (re-pattern (str sb))))
+
+(defn matches-pattern?
+  "Returns true if key matches the glob pattern"
+  [pattern key]
+  (if (or (nil? pattern) (= "*" pattern))
+    true
+    (boolean (re-matches (glob->regex pattern) key))))
+
+;; Cursor encoding/decoding for SCAN
+(defn encode-cursor
+  "Encodes an offset as a cursor string"
+  [offset]
+  (if (zero? offset) "0" (str offset)))
+
+(defn decode-cursor
+  "Decodes a cursor string to an offset"
+  [cursor-str]
+  (if (= cursor-str "0") 0 (Long/parseLong cursor-str)))
+
+;; Parse SCAN options from args
+(defn parse-scan-options
+  "Parses SCAN command options: MATCH pattern, COUNT count, TYPE type"
+  [args]
+  (loop [idx 0
+         opts {:match nil :count 10 :type nil}]
+    (if (>= idx (count args))
+      opts
+      (let [arg (str/lower-case (str (nth args idx)))]
+        (case arg
+          "match" (recur (+ idx 2)
+                         (if (< (inc idx) (count args))
+                           (assoc opts :match (nth args (inc idx)))
+                           opts))
+          "count" (recur (+ idx 2)
+                         (if (< (inc idx) (count args))
+                           (assoc opts :count (try (Integer/parseInt (nth args (inc idx)))
+                                                   (catch Exception _ 10)))
+                           opts))
+          "type" (recur (+ idx 2)
+                        (if (< (inc idx) (count args))
+                          (assoc opts :type (str/lower-case (nth args (inc idx))))
+                          opts))
+          (recur (inc idx) opts))))))
+
+;; SCAN command handler
+(defn handle-scan
+  "SCAN command: incrementally iterate the keys space.
+   Usage: SCAN cursor [MATCH pattern] [COUNT count] [TYPE type]
+   Returns: [next-cursor [keys...]]"
+  [storage writer args]
+  (if (empty? args)
+    (write-error writer "ERR wrong number of arguments for 'scan' command")
+    (try
+      (let [cursor (decode-cursor (first args))
+            opts (parse-scan-options (vec (rest args)))
+            pattern (:match opts)
+            count-limit (:count opts)
+            type-filter (:type opts)
+            ;; Get all documents (using empty prefix to get all)
+            all-docs (storage/get-documents-by-prefix storage "")
+            ;; Filter by pattern
+            filtered-docs (if pattern
+                            (filter #(matches-pattern? pattern (:id %)) all-docs)
+                            all-docs)
+            ;; Filter by type if specified
+            typed-docs (if type-filter
+                         (filter #(= type-filter (str/lower-case (or (:type %) "string")))
+                                 filtered-docs)
+                         filtered-docs)
+            ;; Paginate
+            doc-ids (map :id typed-docs)
+            paged-ids (take count-limit (drop cursor doc-ids))
+            next-cursor (if (< (+ cursor count-limit) (count doc-ids))
+                          (encode-cursor (+ cursor count-limit))
+                          "0")]
+        (write-array writer [next-cursor (vec paged-ids)]))
+      (catch Exception e
+        (write-error writer (str "ERR " (.getMessage e)))))))
+
+;; HSCAN command handler
+(defn handle-hscan
+  "HSCAN command: incrementally iterate hash fields and values.
+   Usage: HSCAN key cursor [MATCH pattern] [COUNT count]
+   Returns: [next-cursor [field1 val1 field2 val2...]]"
+  [storage writer args]
+  (if (< (count args) 2)
+    (write-error writer "ERR wrong number of arguments for 'hscan' command")
+    (try
+      (let [key (first args)
+            cursor (decode-cursor (second args))
+            opts (parse-scan-options (vec (drop 2 args)))
+            pattern (:match opts)
+            count-limit (:count opts)
+            ;; Get hash fields (stored as key:field)
+            prefix (str key ":")
+            docs (storage/get-documents-by-prefix storage prefix)
+            ;; Extract field names and values
+            field-values (map (fn [doc]
+                                (let [field (subs (:id doc) (count prefix))]
+                                  [field (:value doc)]))
+                              docs)
+            ;; Filter by pattern
+            filtered (if pattern
+                       (filter #(matches-pattern? pattern (first %)) field-values)
+                       field-values)
+            ;; Paginate
+            paged (take count-limit (drop cursor filtered))
+            flat-result (vec (mapcat identity paged))
+            next-cursor (if (< (+ cursor count-limit) (count filtered))
+                          (encode-cursor (+ cursor count-limit))
+                          "0")]
+        (write-array writer [next-cursor flat-result]))
+      (catch Exception e
+        (write-error writer (str "ERR " (.getMessage e)))))))
+
+;; SSCAN command handler
+(defn handle-sscan
+  "SSCAN command: incrementally iterate set members.
+   Usage: SSCAN key cursor [MATCH pattern] [COUNT count]
+   Returns: [next-cursor [member1 member2...]]"
+  [storage writer args]
+  (if (< (count args) 2)
+    (write-error writer "ERR wrong number of arguments for 'sscan' command")
+    (try
+      (let [key (first args)
+            cursor (decode-cursor (second args))
+            opts (parse-scan-options (vec (drop 2 args)))
+            pattern (:match opts)
+            count-limit (:count opts)
+            ;; Get the set document
+            set-doc (storage/get-document storage key)
+            members (if set-doc (vec (:members set-doc)) [])
+            ;; Filter by pattern
+            filtered (if pattern
+                       (filter #(matches-pattern? pattern %) members)
+                       members)
+            ;; Paginate
+            paged (take count-limit (drop cursor filtered))
+            next-cursor (if (< (+ cursor count-limit) (count filtered))
+                          (encode-cursor (+ cursor count-limit))
+                          "0")]
+        (write-array writer [next-cursor (vec paged)]))
+      (catch Exception e
+        (write-error writer (str "ERR " (.getMessage e)))))))
+
+;; HISTORY command - ChronDB time-travel extension
+(defn encode-history-cursor
+  "Encodes a history cursor as Base64 EDN"
+  [cursor-data]
+  (if (empty? cursor-data)
+    "0"
+    (let [edn-str (pr-str cursor-data)
+          bytes (.getBytes edn-str StandardCharsets/UTF_8)]
+      (.encodeToString (java.util.Base64/getEncoder) bytes))))
+
+(defn decode-history-cursor
+  "Decodes a history cursor from Base64 EDN"
+  [cursor-str]
+  (if (or (nil? cursor-str) (= cursor-str "0"))
+    {:offset 0}
+    (try
+      (let [bytes (.decode (java.util.Base64/getDecoder) cursor-str)
+            edn-str (String. bytes StandardCharsets/UTF_8)]
+        (read-string edn-str))
+      (catch Exception _
+        {:offset 0}))))
+
+(defn parse-history-options
+  "Parses HISTORY command options: CURSOR cursor, SINCE timestamp, COUNT count"
+  [args]
+  (loop [idx 0
+         opts {:cursor nil :since nil :count 100}]
+    (if (>= idx (count args))
+      opts
+      (let [arg (str/lower-case (str (nth args idx)))]
+        (case arg
+          "cursor" (recur (+ idx 2)
+                          (if (< (inc idx) (count args))
+                            (assoc opts :cursor (nth args (inc idx)))
+                            opts))
+          "since" (recur (+ idx 2)
+                         (if (< (inc idx) (count args))
+                           (assoc opts :since (try (Long/parseLong (nth args (inc idx)))
+                                                   (catch Exception _ nil)))
+                           opts))
+          "count" (recur (+ idx 2)
+                         (if (< (inc idx) (count args))
+                           (assoc opts :count (try (Integer/parseInt (nth args (inc idx)))
+                                                   (catch Exception _ 100)))
+                           opts))
+          (recur (inc idx) opts))))))
+
+(defn handle-history
+  "HISTORY command: get the history of a key with pagination.
+   Usage: HISTORY key [CURSOR cursor] [SINCE timestamp] [COUNT count]
+   Returns: [next-cursor [[timestamp1 value1] [timestamp2 value2]...]]
+   This is a ChronDB extension for time-travel queries."
+  [storage writer args]
+  (if (empty? args)
+    (write-error writer "ERR wrong number of arguments for 'history' command")
+    (try
+      (let [key (first args)
+            opts (parse-history-options (vec (rest args)))
+            cursor-data (decode-history-cursor (:cursor opts))
+            offset (:offset cursor-data 0)
+            since-ts (:since opts)
+            count-limit (:count opts)
+            ;; Get document history from storage
+            full-history (storage/get-document-history storage key)
+            ;; Filter by timestamp if SINCE is provided
+            filtered (if since-ts
+                       (filter (fn [entry]
+                                 (when-let [ts (or (:timestamp entry)
+                                                   (:commit-time entry))]
+                                   (>= ts since-ts)))
+                               full-history)
+                       full-history)
+            ;; Apply pagination
+            paged (take count-limit (drop offset filtered))
+            ;; Format results as [[timestamp value]...]
+            results (vec (map (fn [entry]
+                                (let [ts (or (:timestamp entry)
+                                             (:commit-time entry)
+                                             0)
+                                      value (or (:content entry)
+                                                (:value entry)
+                                                (json/write-str entry))]
+                                  [(str ts)
+                                   (if (map? value)
+                                     (json/write-str value)
+                                     (str value))]))
+                              paged))
+            ;; Calculate next cursor
+            new-offset (+ offset count-limit)
+            has-more (< new-offset (count filtered))
+            next-cursor (if has-more
+                          (encode-history-cursor {:offset new-offset})
+                          "0")]
+        (write-array writer [next-cursor results]))
+      (catch Exception e
+        (write-error writer (str "ERR " (.getMessage e)))))))
+
+(declare handle-hello handle-scan handle-hscan handle-sscan handle-history)
+
 (defn process-command
-  "Process a Redis command with the given arguments"
-  [storage index writer command args]
+  "Process a Redis command with the given arguments.
+   ctx-atom is an atom containing the ConnectionContext for this connection."
+  [storage index writer command args ctx-atom]
   (let [cmd (str/lower-case command)]
     (case cmd
       "ping" (handle-ping writer args)
@@ -662,22 +1071,28 @@
       "ft.search" (handle-ft-search storage index writer args)
       "command" (handle-command storage index writer args)
       "info" (handle-info writer args)
+      "hello" (handle-hello writer args ctx-atom)
+      "scan" (handle-scan storage writer args)
+      "hscan" (handle-hscan storage writer args)
+      "sscan" (handle-sscan storage writer args)
+      "history" (handle-history storage writer args)
       (write-error writer (str "unknown command '" cmd "'")))))
 
 ;; Client Connection Handling
 (defn handle-client [client-socket storage index]
   (async/go
     (try
-      (with-open [reader (BufferedReader. (InputStreamReader. (.getInputStream client-socket) StandardCharsets/UTF_8))
-                  writer (BufferedWriter. (OutputStreamWriter. (.getOutputStream client-socket) StandardCharsets/UTF_8))]
-        (loop []
-          (let [command-array (read-resp reader)]
-            (when command-array
-              (let [command (first command-array)
-                    args (vec (rest command-array))]
-                (process-command storage index writer command args)
-                (.flush writer)
-                (recur))))))
+      (let [ctx-atom (atom (create-connection-context))]
+        (with-open [reader (BufferedReader. (InputStreamReader. (.getInputStream client-socket) StandardCharsets/UTF_8))
+                    writer (BufferedWriter. (OutputStreamWriter. (.getOutputStream client-socket) StandardCharsets/UTF_8))]
+          (loop []
+            (let [command-array (read-resp reader)]
+              (when command-array
+                (let [command (first command-array)
+                      args (vec (rest command-array))]
+                  (process-command storage index writer command args ctx-atom)
+                  (.flush writer)
+                  (recur)))))))
       (catch Exception e
         (log/log-error (str "Error handling client: " (.getMessage e))))
       (finally

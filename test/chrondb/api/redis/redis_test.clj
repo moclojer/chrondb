@@ -184,15 +184,16 @@
 (deftest test-process-command
   (testing "Process commands with storage and index"
     (with-test-data [storage index]
-      (testing "Process PING command"
-        (let [writer (create-string-writer)]
-          (redis/process-command storage index (:writer writer) "PING" [])
-          (is (= "+PONG\r\n" (get-writer-output writer)))))
+      (let [ctx-atom (atom (redis/create-connection-context))]
+        (testing "Process PING command"
+          (let [writer (create-string-writer)]
+            (redis/process-command storage index (:writer writer) "PING" [] ctx-atom)
+            (is (= "+PONG\r\n" (get-writer-output writer)))))
 
-      (testing "Process unknown command"
-        (let [writer (create-string-writer)]
-          (redis/process-command storage index (:writer writer) "UNKNOWN" [])
-          (is (= "-ERR unknown command 'unknown'\r\n" (get-writer-output writer))))))))
+        (testing "Process unknown command"
+          (let [writer (create-string-writer)]
+            (redis/process-command storage index (:writer writer) "UNKNOWN" [] ctx-atom)
+            (is (= "-ERR unknown command 'unknown'\r\n" (get-writer-output writer)))))))))
 
 ;; Test Server Functions
 (deftest test-redis-server
@@ -204,3 +205,154 @@
         (is (not (.isClosed server)))
         (redis/stop-redis-server server)
         (is (.isClosed server))))))
+
+;; Test RESP3 Protocol Functions
+(deftest test-write-null
+  (testing "Writing RESP3 null"
+    (let [writer (create-string-writer)]
+      (redis/write-null (:writer writer))
+      (is (= "_\r\n" (get-writer-output writer))))))
+
+(deftest test-write-double
+  (testing "Writing RESP3 double"
+    (let [writer (create-string-writer)]
+      (redis/write-double (:writer writer) 3.14)
+      (is (= ",3.14\r\n" (get-writer-output writer)))))
+
+  (testing "Writing positive infinity"
+    (let [writer (create-string-writer)]
+      (redis/write-double (:writer writer) Double/POSITIVE_INFINITY)
+      (is (= ",inf\r\n" (get-writer-output writer)))))
+
+  (testing "Writing negative infinity"
+    (let [writer (create-string-writer)]
+      (redis/write-double (:writer writer) Double/NEGATIVE_INFINITY)
+      (is (= ",-inf\r\n" (get-writer-output writer))))))
+
+(deftest test-write-boolean
+  (testing "Writing RESP3 boolean true"
+    (let [writer (create-string-writer)]
+      (redis/write-boolean (:writer writer) true)
+      (is (= "#t\r\n" (get-writer-output writer)))))
+
+  (testing "Writing RESP3 boolean false"
+    (let [writer (create-string-writer)]
+      (redis/write-boolean (:writer writer) false)
+      (is (= "#f\r\n" (get-writer-output writer))))))
+
+(deftest test-write-map
+  (testing "Writing RESP3 map"
+    (let [writer (create-string-writer)]
+      (redis/write-map (:writer writer) {:key "value"})
+      (is (= "%1\r\n$3\r\nkey\r\n$5\r\nvalue\r\n" (get-writer-output writer))))))
+
+;; Test Connection Context
+(deftest test-connection-context
+  (testing "Create connection context"
+    (let [ctx (redis/create-connection-context)]
+      (is (= 2 (:protocol-version ctx)))
+      (is (nil? (:client-name ctx)))))
+
+  (testing "Check RESP3 mode"
+    (let [ctx2 (redis/->ConnectionContext 2 nil)
+          ctx3 (redis/->ConnectionContext 3 "test-client")]
+      (is (false? (redis/resp3? ctx2)))
+      (is (true? (redis/resp3? ctx3))))))
+
+;; Test Glob Pattern Matching
+(deftest test-glob-to-regex
+  (testing "Simple patterns"
+    (is (redis/matches-pattern? "*" "anything"))
+    (is (redis/matches-pattern? "user:*" "user:123"))
+    (is (redis/matches-pattern? "user:*" "user:"))
+    (is (not (redis/matches-pattern? "user:*" "other:123"))))
+
+  (testing "Question mark pattern"
+    (is (redis/matches-pattern? "user:???" "user:123"))
+    (is (not (redis/matches-pattern? "user:???" "user:1234"))))
+
+  (testing "Character class pattern"
+    (is (redis/matches-pattern? "user:[abc]" "user:a"))
+    (is (redis/matches-pattern? "user:[abc]" "user:b"))
+    (is (not (redis/matches-pattern? "user:[abc]" "user:d"))))
+
+  (testing "Nil and star pattern"
+    (is (redis/matches-pattern? nil "anything"))
+    (is (redis/matches-pattern? "*" "anything"))))
+
+;; Test Cursor Encoding/Decoding
+(deftest test-cursor-encoding
+  (testing "Encode cursor"
+    (is (= "0" (redis/encode-cursor 0)))
+    (is (= "10" (redis/encode-cursor 10)))
+    (is (= "100" (redis/encode-cursor 100))))
+
+  (testing "Decode cursor"
+    (is (= 0 (redis/decode-cursor "0")))
+    (is (= 10 (redis/decode-cursor "10")))
+    (is (= 100 (redis/decode-cursor "100")))))
+
+;; Test SCAN Options Parsing
+(deftest test-parse-scan-options
+  (testing "Parse MATCH option"
+    (let [opts (redis/parse-scan-options ["MATCH" "user:*"])]
+      (is (= "user:*" (:match opts)))))
+
+  (testing "Parse COUNT option"
+    (let [opts (redis/parse-scan-options ["COUNT" "20"])]
+      (is (= 20 (:count opts)))))
+
+  (testing "Parse TYPE option"
+    (let [opts (redis/parse-scan-options ["TYPE" "string"])]
+      (is (= "string" (:type opts)))))
+
+  (testing "Parse multiple options"
+    (let [opts (redis/parse-scan-options ["MATCH" "user:*" "COUNT" "50" "TYPE" "hash"])]
+      (is (= "user:*" (:match opts)))
+      (is (= 50 (:count opts)))
+      (is (= "hash" (:type opts)))))
+
+  (testing "Default values"
+    (let [opts (redis/parse-scan-options [])]
+      (is (nil? (:match opts)))
+      (is (= 10 (:count opts)))
+      (is (nil? (:type opts))))))
+
+;; Test History Cursor Encoding/Decoding
+(deftest test-history-cursor-encoding
+  (testing "Encode empty cursor"
+    (is (= "0" (redis/encode-history-cursor {}))))
+
+  (testing "Decode zero cursor"
+    (let [result (redis/decode-history-cursor "0")]
+      (is (= {:offset 0} result))))
+
+  (testing "Decode nil cursor"
+    (let [result (redis/decode-history-cursor nil)]
+      (is (= {:offset 0} result))))
+
+  (testing "Roundtrip encoding"
+    (let [original {:offset 10 :commit-id "abc123"}
+          encoded (redis/encode-history-cursor original)
+          decoded (redis/decode-history-cursor encoded)]
+      (is (= original decoded)))))
+
+;; Test HISTORY Options Parsing
+(deftest test-parse-history-options
+  (testing "Parse CURSOR option"
+    (let [opts (redis/parse-history-options ["CURSOR" "abc"])]
+      (is (= "abc" (:cursor opts)))))
+
+  (testing "Parse SINCE option"
+    (let [opts (redis/parse-history-options ["SINCE" "1705920000"])]
+      (is (= 1705920000 (:since opts)))))
+
+  (testing "Parse COUNT option"
+    (let [opts (redis/parse-history-options ["COUNT" "50"])]
+      (is (= 50 (:count opts)))))
+
+  (testing "Default values"
+    (let [opts (redis/parse-history-options [])]
+      (is (nil? (:cursor opts)))
+      (is (nil? (:since opts)))
+      (is (= 100 (:count opts))))))

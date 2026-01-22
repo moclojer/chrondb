@@ -32,17 +32,131 @@ ChronDB supports the following standard Redis commands:
 - `HDEL` - Remove a specific field from a document
 - `HGETALL` - Get all fields from a document
 
+## RESP3 Protocol Support
+
+ChronDB supports the RESP3 protocol, which provides richer data types and better client communication. Use the `HELLO` command to negotiate the protocol version:
+
+```bash
+# Negotiate RESP3 protocol
+HELLO 3
+
+# HELLO with client name
+HELLO 3 SETNAME myclient
+
+# Returns server info as a map in RESP3 mode
+```
+
+**RESP3 Data Types:**
+- Null (`_`)
+- Double (`,`)
+- Boolean (`#`)
+- Map (`%`)
+- Set (`~`)
+
+Connections without `HELLO` continue using RESP2 for backward compatibility.
+
+## SCAN Commands
+
+ChronDB supports the standard Redis SCAN family of commands for incremental iteration:
+
+### SCAN - Iterate keys
+
+```bash
+# Basic scan from the beginning
+SCAN 0
+
+# Scan with pattern matching
+SCAN 0 MATCH user:*
+
+# Scan with count hint
+SCAN 0 MATCH user:* COUNT 100
+
+# Scan with type filter
+SCAN 0 TYPE string
+
+# Combined options
+SCAN 0 MATCH user:* COUNT 50 TYPE hash
+```
+
+### HSCAN - Iterate hash fields
+
+```bash
+# Iterate fields in a hash
+HSCAN myhash 0
+
+# With pattern matching
+HSCAN myhash 0 MATCH field:*
+
+# With count hint
+HSCAN myhash 0 COUNT 20
+```
+
+### SSCAN - Iterate set members
+
+```bash
+# Iterate members in a set
+SSCAN myset 0
+
+# With pattern matching
+SSCAN myset 0 MATCH prefix:*
+
+# With count hint
+SSCAN myset 0 COUNT 50
+```
+
+**Cursor Convention:**
+- `0` marks both the start and end of iteration
+- Non-zero cursors represent pagination offsets
+- Continue calling SCAN until cursor returns `0`
+
 ## ChronDB-Specific Commands
 
 In addition to standard Redis commands, ChronDB provides special commands:
 
-- `CHRONDB.HISTORY` - Get document history
+- `HISTORY` - Get document history with pagination (see below)
+- `CHRONDB.HISTORY` - Get document history (legacy)
 - `CHRONDB.GETAT` - Get document at a point in time
 - `CHRONDB.DIFF` - Compare document versions
 - `CHRONDB.BRANCH.LIST` - List branches
 - `CHRONDB.BRANCH.CREATE` - Create a new branch
 - `CHRONDB.BRANCH.CHECKOUT` - Switch to a branch
 - `CHRONDB.BRANCH.MERGE` - Merge branches
+
+### HISTORY Command (Time-Travel)
+
+The `HISTORY` command provides paginated access to document history, enabling time-travel queries through the Redis protocol:
+
+```bash
+# Get history of a key (default: last 100 entries)
+HISTORY user:123
+
+# Limit number of results
+HISTORY user:123 COUNT 10
+
+# Filter by timestamp (Unix timestamp in seconds)
+HISTORY user:123 SINCE 1705920000
+
+# Paginate using cursor
+HISTORY user:123 CURSOR <base64-cursor>
+
+# Combined options
+HISTORY user:123 SINCE 1705920000 COUNT 50
+```
+
+**Response Format:**
+```
+1) "0"                        # Next cursor ("0" means no more data)
+2) 1) 1) "1705920000000"      # Timestamp (milliseconds)
+      2) "{\"name\":\"John\"}" # Value at that time
+   2) 1) "1705919000000"
+      2) "{\"name\":\"Jane\"}"
+```
+
+**Use Cases:**
+- Audit trails: see all changes to a record
+- Debugging: understand how data evolved
+- Compliance: prove data state at specific times
+- Undo: recover previous values
 
 ## Examples with redis-cli
 
@@ -326,6 +440,130 @@ async function searchOperations() {
 
   } catch (err) {
     console.error('Error in search operations:', err);
+  }
+}
+```
+
+### RESP3 Protocol and SCAN Operations
+
+```javascript
+// Using RESP3 protocol and SCAN commands
+async function resp3AndScanOperations() {
+  try {
+    // Note: Node.js redis client automatically handles HELLO for RESP3
+    // You can also send it manually:
+    const serverInfo = await client.sendCommand(['HELLO', '3']);
+    console.log('Server info (RESP3):', serverInfo);
+
+    // Create some test data
+    await client.set('user:1', JSON.stringify({ name: 'Alice', age: 30 }));
+    await client.set('user:2', JSON.stringify({ name: 'Bob', age: 25 }));
+    await client.set('user:3', JSON.stringify({ name: 'Charlie', age: 35 }));
+    await client.set('product:1', JSON.stringify({ name: 'Laptop' }));
+
+    // SCAN - iterate through all keys matching a pattern
+    let cursor = '0';
+    const allUserKeys = [];
+
+    do {
+      const result = await client.sendCommand(['SCAN', cursor, 'MATCH', 'user:*', 'COUNT', '10']);
+      cursor = result[0];
+      allUserKeys.push(...result[1]);
+    } while (cursor !== '0');
+
+    console.log('All user keys:', allUserKeys);
+
+    // HSCAN - iterate through hash fields
+    await client.hSet('config', {
+      'db.host': 'localhost',
+      'db.port': '5432',
+      'cache.enabled': 'true',
+      'cache.ttl': '3600'
+    });
+
+    cursor = '0';
+    const dbSettings = [];
+
+    do {
+      const result = await client.sendCommand(['HSCAN', 'config', cursor, 'MATCH', 'db.*']);
+      cursor = result[0];
+      dbSettings.push(...result[1]);
+    } while (cursor !== '0');
+
+    console.log('Database settings:', dbSettings);
+
+    // SSCAN - iterate through set members
+    await client.sAdd('tags', ['javascript', 'typescript', 'java', 'python', 'rust', 'go']);
+
+    cursor = '0';
+    const jTags = [];
+
+    do {
+      const result = await client.sendCommand(['SSCAN', 'tags', cursor, 'MATCH', 'j*']);
+      cursor = result[0];
+      jTags.push(...result[1]);
+    } while (cursor !== '0');
+
+    console.log('Tags starting with j:', jTags);
+
+  } catch (err) {
+    console.error('Error in RESP3/SCAN operations:', err);
+  }
+}
+```
+
+### Using HISTORY for Time-Travel
+
+```javascript
+// Time-travel queries using the HISTORY command
+async function historyOperations() {
+  try {
+    // Create initial document
+    await client.set('doc:1', JSON.stringify({ title: 'Draft', content: 'Initial content' }));
+
+    // Simulate updates over time
+    await new Promise(resolve => setTimeout(resolve, 100));
+    await client.set('doc:1', JSON.stringify({ title: 'Review', content: 'Updated content' }));
+
+    await new Promise(resolve => setTimeout(resolve, 100));
+    await client.set('doc:1', JSON.stringify({ title: 'Final', content: 'Final content' }));
+
+    // Get document history with pagination
+    let cursor = '0';
+    const history = [];
+
+    do {
+      const result = await client.sendCommand(['HISTORY', 'doc:1', 'COUNT', '10', 'CURSOR', cursor]);
+      cursor = result[0];
+
+      // result[1] contains [[timestamp, value], [timestamp, value], ...]
+      for (const entry of result[1]) {
+        history.push({
+          timestamp: parseInt(entry[0]),
+          value: JSON.parse(entry[1])
+        });
+      }
+    } while (cursor !== '0');
+
+    console.log('Document history:', history);
+
+    // Get history since a specific timestamp (Unix timestamp in seconds)
+    const oneMinuteAgo = Math.floor(Date.now() / 1000) - 60;
+    const recentHistory = await client.sendCommand([
+      'HISTORY', 'doc:1', 'SINCE', String(oneMinuteAgo), 'COUNT', '50'
+    ]);
+
+    console.log('Recent changes:', recentHistory);
+
+    // Build an audit trail
+    console.log('\n--- Audit Trail for doc:1 ---');
+    for (const entry of history) {
+      const date = new Date(entry.timestamp);
+      console.log(`${date.toISOString()}: ${entry.value.title}`);
+    }
+
+  } catch (err) {
+    console.error('Error in history operations:', err);
   }
 }
 ```
