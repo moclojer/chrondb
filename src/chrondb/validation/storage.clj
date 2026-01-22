@@ -70,13 +70,16 @@
                            branch-name
                            path
                            content
-                           (str "Create validation schema for " namespace)
+                           (str (if (> version 1) "Update" "Create")
+                                " validation schema for " namespace)
                            (get-in config-map [:git :committer-name])
                            (get-in config-map [:git :committer-email])
-                           {:note {:operation "create-validation-schema"
+                           {:note {:operation (if (> version 1)
+                                                "update-validation-schema"
+                                                "create-validation-schema")
                                    :namespace namespace
                                    :version version
-                                   :mode (name mode)}})
+                                   :mode (if (keyword? mode) (name mode) (str mode))}})
 
     (commit/push-changes (Git/wrap repository) config-map)
 
