@@ -8,7 +8,7 @@
 
 (defn handle-query-message
   "Handles a query message"
-  [storage index protocol-impl ^InputStream in ^OutputStream out]
+  [storage index protocol-impl ^InputStream in ^OutputStream out session-context]
   (let [query-data (reader/read-query-message in)]
     (if (:error query-data)
       (do
@@ -21,7 +21,7 @@
 
         (try
           ;; Execute query and get results
-          (query/handle-query storage index out query-text)
+          (query/handle-query storage index out query-text session-context)
 
           ;; Retornamos true porque handle-query já envia as respostas diretamente para o output stream
           true
@@ -41,12 +41,12 @@
 
 (defn handle-message
   "Handles a client message based on its type"
-  [storage index protocol-impl ^InputStream in ^OutputStream out message]
+  [storage index protocol-impl ^InputStream in ^OutputStream out message session-context]
   (let [type (:type message)]
     (try
       (case type
         ;; 'Q' = Simple Query
-        81 (handle-query-message storage index protocol-impl in out)
+        81 (handle-query-message storage index protocol-impl in out session-context)
         ;; 'X' = Terminate
         88 (handle-terminate-message)
         ;; Unsupported message type
@@ -75,7 +75,9 @@
   "Handles a new client connection"
   [storage index ^InputStream in ^OutputStream out]
   (try
-    (let [protocol-impl (protocol/create-protocol)]
+    (let [protocol-impl (protocol/create-protocol)
+          ;; Create session context with mutable state for branch tracking
+          session-context (atom {:current-branch nil})]
       ;; Handle startup sequence
       (doseq [action (-> protocol-impl (.handle-startup in out))]
         (action))
@@ -84,7 +86,7 @@
       (loop []
         (let [message (-> protocol-impl (.read-message in))]
           (if message
-            (let [result (handle-message storage index protocol-impl in out message)]
+            (let [result (handle-message storage index protocol-impl in out message session-context)]
               (if-not (:terminate result)
                 (recur)
                 (log/log-info "Client session terminated normally")))

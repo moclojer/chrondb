@@ -2,7 +2,8 @@
   "DDL (Data Definition Language) execution handlers"
   (:require [chrondb.util.logging :as log]
             [chrondb.api.sql.protocol.messages :as messages]
-            [chrondb.api.sql.schema.core :as schema-core]))
+            [chrondb.api.sql.schema.core :as schema-core]
+            [chrondb.transaction.core :as tx]))
 
 (defn- normalize-schema-to-branch
   "Converts a SQL schema name to a Git branch name.
@@ -14,6 +15,20 @@
     (nil? schema) "main"
     (= schema "public") "main"
     :else schema))
+
+(defn- ddl-tx-options
+  "Creates transaction options for DDL operations.
+   Parameters:
+   - operation: The DDL operation (create-table, drop-table, etc.)
+   - table: The table name
+   - branch: The branch name
+   Returns: Map with transaction options"
+  [{:keys [operation table branch]}]
+  {:origin "sql"
+   :metadata {:operation operation
+              :table table
+              :branch branch}
+   :flags ["ddl"]})
 
 ;; CREATE TABLE handler
 
@@ -33,8 +48,11 @@
           schema (:schema parsed)
           branch-name (normalize-schema-to-branch schema)
           if-not-exists (:if-not-exists parsed)
-
-          result (schema-core/create-table storage table-name columns branch-name if-not-exists)]
+          tx-opts (ddl-tx-options {:operation "create-table"
+                                   :table table-name
+                                   :branch branch-name})
+          result (tx/with-transaction [storage tx-opts]
+                   (schema-core/create-table storage table-name columns branch-name if-not-exists))]
 
       (if (:success result)
         (do
@@ -70,8 +88,11 @@
           schema (:schema parsed)
           branch-name (normalize-schema-to-branch schema)
           if-exists (:if-exists parsed)
-
-          result (schema-core/drop-table storage table-name branch-name if-exists)]
+          tx-opts (ddl-tx-options {:operation "drop-table"
+                                   :table table-name
+                                   :branch branch-name})
+          result (tx/with-transaction [storage tx-opts]
+                   (schema-core/drop-table storage table-name branch-name if-exists))]
 
       (if (:success result)
         (do
@@ -274,14 +295,19 @@
    - storage: The storage implementation
    - out: Output stream to write results to
    - parsed: The parsed query details
+   - session-context: Optional atom with session state
    Returns: nil"
-  [storage out parsed]
+  [storage out parsed session-context]
   (let [branch-name (:branch-name parsed)]
     (log/log-info (str "Handling chrondb_branch_checkout('" branch-name "')"))
 
     (try
       (let [result (schema-core/branch-checkout storage branch-name)
             columns ["success" "message" "current_branch"]]
+
+        ;; Persist branch selection in session context if available
+        (when (and (:success result) session-context)
+          (swap! session-context assoc :current-branch (:branch result)))
 
         (messages/send-row-description out columns)
         (messages/send-data-row out [(if (:success result) "true" "false")
@@ -328,12 +354,13 @@
    - storage: The storage implementation
    - out: Output stream to write results to
    - parsed: The parsed query details
+   - session-context: Optional atom with session state
    Returns: nil"
-  [storage out parsed]
+  [storage out parsed session-context]
   (case (:function parsed)
     :branch-list (handle-branch-list storage out parsed)
     :branch-create (handle-branch-create storage out parsed)
-    :branch-checkout (handle-branch-checkout storage out parsed)
+    :branch-checkout (handle-branch-checkout storage out parsed session-context)
     :branch-merge (handle-branch-merge storage out parsed)
     (do
       (log/log-error (str "Unknown branch function: " (:function parsed)))
