@@ -172,19 +172,19 @@
           value (second args)
           doc {:id key :value value}]
       (execute-redis-write storage "SET" args {:metadata {:key key}}
-        (fn []
-          (storage/save-document storage doc)
-          (when index (index/index-document index doc))
-          (.write writer RESP_OK))))))
+                           (fn []
+                             (storage/save-document storage doc)
+                             (when index (index/index-document index doc))
+                             (.write writer RESP_OK))))))
 
 (defn handle-del [storage writer args]
   (if (empty? args)
     (write-error writer "ERR wrong number of arguments for 'del' command")
     (let [key (first args)]
       (execute-redis-write storage "DEL" args {:metadata {:key key} :flags ["delete"]}
-        (fn []
-          (let [result (storage/delete-document storage key)]
-            (write-integer writer (if result 1 0))))))))
+                           (fn []
+                             (let [result (storage/delete-document storage key)]
+                               (write-integer writer (if result 1 0))))))))
 
 (defn handle-command [_storage _index writer _args]
   (.write writer RESP_OK))
@@ -205,10 +205,10 @@
           doc {:id key :value value :expire-at (+ (System/currentTimeMillis) (* seconds 1000))}]
       (when seconds
         (execute-redis-write storage "SETEX" args {:metadata {:key key :ttl seconds}}
-          (fn []
-            (storage/save-document storage doc)
-            (when index (index/index-document index doc))
-            (.write writer RESP_OK)))))))
+                             (fn []
+                               (storage/save-document storage doc)
+                               (when index (index/index-document index doc))
+                               (.write writer RESP_OK)))))))
 
 (defn handle-setnx [storage index writer args]
   (if (< (count args) 2)
@@ -219,10 +219,10 @@
       (if existing-doc
         (write-integer writer 0) ; Key exists, don't set
         (execute-redis-write storage "SETNX" args {:metadata {:key key}}
-          (fn []
-            (storage/save-document storage {:id key :value value})
-            (when index (index/index-document index {:id key :value value}))
-            (write-integer writer 1)))))))
+                             (fn []
+                               (storage/save-document storage {:id key :value value})
+                               (when index (index/index-document index {:id key :value value}))
+                               (write-integer writer 1)))))))
 
 (defn handle-exists [storage writer args]
   (if (empty? args)
@@ -243,9 +243,9 @@
           existing-doc (storage/get-document storage hash-key)
           is-new (nil? existing-doc)]
       (execute-redis-write storage "HSET" args {:metadata {:key key :field field}}
-        (fn []
-          (storage/save-document storage doc)
-          (write-integer writer (if is-new 1 0)))))))
+                           (fn []
+                             (storage/save-document storage doc)
+                             (write-integer writer (if is-new 1 0)))))))
 
 (defn handle-hget [storage writer args]
   (if (< (count args) 2)
@@ -267,12 +267,12 @@
         (write-error writer "ERR wrong number of arguments for 'hmset' command")
         (let [field-count (/ (count field-values) 2)]
           (execute-redis-write storage "HMSET" args {:metadata {:key key :field-count field-count}}
-            (fn []
-              (doseq [[field value] (partition 2 field-values)]
-                (let [hash-key (str key ":" field)
-                      doc {:id hash-key :value value :hash-key key :hash-field field}]
-                  (storage/save-document storage doc)))
-              (.write writer RESP_OK))))))))
+                               (fn []
+                                 (doseq [[field value] (partition 2 field-values)]
+                                   (let [hash-key (str key ":" field)
+                                         doc {:id hash-key :value value :hash-key key :hash-field field}]
+                                     (storage/save-document storage doc)))
+                                 (.write writer RESP_OK))))))))
 
 (defn handle-hmget [storage writer args]
   (if (< (count args) 2)
@@ -313,9 +313,9 @@
           updated-values (vec (concat values (:values list-doc)))
           updated-doc (assoc list-doc :values updated-values)]
       (execute-redis-write storage "LPUSH" args {:metadata {:key key :value-count (count values)}}
-        (fn []
-          (storage/save-document storage updated-doc)
-          (write-integer writer (count updated-values)))))))
+                           (fn []
+                             (storage/save-document storage updated-doc)
+                             (write-integer writer (count updated-values)))))))
 
 (defn handle-rpush [storage writer args]
   (if (< (count args) 2)
@@ -327,9 +327,9 @@
           updated-values (vec (concat (:values list-doc) values))
           updated-doc (assoc list-doc :values updated-values)]
       (execute-redis-write storage "RPUSH" args {:metadata {:key key :value-count (count values)}}
-        (fn []
-          (storage/save-document storage updated-doc)
-          (write-integer writer (count updated-values)))))))
+                           (fn []
+                             (storage/save-document storage updated-doc)
+                             (write-integer writer (count updated-values)))))))
 
 (defn handle-lrange [storage writer args]
   (if (not= (count args) 3)
@@ -367,9 +367,9 @@
               updated-values (vec (rest values))
               updated-doc (assoc list-doc :values updated-values)]
           (execute-redis-write storage "LPOP" args {:metadata {:key key}}
-            (fn []
-              (storage/save-document storage updated-doc)
-              (write-bulk-string writer first-value))))
+                               (fn []
+                                 (storage/save-document storage updated-doc)
+                                 (write-bulk-string writer first-value))))
         (write-bulk-string writer nil)))))
 
 (defn handle-rpop [storage writer args]
@@ -383,9 +383,9 @@
               updated-values (vec (butlast values))
               updated-doc (assoc list-doc :values updated-values)]
           (execute-redis-write storage "RPOP" args {:metadata {:key key}}
-            (fn []
-              (storage/save-document storage updated-doc)
-              (write-bulk-string writer last-value))))
+                               (fn []
+                                 (storage/save-document storage updated-doc)
+                                 (write-bulk-string writer last-value))))
         (write-bulk-string writer nil)))))
 
 (defn handle-llen [storage writer args]
@@ -409,9 +409,9 @@
           updated-members (apply conj existing-members members)
           updated-doc (assoc set-doc :members updated-members)]
       (execute-redis-write storage "SADD" args {:metadata {:key key :member-count (count members)}}
-        (fn []
-          (storage/save-document storage updated-doc)
-          (write-integer writer (count new-members)))))))
+                           (fn []
+                             (storage/save-document storage updated-doc)
+                             (write-integer writer (count new-members)))))))
 
 (defn handle-smembers [storage writer args]
   (if (empty? args)
@@ -445,9 +445,9 @@
               updated-doc (assoc set-doc :members updated-members)]
           (execute-redis-write storage "SREM" args {:metadata {:key key :member-count (count members)}
                                                     :flags ["delete"]}
-            (fn []
-              (storage/save-document storage updated-doc)
-              (write-integer writer (count removed-members)))))
+                               (fn []
+                                 (storage/save-document storage updated-doc)
+                                 (write-integer writer (count removed-members)))))
         (write-integer writer 0)))))
 
 ;; Sorted Set commands
@@ -468,9 +468,9 @@
                                   score-member-pairs)
           updated-doc (assoc zset-doc :members updated-members)]
       (execute-redis-write storage "ZADD" args {:metadata {:key key :member-count (count score-member-pairs)}}
-        (fn []
-          (storage/save-document storage updated-doc)
-          (write-integer writer new-members))))))
+                           (fn []
+                             (storage/save-document storage updated-doc)
+                             (write-integer writer new-members))))))
 
 (defn handle-zrange [storage writer args]
   (if (< (count args) 3)
@@ -537,9 +537,9 @@
               updated-doc (assoc zset-doc :members updated-members)]
           (execute-redis-write storage "ZREM" args {:metadata {:key key :member-count (count members)}
                                                     :flags ["delete"]}
-            (fn []
-              (storage/save-document storage updated-doc)
-              (write-integer writer removed-count))))
+                               (fn []
+                                 (storage/save-document storage updated-doc)
+                                 (write-integer writer removed-count))))
         (write-integer writer 0)))))
 
 (defn handle-search
@@ -559,7 +559,7 @@
                       (if (and (< (inc idx) (count remaining))
                                (= "limit" (str/lower-case (nth remaining idx))))
                         (recur (+ idx 2) (try (Integer/parseInt (nth remaining (inc idx)))
-                                             (catch Exception _ nil)))
+                                              (catch Exception _ nil)))
                         (recur (inc idx) found))))
             offset (loop [idx 0 found nil]
                      (if (>= idx (count remaining))
@@ -567,7 +567,7 @@
                        (if (and (< (inc idx) (count remaining))
                                 (= "offset" (str/lower-case (nth remaining idx))))
                          (recur (+ idx 2) (try (Integer/parseInt (nth remaining (inc idx)))
-                                              (catch Exception _ nil)))
+                                               (catch Exception _ nil)))
                          (recur (inc idx) found))))
             sort-param (loop [idx 0 found nil]
                          (if (>= idx (count remaining))
@@ -596,10 +596,10 @@
                                  (when field
                                    [(ast/sort-by field direction)])))
             ast-query (ast/query [fts-clause]
-                                {:limit limit
-                                 :offset offset
-                                 :sort sort-descriptors
-                                 :branch branch-name})
+                                 {:limit limit
+                                  :offset offset
+                                  :sort sort-descriptors
+                                  :branch branch-name})
 
             ;; Execute search
             opts (cond-> {}

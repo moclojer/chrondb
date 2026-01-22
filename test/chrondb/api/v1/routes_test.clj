@@ -65,4 +65,4 @@
 
       (.close storage)
       (.close index)
-      (helpers/delete-directory index-dir)))) 
+      (helpers/delete-directory index-dir))))

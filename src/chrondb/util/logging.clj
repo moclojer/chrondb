@@ -31,7 +31,7 @@
 (defn- format-log-message
   [level & msgs]
   (let [timestamp (.format (LocalDateTime/now)
-                          (DateTimeFormatter/ofPattern "yyyy-MM-dd HH:mm:ss.SSS"))
+                           (DateTimeFormatter/ofPattern "yyyy-MM-dd HH:mm:ss.SSS"))
         level-str (str/upper-case (name level))
         msg (str/join " " msgs)]
     (format "%s [%s] %s" timestamp level-str msg)))
@@ -42,8 +42,8 @@
     (let [formatted-msg (apply format-log-message level msgs)]
       (case (get-in @current-config [:logging :output])
         :file (spit (get-in @current-config [:logging :file])
-                   (str formatted-msg "\n")
-                   :append true)
+                    (str formatted-msg "\n")
+                    :append true)
         :stdout (println formatted-msg)
         (println formatted-msg)))))
 
@@ -79,4 +79,4 @@
   (log-debug "Modified:" (.getModified status))
   (log-debug "Added:" (.getAdded status))
   (log-debug "Removed:" (.getRemoved status))
-  (log-debug "Untracked:" (.getUntracked status))) 
+  (log-debug "Untracked:" (.getUntracked status)))

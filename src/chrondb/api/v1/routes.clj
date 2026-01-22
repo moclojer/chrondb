@@ -172,7 +172,7 @@
 
         ;; Parse searchAfter cursor
         search-after-cursor (or (parse-search-after after)
-                               (parse-search-after cursor))
+                                (parse-search-after cursor))
 
         ;; Parse limit and offset
         limit-int (when limit (try (Integer/parseInt limit) (catch Exception _ nil)))
@@ -181,33 +181,33 @@
         ;; Build AST query
         ast-query (cond
                    ;; Use structured query if provided
-                   (parse-structured-query query)
-                   (let [structured (parse-structured-query query)]
-                     (ast/query (:clauses structured)
-                               {:sort sort-descriptors
-                                :limit limit-int
-                                :offset offset-int
-                                :branch branch-name
-                                :after search-after-cursor}))
+                    (parse-structured-query query)
+                    (let [structured (parse-structured-query query)]
+                      (ast/query (:clauses structured)
+                                 {:sort sort-descriptors
+                                  :limit limit-int
+                                  :offset offset-int
+                                  :branch branch-name
+                                  :after search-after-cursor}))
 
                    ;; Convert simple query string to AST
-                   (some? q)
-                   (let [fts-clause (ast/fts "content" q)]
-                     (ast/query [fts-clause]
+                    (some? q)
+                    (let [fts-clause (ast/fts "content" q)]
+                      (ast/query [fts-clause]
+                                 {:sort sort-descriptors
+                                  :limit limit-int
+                                  :offset offset-int
+                                  :branch branch-name
+                                  :after search-after-cursor}))
+
+                   ;; Empty query
+                    :else
+                    (ast/query []
                                {:sort sort-descriptors
                                 :limit limit-int
                                 :offset offset-int
                                 :branch branch-name
                                 :after search-after-cursor}))
-
-                   ;; Empty query
-                   :else
-                   (ast/query []
-                             {:sort sort-descriptors
-                              :limit limit-int
-                              :offset offset-int
-                              :branch branch-name
-                              :after search-after-cursor}))
 
         _ (log/log-info (str "AST query built: " ast-query))
 
@@ -220,13 +220,13 @@
 
         ;; Execute query
         result (if (seq (:clauses ast-query))
-                (index/search-query index ast-query branch-name opts)
-                {:ids [] :total 0 :limit (or limit-int 100) :offset (or offset-int 0)})
+                 (index/search-query index ast-query branch-name opts)
+                 {:ids [] :total 0 :limit (or limit-int 100) :offset (or offset-int 0)})
 
         ;; Fetch full documents from storage using IDs
         results (if (seq (:ids result))
-                 (filter some? (map #(storage/get-document storage % branch-name) (:ids result)))
-                 [])
+                  (filter some? (map #(storage/get-document storage % branch-name) (:ids result)))
+                  [])
 
         ;; Prepare response with next cursor if available
         response-body (cond-> {:results (vec results)
@@ -346,19 +346,19 @@
        (let [result (handlers/handle-export-documents storage (build-request-context request {:metadata {:endpoint "/api/v1/export"}}))]
          (-> (response/response (:body result))
              (response/status (:status result))))))
-  (POST "/api/v1/backup" {:keys [body]}
-    (let [result (handlers/handle-backup storage body)]
+   (POST "/api/v1/backup" {:keys [body]}
+     (let [result (handlers/handle-backup storage body)]
        (-> (response/response (:body result))
            (response/status (:status result)))))
    (POST "/api/v1/restore" {:keys [params] :as request}
-    (let [context (build-request-context request {:metadata {:endpoint "/api/v1/restore"}})
-          params* (keywordize-params params)
-          backup-file (:tempfile params)
-          result (handlers/handle-restore storage backup-file (merge params* context))]
+     (let [context (build-request-context request {:metadata {:endpoint "/api/v1/restore"}})
+           params* (keywordize-params params)
+           backup-file (:tempfile params)
+           result (handlers/handle-restore storage backup-file (merge params* context))]
        (-> (response/response (:body result))
            (response/status (:status result)))))
-  (POST "/api/v1/export" {:keys [body]}
-    (let [result (handlers/handle-export storage body)]
+   (POST "/api/v1/export" {:keys [body]}
+     (let [result (handlers/handle-export storage body)]
        (-> (response/response (:body result))
            (response/status (:status result)))))
    (route/not-found (response/not-found {:error "Not Found"}))))

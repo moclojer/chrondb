@@ -32,4 +32,4 @@
                        (log/log-error "An error occurred" e))))]
       (is (str/includes? output "Test exception"))
       (is (str/includes? output "java.lang.Exception"))
-      (is (str/includes? output "chrondb.util.logging_test"))))) 
+      (is (str/includes? output "chrondb.util.logging_test")))))

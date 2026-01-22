@@ -207,7 +207,7 @@
 (deftest test-ast-conversion-new-operators
   (testing "AST conversion for IS NULL"
     (let [condition {:type :is-null :field "deleted_at"}
-          ast (require 'chrondb.api.sql.execution.ast-converter)
+          _ (require 'chrondb.api.sql.execution.ast-converter)
           converter @(resolve 'chrondb.api.sql.execution.ast-converter/condition->ast-clause)
           result (converter condition)]
       (is (= :missing (:type result)))

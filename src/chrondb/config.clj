@@ -9,8 +9,8 @@
          :sign-commits false}
    :storage {:data-dir "data"}
    :logging {:level :info  ; :debug, :info, :warn, :error
-            :output :stdout  ; :stdout, :file
-            :file "chrondb.log"}})
+             :output :stdout  ; :stdout, :file
+             :file "chrondb.log"}})
 
 (defn- deep-merge
   "Recursively merges maps"
