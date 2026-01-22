@@ -124,8 +124,7 @@
    :path, :document-id, :operation and :flags."
   ([context]
    (context->note context nil))
-  ([context {:keys [commit-id commit-message branch path document-id operation flags metadata timestamp]
-             }]
+  ([context {:keys [commit-id commit-message branch path document-id operation flags metadata timestamp]}]
    (let [merged (-> context
                     (merge-into-context {:flags flags
                                          :metadata metadata

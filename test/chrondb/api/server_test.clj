@@ -66,4 +66,4 @@
       (.stop server)
       (.close storage)
       (.close index)
-      (delete-directory "test-index")))) 
+      (delete-directory "test-index"))))

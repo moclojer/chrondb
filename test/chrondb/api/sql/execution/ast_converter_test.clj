@@ -1,7 +1,7 @@
  (ns chrondb.api.sql.execution.ast-converter-test
-  (:require [clojure.test :refer [deftest is testing]]
-            [chrondb.api.sql.execution.ast-converter :as converter]
-            [chrondb.query.ast :as ast]))
+   (:require [clojure.test :refer [deftest is testing]]
+             [chrondb.api.sql.execution.ast-converter :as converter]
+             [chrondb.query.ast :as ast]))
 
 (deftest condition->ast-clause-fts-test
   (is (= (ast/fts :content "time travel")

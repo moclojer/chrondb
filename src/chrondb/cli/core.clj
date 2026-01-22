@@ -59,15 +59,15 @@
                              [nil "--since COMMIT"]]
                    :args 1}
    "search" {:doc "Search documents using AST queries"
-              :usage "chrondb search [--query QUERY] [--q QUERY_STRING] [--limit N] [--offset N] [--sort FIELD:asc|desc] [--branch BRANCH]"
-              :options [[nil "--q QUERY" "Query string for full-text search"]
+             :usage "chrondb search [--query QUERY] [--q QUERY_STRING] [--limit N] [--offset N] [--sort FIELD:asc|desc] [--branch BRANCH]"
+             :options [[nil "--q QUERY" "Query string for full-text search"]
                        [nil "--query QUERY" "EDN query map"]
                        [nil "--branch BRANCH" "Branch name"]
                        [nil "--limit N" :parse-fn #(Integer/parseInt %)]
                        [nil "--offset N" :parse-fn #(Integer/parseInt %)]
                        [nil "--sort SORT" "Sort specification (field:asc or field:desc)"]
                        [nil "--after CURSOR" "Cursor for pagination"]]
-              :args 0}})
+             :args 0}})
 
 (defn usage
   ([]

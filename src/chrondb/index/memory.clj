@@ -50,16 +50,16 @@
           original-value (:value query-map)
           ;; Convert to AST format with :clauses
           query-map (if (and original-field original-value (not (:clauses query-map)))
-                     (let [field original-field
-                           value original-value
+                      (let [field original-field
+                            value original-value
                            ;; For "content" field, search in all fields (match-all with wildcard)
-                           clause (if (= field "content")
-                                   {:type :match-all}
-                                   {:type :wildcard
-                                    :field field
-                                    :value (str value "*")})]
-                       {:clauses [clause]})
-                     query-map)
+                            clause (if (= field "content")
+                                     {:type :match-all}
+                                     {:type :wildcard
+                                      :field field
+                                      :value (str value "*")})]
+                        {:clauses [clause]})
+                      query-map)
           {:keys [clauses]} query-map
           limit (max 1 limit)
           offset (max 0 offset)
@@ -96,23 +96,23 @@
                         false)))
           ;; Special handling for content field search
           content-value (when (and original-field (= "content" original-field))
-                         original-value)
+                          original-value)
 
           matches? (if content-value
                     ;; For content field, search in all fields of the document
                     ;; Similar to the search function - check if value appears in any field
-                    (fn [doc]
-                      (let [query-lower (str/lower-case (str content-value))]
-                        (some (fn [[k v]]
-                                (when (and (not= k :_table)
-                                         (string? v))
-                                  (str/includes? (str/lower-case v) query-lower)))
-                              doc)))
+                     (fn [doc]
+                       (let [query-lower (str/lower-case (str content-value))]
+                         (some (fn [[k v]]
+                                 (when (and (not= k :_table)
+                                            (string? v))
+                                   (str/includes? (str/lower-case v) query-lower)))
+                               doc)))
                     ;; Normal clause-based matching
-                    (fn [doc]
-                      (if (seq clauses)
-                        (every? #(matcher doc %) clauses)
-                        true)))
+                     (fn [doc]
+                       (if (seq clauses)
+                         (every? #(matcher doc %) clauses)
+                         true)))
           docs (->> (.values data)
                     (filter matches?)
                     (map :id)

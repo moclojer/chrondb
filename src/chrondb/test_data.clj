@@ -27,4 +27,4 @@
    Includes all sample data plus an additional user with the test search username."
   (conj sample-data
         {:username test-search-username
-         :age      ((faker/person :en) :age)})) 
+         :age      ((faker/person :en) :age)}))

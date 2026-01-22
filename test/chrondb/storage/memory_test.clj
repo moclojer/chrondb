@@ -22,4 +22,4 @@
           (is (protocol/delete-document storage "1"))
           (is (nil? (protocol/get-document storage "1")))))
 
-      (.close storage)))) 
+      (.close storage))))
