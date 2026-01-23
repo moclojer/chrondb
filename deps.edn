@@ -13,8 +13,10 @@
              org.apache.lucene/lucene-queryparser      {:mvn/version "9.8.0"}
              org.apache.lucene/lucene-analyzers-common {:mvn/version "8.11.2"}
              org.eclipse.jgit/org.eclipse.jgit         {:mvn/version "6.7.0.202309050840-r"}
-             org.eclipse.jgit/org.eclipse.jgit.ssh.apache {:mvn/version "6.7.0.202309050840-r"}
-             org.eclipse.jgit/org.eclipse.jgit.ssh.apache.agent {:mvn/version "6.7.0.202309050840-r"}
+             org.eclipse.jgit/org.eclipse.jgit.ssh.apache {:mvn/version "6.7.0.202309050840-r"
+                                                                        :exclusions [org.apache.sshd/sshd-sftp]}
+             org.eclipse.jgit/org.eclipse.jgit.ssh.apache.agent {:mvn/version "6.7.0.202309050840-r"
+                                                                              :exclusions [org.apache.sshd/sshd-sftp]}
              org.apache.commons/commons-compress       {:mvn/version "1.26.1"}
              org.slf4j/slf4j-api                       {:mvn/version "2.0.9"}
              org.slf4j/slf4j-simple                    {:mvn/version "2.0.9"}
