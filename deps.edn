@@ -90,6 +90,9 @@
              :build {:deps {io.github.clojure/tools.build {:git/tag "v0.9.4" :git/sha "76b78fe"}}
                      :extra-paths ["dev"]
                      :main-opts ["-m" "chrondb.build"]}
+             :shared-lib {:deps {io.github.clojure/tools.build {:git/tag "v0.9.4" :git/sha "76b78fe"}}
+                          :extra-paths ["dev" "java"]
+                          :main-opts ["-m" "chrondb.shared-library"]}
              :dev {:extra-paths ["dev"]
                    :extra-deps {ring/ring-devel {:mvn/version "1.10.0"}}}
              :uberjar {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.303"}}

@@ -1,0 +1,112 @@
+name: Build Shared Library
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "java/**"
+      - "src/chrondb/lib/**"
+      - "bindings/**"
+      - "dev/chrondb/shared_library.clj"
+
+jobs:
+  build-shared-lib:
+    runs-on: ${{ matrix.os }}
+    name: "Build shared library on ${{ matrix.os }}"
+    strategy:
+      matrix:
+        os: ["macos-13", "ubuntu-22.04"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeLaGuardo/setup-clojure@13.4
+        with:
+          cli: 1.12.3.1577
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          version: "22.3.2"
+          java-version: "17"
+          distribution: "graalvm"
+          components: "native-image"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build shared library preparation
+        run: clojure -M:shared-lib
+
+      - name: Build native shared library
+        run: native-image @target/shared-image-args
+
+      - name: List output files
+        run: ls -la target/libchrondb* target/graal_isolate* || true
+
+      - uses: actions/upload-artifact@v4.6.2
+        with:
+          name: libchrondb-${{ runner.os }}
+          path: |
+            target/libchrondb.*
+            target/graal_isolate.h
+            target/graal_isolate_dynamic.h
+            target/libchrondb.h
+            target/libchrondb_dynamic.h
+
+  test-rust-bindings:
+    needs: build-shared-lib
+    runs-on: ${{ matrix.os }}
+    name: "Test Rust bindings on ${{ matrix.os }}"
+    strategy:
+      matrix:
+        os: ["macos-13", "ubuntu-22.04"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: libchrondb-${{ runner.os }}
+          path: target/
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Run Rust tests
+        working-directory: bindings/rust
+        env:
+          CHRONDB_LIB_DIR: ${{ github.workspace }}/target
+        run: cargo test
+
+  test-python-bindings:
+    needs: build-shared-lib
+    runs-on: ${{ matrix.os }}
+    name: "Test Python bindings on ${{ matrix.os }}"
+    strategy:
+      matrix:
+        os: ["macos-13", "ubuntu-22.04"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: libchrondb-${{ runner.os }}
+          path: target/
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: pip install pytest
+
+      - name: Determine library extension
+        id: libext
+        run: |
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            echo "ext=dylib" >> $GITHUB_OUTPUT
+          else
+            echo "ext=so" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run Python tests
+        working-directory: bindings/python
+        env:
+          CHRONDB_LIB_PATH: ${{ github.workspace }}/target/libchrondb.${{ steps.libext.outputs.ext }}
+        run: pytest tests/ -v

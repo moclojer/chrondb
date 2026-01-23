@@ -24,6 +24,20 @@ chrondb_*
 META-INF/
 target/native/
 
+# Rust bindings
+bindings/rust/target/
+bindings/rust/Cargo.lock
+
+# Python bindings
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+bindings/python/dist/
+bindings/python/build/
+.venv/
+
 # OS
 .DS_Store
 Thumbs.db

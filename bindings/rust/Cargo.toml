@@ -1,0 +1,16 @@
+[package]
+name = "chrondb"
+version = "0.1.0"
+edition = "2021"
+description = "Rust bindings for ChronDB - a time-traveling key/value database"
+license = "AGPL-3.0"
+repository = "https://github.com/moclojer/chrondb"
+
+[dependencies]
+serde_json = "1"
+
+[build-dependencies]
+bindgen = "0.69"
+
+[dev-dependencies]
+tempfile = "3"
