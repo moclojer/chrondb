@@ -107,7 +107,8 @@
    "org.eclipse.jgit.internal.storage.file.FileReftableStack"
    "org.eclipse.jgit.internal.storage.file.FileReftableDatabase"
    "com.fasterxml.jackson.core.JsonFactory"
-   "com.fasterxml.jackson.core.io.SerializedString"])
+   "com.fasterxml.jackson.core.io.SerializedString"
+   "org.apache.sshd.sftp.client.fs.SftpFileSystemProvider"])
 
 (def jar-path "target/chrondb.jar")
 

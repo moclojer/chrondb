@@ -9,7 +9,6 @@
 
       :push-enabled true    ; Push commits to remote after each write
       :push-notes true      ; Include transaction metadata (refs/notes/chrondb)
-      :push-mode :sync      ; :sync = push per commit, :batch = deferred push
       :pull-on-start true   ; Fetch latest from remote on initialization
 
       ;; SSH settings (only needed for git@ URLs)

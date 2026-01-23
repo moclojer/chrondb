@@ -17,10 +17,18 @@
    Handles push, pull, fetch, clone, and remote configuration.
    Supports batch push mode to avoid per-document network overhead."
   (:require [chrondb.storage.git.transport :as transport]
-            [chrondb.util.logging :as log])
+            [chrondb.util.logging :as log]
+            [clojure.string :as str])
   (:import [org.eclipse.jgit.api Git]
            [org.eclipse.jgit.lib Repository]
            [org.eclipse.jgit.transport RefSpec URIish]))
+
+(defn- redact-url
+  "Redacts credentials from a URL for safe logging."
+  [url]
+  (if (or (nil? url) (str/starts-with? url "git@"))
+    url
+    (str/replace url #"://[^@]+@" "://***@")))
 
 ;; --- Forward Declarations ---
 
@@ -84,7 +92,7 @@
   "Adds a remote to the repository.
    Returns true if successful, throws on failure."
   [^Git git remote-name remote-url]
-  (log/log-info (str "Adding remote '" remote-name "': " remote-url))
+  (log/log-info (str "Adding remote '" remote-name "': " (redact-url remote-url)))
   (-> git
       (.remoteAdd)
       (.setName remote-name)
@@ -169,8 +177,7 @@
             (catch Exception e
               (log/log-error (str "Push failed: " (.getMessage e)) e)
               (throw (ex-info "Failed to push to remote"
-                              {:remote-url (get-in config-map [:git :remote-url])
-                               :cause (.getMessage e)} e)))))))))
+                              {:cause (.getMessage e)} e)))))))))
 
 ;; --- Fetch/Pull Operations ---
 
@@ -220,8 +227,7 @@
         (catch Exception e
           (log/log-error (str "Fetch failed: " (.getMessage e)) e)
           (throw (ex-info "Failed to fetch from remote"
-                          {:remote-url (get-in config-map [:git :remote-url])
-                           :cause (.getMessage e)} e)))))))
+                          {:cause (.getMessage e)} e)))))))
 
 (defn pull-from-remote
   "Pulls changes from the remote: fetches and fast-forwards the local branch.
@@ -261,27 +267,28 @@
 
               :else
               ;; Try fast-forward
-              (try
-                (let [rev-walk (org.eclipse.jgit.revwalk.RevWalk. repo)
-                      local-commit (.parseCommit rev-walk local-ref)
-                      remote-commit (.parseCommit rev-walk remote-ref)]
-                  (if (.isMergedInto rev-walk local-commit remote-commit)
-                    ;; Fast-forward possible
-                    (let [ref-update (.updateRef repo (str "refs/heads/" branch))]
-                      (.setExpectedOldObjectId ref-update local-ref)
-                      (.setNewObjectId ref-update remote-ref)
-                      (.update ref-update)
-                      (log/log-info (str "Fast-forwarded to " (.abbreviate remote-ref 8)))
-                      (.close rev-walk)
-                      :pulled)
-                    ;; Diverged
-                    (do
-                      (log/log-warn "Local and remote have diverged, cannot fast-forward")
-                      (.close rev-walk)
-                      :conflict)))
-                (catch Exception e
-                  (log/log-error (str "Pull merge failed: " (.getMessage e)) e)
-                  :conflict)))))))))
+              (let [rev-walk (org.eclipse.jgit.revwalk.RevWalk. repo)]
+                (try
+                  (let [local-commit (.parseCommit rev-walk local-ref)
+                        remote-commit (.parseCommit rev-walk remote-ref)]
+                    (if (.isMergedInto rev-walk local-commit remote-commit)
+                      ;; Fast-forward possible
+                      (let [ref-update (.updateRef repo (str "refs/heads/" branch))]
+                        (.setExpectedOldObjectId ref-update local-ref)
+                        (.setNewObjectId ref-update remote-ref)
+                        (.update ref-update)
+                        (log/log-info (str "Fast-forwarded to "
+                                           (subs (.getName remote-ref) 0 8)))
+                        :pulled)
+                      ;; Diverged
+                      (do
+                        (log/log-warn "Local and remote have diverged, cannot fast-forward")
+                        :conflict)))
+                  (catch Exception e
+                    (log/log-error (str "Pull merge failed: " (.getMessage e)) e)
+                    :conflict)
+                  (finally
+                    (.close rev-walk)))))))))))
 
 ;; --- Clone Operations ---
 
@@ -296,7 +303,7 @@
 
    Returns the cloned Repository instance."
   [remote-url local-path config-map]
-  (log/log-info (str "Cloning remote repository: " remote-url " -> " local-path))
+  (log/log-info (str "Cloning remote repository to " local-path))
 
   ;; Initialize SSH for git@ URLs
   (when (.startsWith ^String remote-url "git@")
@@ -314,10 +321,10 @@
                     (.call))
             repo (.getRepository git)]
         (log/log-info (str "Clone completed: " (.getRemoteNames repo)))
+        (.close git)
         repo)
       (catch Exception e
         (log/log-error (str "Clone failed: " (.getMessage e)) e)
         (throw (ex-info "Failed to clone remote repository"
-                        {:remote-url remote-url
-                         :local-path local-path
+                        {:local-path local-path
                          :cause (.getMessage e)} e))))))

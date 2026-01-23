@@ -33,7 +33,6 @@ Add the remote settings to your `config.edn`:
        ;; Push settings
        :push-enabled true     ; Enable automatic push after commits
        :push-notes true       ; Push transaction metadata (refs/notes/chrondb)
-       :push-mode :sync       ; :sync = per-commit, :batch = deferred
 
        ;; Pull settings
        :pull-on-start true    ; Pull latest on storage initialization
@@ -52,7 +51,6 @@ Add the remote settings to your `config.edn`:
 | `:remote-url` | `nil` | Remote repository URL. `nil` = local only |
 | `:push-enabled` | `true` | Push to remote after each commit |
 | `:push-notes` | `true` | Include transaction notes in push/fetch |
-| `:push-mode` | `:sync` | `:sync` = push per commit, `:batch` = deferred |
 | `:pull-on-start` | `true` | Fetch & merge from remote on init |
 | `:ssh` | `{}` | SSH config (`:ssh-dir`, `:auth-methods`) |
 
@@ -164,14 +162,14 @@ Each commit note contains:
 
 ## Push Modes
 
-### Sync Mode (`:sync`)
+### Default (per-commit)
 
-Default. Each `save-document` or `delete-document` triggers an immediate push. Best for:
+Each `save-document` or `delete-document` triggers an immediate push. Best for:
 - Single-node deployments
 - Low write volume
 - Real-time sync requirements
 
-### Batch Mode (`:batch`)
+### Batch Mode (via `with-batch`)
 
 Push is deferred until the end of a `with-batch` block. Best for:
 - Bulk imports
