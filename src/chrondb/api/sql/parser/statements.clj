@@ -14,12 +14,14 @@
   (let [from-index (tokenizer/find-token-index tokens "from")
         where-index (tokenizer/find-token-index tokens "where")
         group-index (tokenizer/find-token-index tokens "group")
-        ;; Only treat "order" as ORDER BY if followed by "by"
-        order-index (let [idx (tokenizer/find-token-index tokens "order")]
-                      (when (and idx
-                                 (< (inc idx) (count tokens))
-                                 (= "by" (str/lower-case (nth tokens (inc idx)))))
-                        idx))
+        ;; Find "order" followed by "by" (skip table/column names)
+        order-index (loop [start 0]
+                      (let [idx (tokenizer/find-token-index-from tokens "order" start)]
+                        (when idx
+                          (if (and (< (inc idx) (count tokens))
+                                   (= "by" (str/lower-case (nth tokens (inc idx)))))
+                            idx
+                            (recur (inc idx))))))
         limit-index (tokenizer/find-token-index tokens "limit")
         join-index (tokenizer/find-token-index tokens "join")
         inner-join-index (let [inner-idx (tokenizer/find-token-index tokens "inner")]

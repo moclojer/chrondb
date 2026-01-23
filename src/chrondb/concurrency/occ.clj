@@ -143,12 +143,12 @@
 (defn get-branch-lock
   "Get or create a lock for a branch."
   [branch]
-  (let [lock (get @branch-locks branch)]
-    (if lock
-      lock
-      (let [new-lock (Object.)]
-        (swap! branch-locks assoc branch new-lock)
-        new-lock))))
+  (get (swap! branch-locks
+             (fn [locks]
+               (if (contains? locks branch)
+                 locks
+                 (assoc locks branch (Object.)))))
+       branch))
 
 (defmacro with-branch-lock
   "Execute body with a lock on the specified branch.
