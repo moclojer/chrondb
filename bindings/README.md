@@ -145,6 +145,36 @@ cd bindings/python
 CHRONDB_LIB_PATH=../../target/libchrondb.dylib pytest tests/ -v
 ```
 
+## Installing from GitHub Releases
+
+Pre-built binaries are available as GitHub Releases. Each push to `main` updates a rolling `latest` prerelease; tagged versions (e.g. `v0.1.0`) produce stable releases.
+
+### Python
+
+```bash
+# Latest stable release
+pip install https://github.com/moclojer/chrondb/releases/download/v0.1.0/chrondb-0.1.0-py3-none-manylinux_2_35_x86_64.whl
+
+# Rolling release from main
+pip install https://github.com/moclojer/chrondb/releases/download/latest/chrondb-latest-py3-none-manylinux_2_35_x86_64.whl
+```
+
+### Rust
+
+```bash
+# Download and extract (latest or specific version)
+curl -L https://github.com/moclojer/chrondb/releases/download/latest/chrondb-rust-latest-linux-x86_64.tar.gz | tar xz
+cd chrondb-rust-latest-linux-x86_64
+CHRONDB_LIB_DIR=./lib cargo build
+```
+
+### C / Other Languages
+
+```bash
+curl -L https://github.com/moclojer/chrondb/releases/download/latest/libchrondb-latest-linux-x86_64.tar.gz | tar xz
+# Link against lib/libchrondb.so, include headers from include/
+```
+
 ## Maintenance
 
 ### Adding a New Operation to the API

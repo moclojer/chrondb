@@ -36,6 +36,7 @@ __pycache__/
 .pytest_cache/
 bindings/python/dist/
 bindings/python/build/
+bindings/python/chrondb/lib/libchrondb*
 .venv/
 
 # OS

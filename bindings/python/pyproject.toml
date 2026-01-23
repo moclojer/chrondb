@@ -13,5 +13,8 @@ readme = "README.md"
 [project.urls]
 Repository = "https://github.com/moclojer/chrondb"
 
+[tool.setuptools.package-data]
+chrondb = ["lib/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

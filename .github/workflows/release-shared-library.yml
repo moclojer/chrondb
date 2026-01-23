@@ -1,0 +1,289 @@
+name: Release Shared Library
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - "java/**"
+      - "src/chrondb/lib/**"
+      - "bindings/**"
+      - "dev/chrondb/shared_library.clj"
+  workflow_dispatch:
+
+jobs:
+  build-shared-lib:
+    runs-on: ${{ matrix.os }}
+    name: "Build shared library on ${{ matrix.os }}"
+    strategy:
+      matrix:
+        os: ["macos-13", "ubuntu-22.04"]
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            RELEASE_TAG="${GITHUB_REF_NAME}"
+            PRERELEASE=false
+          else
+            VERSION="latest"
+            RELEASE_TAG="latest"
+            PRERELEASE=true
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+          echo "prerelease=$PRERELEASE" >> $GITHUB_OUTPUT
+
+      - uses: DeLaGuardo/setup-clojure@13.4
+        with:
+          cli: 1.12.3.1577
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: graalvm/setup-graalvm@v1
+        with:
+          version: "22.3.2"
+          java-version: "17"
+          distribution: "graalvm"
+          components: "native-image"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build shared library preparation
+        run: clojure -M:shared-lib
+
+      - name: Build native shared library
+        run: native-image @target/shared-image-args
+
+      - name: List output files
+        run: ls -la target/libchrondb* target/graal_isolate* || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libchrondb-${{ runner.os }}-x86_64
+          path: |
+            target/libchrondb.*
+            target/graal_isolate.h
+            target/graal_isolate_dynamic.h
+            target/libchrondb.h
+            target/libchrondb_dynamic.h
+
+  package-rust:
+    needs: build-shared-lib
+    runs-on: ${{ matrix.os }}
+    name: "Package Rust binding on ${{ matrix.os }}"
+    strategy:
+      matrix:
+        os: ["macos-13", "ubuntu-22.04"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: libchrondb-${{ runner.os }}-x86_64
+          path: target/
+
+      - name: Determine platform and extension
+        id: platform
+        run: |
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            echo "ext=dylib" >> $GITHUB_OUTPUT
+            echo "name=macos-x86_64" >> $GITHUB_OUTPUT
+          else
+            echo "ext=so" >> $GITHUB_OUTPUT
+            echo "name=linux-x86_64" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Package Rust tarball
+        env:
+          VERSION: ${{ needs.build-shared-lib.outputs.version }}
+        run: |
+          PLATFORM="${{ steps.platform.outputs.name }}"
+          EXT="${{ steps.platform.outputs.ext }}"
+          PKG_DIR="chrondb-rust-${VERSION}-${PLATFORM}"
+
+          mkdir -p "${PKG_DIR}/lib"
+          mkdir -p "${PKG_DIR}/include"
+          mkdir -p "${PKG_DIR}/src"
+
+          cp target/libchrondb.${EXT} "${PKG_DIR}/lib/"
+          cp target/libchrondb.h "${PKG_DIR}/include/"
+          cp target/graal_isolate.h "${PKG_DIR}/include/"
+          cp target/libchrondb_dynamic.h "${PKG_DIR}/include/" || true
+          cp target/graal_isolate_dynamic.h "${PKG_DIR}/include/" || true
+
+          cp -r bindings/rust/src/* "${PKG_DIR}/src/"
+          cp bindings/rust/Cargo.toml "${PKG_DIR}/"
+          cp bindings/rust/build.rs "${PKG_DIR}/"
+          cp bindings/rust/wrapper.h "${PKG_DIR}/"
+
+          tar -czf "chrondb-rust-${VERSION}-${PLATFORM}.tar.gz" "${PKG_DIR}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chrondb-rust-${{ steps.platform.outputs.name }}
+          path: chrondb-rust-*.tar.gz
+
+  package-python:
+    needs: build-shared-lib
+    runs-on: ${{ matrix.os }}
+    name: "Package Python wheel on ${{ matrix.os }}"
+    strategy:
+      matrix:
+        os: ["macos-13", "ubuntu-22.04"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: libchrondb-${{ runner.os }}-x86_64
+          path: target/
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tools
+        run: pip install build wheel
+
+      - name: Determine platform
+        id: platform
+        run: |
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            echo "ext=dylib" >> $GITHUB_OUTPUT
+            echo "name=macos-x86_64" >> $GITHUB_OUTPUT
+            echo "wheel_tag=macosx_13_0_x86_64" >> $GITHUB_OUTPUT
+          else
+            echo "ext=so" >> $GITHUB_OUTPUT
+            echo "name=linux-x86_64" >> $GITHUB_OUTPUT
+            echo "wheel_tag=manylinux_2_35_x86_64" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Prepare wheel
+        env:
+          VERSION: ${{ needs.build-shared-lib.outputs.version }}
+        working-directory: bindings/python
+        run: |
+          EXT="${{ steps.platform.outputs.ext }}"
+
+          mkdir -p chrondb/lib
+          cp ../../target/libchrondb.${EXT} chrondb/lib/
+
+          if [ "$VERSION" != "latest" ]; then
+            sed -i.bak "s/version = \"0.1.0\"/version = \"${VERSION}\"/" pyproject.toml
+            rm -f pyproject.toml.bak
+          else
+            sed -i.bak "s/version = \"0.1.0\"/version = \"0.0.0.dev0\"/" pyproject.toml
+            rm -f pyproject.toml.bak
+          fi
+
+      - name: Build wheel
+        working-directory: bindings/python
+        run: python -m build --wheel
+
+      - name: Retag wheel with platform
+        env:
+          VERSION: ${{ needs.build-shared-lib.outputs.version }}
+        working-directory: bindings/python
+        run: |
+          WHEEL_TAG="${{ steps.platform.outputs.wheel_tag }}"
+          PLATFORM="${{ steps.platform.outputs.name }}"
+
+          if [ "$VERSION" = "latest" ]; then
+            PY_VERSION="0.0.0.dev0"
+          else
+            PY_VERSION="$VERSION"
+          fi
+
+          ORIG_WHEEL=$(ls dist/*.whl)
+          FINAL_NAME="chrondb-${VERSION}-py3-none-${WHEEL_TAG}.whl"
+
+          pip install wheel
+          cd dist
+          wheel tags --remove --platform-tag "${WHEEL_TAG}" *.whl
+          RETAGGED=$(ls *.whl)
+          mv "$RETAGGED" "$FINAL_NAME"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chrondb-python-${{ steps.platform.outputs.name }}
+          path: bindings/python/dist/chrondb-*.whl
+
+  create-release:
+    needs: [build-shared-lib, package-rust, package-python]
+    runs-on: ubuntu-22.04
+    name: "Create GitHub Release"
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Prepare release assets
+        env:
+          VERSION: ${{ needs.build-shared-lib.outputs.version }}
+        run: |
+          mkdir -p release-assets
+
+          # Package C library tarballs
+          for platform in linux-x86_64 macos-x86_64; do
+            if [ "$platform" = "linux-x86_64" ]; then
+              ARTIFACT_DIR="artifacts/libchrondb-Linux-x86_64"
+            else
+              ARTIFACT_DIR="artifacts/libchrondb-macOS-x86_64"
+            fi
+
+            if [ -d "$ARTIFACT_DIR" ]; then
+              PKG_DIR="libchrondb-${VERSION}-${platform}"
+              mkdir -p "${PKG_DIR}/lib"
+              mkdir -p "${PKG_DIR}/include"
+
+              if [ "$platform" = "linux-x86_64" ]; then
+                cp "${ARTIFACT_DIR}/libchrondb.so" "${PKG_DIR}/lib/" || true
+              else
+                cp "${ARTIFACT_DIR}/libchrondb.dylib" "${PKG_DIR}/lib/" || true
+              fi
+              cp "${ARTIFACT_DIR}/libchrondb.h" "${PKG_DIR}/include/" || true
+              cp "${ARTIFACT_DIR}/graal_isolate.h" "${PKG_DIR}/include/" || true
+              cp "${ARTIFACT_DIR}/libchrondb_dynamic.h" "${PKG_DIR}/include/" || true
+              cp "${ARTIFACT_DIR}/graal_isolate_dynamic.h" "${PKG_DIR}/include/" || true
+
+              tar -czf "release-assets/libchrondb-${VERSION}-${platform}.tar.gz" "${PKG_DIR}"
+            fi
+          done
+
+          # Move Rust tarballs
+          cp artifacts/chrondb-rust-*/*.tar.gz release-assets/ || true
+
+          # Move Python wheels
+          cp artifacts/chrondb-python-*/*.whl release-assets/ || true
+
+          echo "Release assets:"
+          ls -la release-assets/
+
+      - name: Delete existing latest release
+        if: needs.build-shared-lib.outputs.prerelease == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest --yes || true
+          git push origin :refs/tags/latest || true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.build-shared-lib.outputs.release_tag }}
+          name: ${{ needs.build-shared-lib.outputs.release_tag == 'latest' && 'Latest (main)' || needs.build-shared-lib.outputs.release_tag }}
+          prerelease: ${{ needs.build-shared-lib.outputs.prerelease == 'true' }}
+          make_latest: ${{ needs.build-shared-lib.outputs.prerelease == 'false' }}
+          files: release-assets/*
+          generate_release_notes: ${{ needs.build-shared-lib.outputs.prerelease == 'false' }}
+          body: ${{ needs.build-shared-lib.outputs.prerelease == 'true' && 'Rolling release from main branch. Updated on every push.' || '' }}
