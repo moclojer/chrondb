@@ -39,7 +39,7 @@
 
 (defn- cli-usage
   ([] ((@cli-usage-fn)))
-  ([command] ((@cli-usage-fn) command)))
+  ([command] (@cli-usage-fn command)))
 
 (defn- cli-main [& args]
   (apply (@cli-main-fn) args))
@@ -48,10 +48,10 @@
   ((@server-usage-fn)))
 
 (defn- parse-server-command [args]
-  ((@server-parse-fn) args))
+  (@server-parse-fn args))
 
 (defn- dispatch-server! [command args]
-  ((@server-dispatch-fn) command args))
+  (@server-dispatch-fn command args))
 
 (defn detect-mode
   [args]
