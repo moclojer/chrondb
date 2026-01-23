@@ -288,6 +288,7 @@
           resource-config {:resources {:includes [{:pattern "org/eclipse/jgit/internal/JGitText.*"}
                                                   {:pattern "org/eclipse/jgit/internal/JGitText_.*"}
                                                   {:pattern "clojure/.*"}
+                                                  {:pattern "chrondb/.*"}
                                                   {:pattern "META-INF/services/.*"}
                                                   {:pattern "META-INF/native-image/clojure/.*"}]}}]
       (spit (io/file native-config-dir "reflect-config.json") (json/write-str reflect-config))

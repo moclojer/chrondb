@@ -34,7 +34,7 @@
    :main       'chrondb.core
    :basis      basis
    :version    (project-version)
-   :ns-compile '[chrondb.core]
+   :ns-compile '[chrondb.core chrondb.lib.core]
    :uber-file  jar-file
    :jar-file   jar-file
    :target     "target"

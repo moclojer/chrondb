@@ -59,7 +59,7 @@ impl ChronDB {
         let c_index = CString::new(index_path).map_err(|e| ChronDBError::OpenFailed(e.to_string()))?;
 
         let handle = unsafe {
-            ffi::chrondb_open(thread, c_data.as_ptr(), c_index.as_ptr())
+            ffi::chrondb_open(thread, c_data.as_ptr() as *mut c_char, c_index.as_ptr() as *mut c_char)
         };
 
         if handle < 0 {
@@ -84,8 +84,8 @@ impl ChronDB {
             ffi::chrondb_put(
                 self.thread,
                 self.handle,
-                c_id.as_ptr(),
-                c_json.as_ptr(),
+                c_id.as_ptr() as *mut c_char,
+                c_json.as_ptr() as *mut c_char,
                 Self::ptr_or_null(&c_branch),
             )
         };
@@ -104,7 +104,7 @@ impl ChronDB {
             ffi::chrondb_get(
                 self.thread,
                 self.handle,
-                c_id.as_ptr(),
+                c_id.as_ptr() as *mut c_char,
                 Self::ptr_or_null(&c_branch),
             )
         };
@@ -126,7 +126,7 @@ impl ChronDB {
             ffi::chrondb_delete(
                 self.thread,
                 self.handle,
-                c_id.as_ptr(),
+                c_id.as_ptr() as *mut c_char,
                 Self::ptr_or_null(&c_branch),
             )
         };
@@ -147,7 +147,7 @@ impl ChronDB {
             ffi::chrondb_list_by_prefix(
                 self.thread,
                 self.handle,
-                c_prefix.as_ptr(),
+                c_prefix.as_ptr() as *mut c_char,
                 Self::ptr_or_null(&c_branch),
             )
         };
@@ -167,7 +167,7 @@ impl ChronDB {
             ffi::chrondb_list_by_table(
                 self.thread,
                 self.handle,
-                c_table.as_ptr(),
+                c_table.as_ptr() as *mut c_char,
                 Self::ptr_or_null(&c_branch),
             )
         };
@@ -187,7 +187,7 @@ impl ChronDB {
             ffi::chrondb_history(
                 self.thread,
                 self.handle,
-                c_id.as_ptr(),
+                c_id.as_ptr() as *mut c_char,
                 Self::ptr_or_null(&c_branch),
             )
         };
@@ -210,7 +210,7 @@ impl ChronDB {
             ffi::chrondb_query(
                 self.thread,
                 self.handle,
-                c_query.as_ptr(),
+                c_query.as_ptr() as *mut c_char,
                 Self::ptr_or_null(&c_branch),
             )
         };
@@ -251,10 +251,10 @@ impl ChronDB {
         }
     }
 
-    fn ptr_or_null(opt: &Option<CString>) -> *const c_char {
+    fn ptr_or_null(opt: &Option<CString>) -> *mut c_char {
         match opt {
-            Some(cs) => cs.as_ptr(),
-            None => ptr::null(),
+            Some(cs) => cs.as_ptr() as *mut c_char,
+            None => ptr::null_mut(),
         }
     }
 
