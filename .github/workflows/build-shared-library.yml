@@ -15,7 +15,7 @@ jobs:
     name: "Build shared library on ${{ matrix.os }}"
     strategy:
       matrix:
-        os: ["macos-13", "ubuntu-22.04"]
+        os: ["macos-14", "ubuntu-22.04"]
     steps:
       - uses: actions/checkout@v4
 
@@ -41,7 +41,7 @@ jobs:
       - name: List output files
         run: ls -la target/libchrondb* target/graal_isolate* || true
 
-      - uses: actions/upload-artifact@v4.6.2
+      - uses: actions/upload-artifact@v4
         with:
           name: libchrondb-${{ runner.os }}
           path: |
@@ -57,7 +57,7 @@ jobs:
     name: "Test Rust bindings on ${{ matrix.os }}"
     strategy:
       matrix:
-        os: ["macos-13", "ubuntu-22.04"]
+        os: ["macos-14", "ubuntu-22.04"]
     steps:
       - uses: actions/checkout@v4
 
@@ -80,7 +80,7 @@ jobs:
     name: "Test Python bindings on ${{ matrix.os }}"
     strategy:
       matrix:
-        os: ["macos-13", "ubuntu-22.04"]
+        os: ["macos-14", "ubuntu-22.04"]
     steps:
       - uses: actions/checkout@v4
 

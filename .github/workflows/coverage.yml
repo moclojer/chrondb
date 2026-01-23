@@ -18,9 +18,10 @@ jobs:
           distribution: "graalvm"
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Install Clojure tools
-        uses: DeLaGuardo/setup-clojure@12.1
+        uses: DeLaGuardo/setup-clojure@13.4
         with:
-          cli: latest
+          cli: 1.12.3.1577
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Configure Git
         run: |
           git config --global user.name "GitHub Actions"

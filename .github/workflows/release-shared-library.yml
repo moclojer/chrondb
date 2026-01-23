@@ -17,7 +17,12 @@ jobs:
     name: "Build shared library on ${{ matrix.os }}"
     strategy:
       matrix:
-        os: ["macos-13", "ubuntu-22.04"]
+        os: ["macos-14", "ubuntu-22.04"]
+        include:
+          - os: macos-14
+            arch: aarch64
+          - os: ubuntu-22.04
+            arch: x86_64
     outputs:
       version: ${{ steps.version.outputs.version }}
       release_tag: ${{ steps.version.outputs.release_tag }}
@@ -65,7 +70,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: libchrondb-${{ runner.os }}-x86_64
+          name: libchrondb-${{ runner.os }}-${{ matrix.arch }}
           path: |
             target/libchrondb.*
             target/graal_isolate.h
@@ -79,13 +84,18 @@ jobs:
     name: "Package Rust binding on ${{ matrix.os }}"
     strategy:
       matrix:
-        os: ["macos-13", "ubuntu-22.04"]
+        os: ["macos-14", "ubuntu-22.04"]
+        include:
+          - os: macos-14
+            arch: aarch64
+          - os: ubuntu-22.04
+            arch: x86_64
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
         with:
-          name: libchrondb-${{ runner.os }}-x86_64
+          name: libchrondb-${{ runner.os }}-${{ matrix.arch }}
           path: target/
 
       - name: Determine platform and extension
@@ -93,10 +103,10 @@ jobs:
         run: |
           if [ "${{ runner.os }}" = "macOS" ]; then
             echo "ext=dylib" >> $GITHUB_OUTPUT
-            echo "name=macos-x86_64" >> $GITHUB_OUTPUT
+            echo "name=macos-${{ matrix.arch }}" >> $GITHUB_OUTPUT
           else
             echo "ext=so" >> $GITHUB_OUTPUT
-            echo "name=linux-x86_64" >> $GITHUB_OUTPUT
+            echo "name=linux-${{ matrix.arch }}" >> $GITHUB_OUTPUT
           fi
 
       - name: Package Rust tarball
@@ -135,13 +145,20 @@ jobs:
     name: "Package Python wheel on ${{ matrix.os }}"
     strategy:
       matrix:
-        os: ["macos-13", "ubuntu-22.04"]
+        os: ["macos-14", "ubuntu-22.04"]
+        include:
+          - os: macos-14
+            arch: aarch64
+            wheel_tag: macosx_14_0_arm64
+          - os: ubuntu-22.04
+            arch: x86_64
+            wheel_tag: manylinux_2_35_x86_64
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
         with:
-          name: libchrondb-${{ runner.os }}-x86_64
+          name: libchrondb-${{ runner.os }}-${{ matrix.arch }}
           path: target/
 
       - uses: actions/setup-python@v5
@@ -156,12 +173,10 @@ jobs:
         run: |
           if [ "${{ runner.os }}" = "macOS" ]; then
             echo "ext=dylib" >> $GITHUB_OUTPUT
-            echo "name=macos-x86_64" >> $GITHUB_OUTPUT
-            echo "wheel_tag=macosx_13_0_x86_64" >> $GITHUB_OUTPUT
+            echo "name=macos-${{ matrix.arch }}" >> $GITHUB_OUTPUT
           else
             echo "ext=so" >> $GITHUB_OUTPUT
-            echo "name=linux-x86_64" >> $GITHUB_OUTPUT
-            echo "wheel_tag=manylinux_2_35_x86_64" >> $GITHUB_OUTPUT
+            echo "name=linux-${{ matrix.arch }}" >> $GITHUB_OUTPUT
           fi
 
       - name: Prepare wheel
@@ -191,8 +206,7 @@ jobs:
           VERSION: ${{ needs.build-shared-lib.outputs.version }}
         working-directory: bindings/python
         run: |
-          WHEEL_TAG="${{ steps.platform.outputs.wheel_tag }}"
-          PLATFORM="${{ steps.platform.outputs.name }}"
+          WHEEL_TAG="${{ matrix.wheel_tag }}"
 
           if [ "$VERSION" = "latest" ]; then
             PY_VERSION="0.0.0.dev0"
@@ -200,10 +214,8 @@ jobs:
             PY_VERSION="$VERSION"
           fi
 
-          ORIG_WHEEL=$(ls dist/*.whl)
           FINAL_NAME="chrondb-${VERSION}-py3-none-${WHEEL_TAG}.whl"
 
-          pip install wheel
           cd dist
           wheel tags --remove --platform-tag "${WHEEL_TAG}" *.whl
           RETAGGED=$(ls *.whl)
@@ -234,11 +246,13 @@ jobs:
           mkdir -p release-assets
 
           # Package C library tarballs
-          for platform in linux-x86_64 macos-x86_64; do
+          for platform in linux-x86_64 macos-aarch64; do
             if [ "$platform" = "linux-x86_64" ]; then
               ARTIFACT_DIR="artifacts/libchrondb-Linux-x86_64"
+              LIB_FILE="libchrondb.so"
             else
-              ARTIFACT_DIR="artifacts/libchrondb-macOS-x86_64"
+              ARTIFACT_DIR="artifacts/libchrondb-macOS-aarch64"
+              LIB_FILE="libchrondb.dylib"
             fi
 
             if [ -d "$ARTIFACT_DIR" ]; then
@@ -246,11 +260,7 @@ jobs:
               mkdir -p "${PKG_DIR}/lib"
               mkdir -p "${PKG_DIR}/include"
 
-              if [ "$platform" = "linux-x86_64" ]; then
-                cp "${ARTIFACT_DIR}/libchrondb.so" "${PKG_DIR}/lib/" || true
-              else
-                cp "${ARTIFACT_DIR}/libchrondb.dylib" "${PKG_DIR}/lib/" || true
-              fi
+              cp "${ARTIFACT_DIR}/${LIB_FILE}" "${PKG_DIR}/lib/" || true
               cp "${ARTIFACT_DIR}/libchrondb.h" "${PKG_DIR}/include/" || true
               cp "${ARTIFACT_DIR}/graal_isolate.h" "${PKG_DIR}/include/" || true
               cp "${ARTIFACT_DIR}/libchrondb_dynamic.h" "${PKG_DIR}/include/" || true
