@@ -78,31 +78,49 @@
   (native-image/prepare-files)
 
   ;; Now read the generated args and modify for --shared
+  ;; The args file has one argument per line. -cp and -jar are followed by
+  ;; their value on the NEXT line. We need to:
+  ;;   - Remove -jar + its value line
+  ;;   - Remove -H:Class=...
+  ;;   - Append shared-classes dir to the classpath value line
   (let [original-args (slurp (io/file "target" "native-image-args"))
-        lines (string/split-lines original-args)
-        ;; Remove -jar and -H:Class= lines (not applicable for --shared)
-        filtered (remove (fn [line]
-                           (or (string/starts-with? line "-jar")
-                               (string/starts-with? line "-H:Class=")
-                               ;; Remove dashboard args that can cause issues
-                               (string/starts-with? line "-H:DashboardDump=")
-                               (string/starts-with? line "-H:+DashboardHeap")
-                               (string/starts-with? line "-H:+DashboardCode")
-                               (string/starts-with? line "-H:+DashboardBgv")
-                               (string/starts-with? line "-H:+DashboardJson")))
-                         lines)
-        ;; Update classpath to include our compiled Java classes
-        updated (map (fn [line]
-                       (if (string/starts-with? line "-cp")
-                         (let [path-sep (System/getProperty "path.separator")]
-                           (str line path-sep (.getAbsolutePath (io/file java-class-dir))))
-                         line))
-                     filtered)
-        ;; Add --shared and library name
+        lines (vec (string/split-lines original-args))
+        path-sep (System/getProperty "path.separator")
+        shared-classes-abs (.getAbsolutePath (io/file java-class-dir))
+        ;; Process lines with index awareness to handle -cp/-jar pairs
+        processed (loop [i 0
+                         result []]
+                    (if (>= i (count lines))
+                      result
+                      (let [line (nth lines i)]
+                        (cond
+                          ;; Skip -jar and its following value line
+                          (= line "-jar")
+                          (recur (+ i 2) result)
+
+                          ;; Skip -H:Class= and dashboard args
+                          (or (string/starts-with? line "-H:Class=")
+                              (string/starts-with? line "-H:DashboardDump=")
+                              (string/starts-with? line "-H:+DashboardHeap")
+                              (string/starts-with? line "-H:+DashboardCode")
+                              (string/starts-with? line "-H:+DashboardBgv")
+                              (string/starts-with? line "-H:+DashboardJson"))
+                          (recur (inc i) result)
+
+                          ;; -cp: keep it, and modify the next line (classpath value)
+                          (= line "-cp")
+                          (let [cp-value (nth lines (inc i))
+                                new-cp (str cp-value path-sep shared-classes-abs)]
+                            (recur (+ i 2) (conj result "-cp" new-cp)))
+
+                          ;; Everything else: keep as-is
+                          :else
+                          (recur (inc i) (conj result line))))))
+        ;; Add --shared and library name at the beginning
         shared-args (concat ["--shared"
                              "-H:Name=libchrondb"
                              (str "-H:Path=" (.getAbsolutePath (io/file "target")))]
-                            updated)
+                            processed)
         args-content (string/join "\n" shared-args)]
     (spit (io/file shared-args-file) args-content)
     (println (str "Shared library args written to: " shared-args-file))
