@@ -9,26 +9,34 @@ Rust client for ChronDB, a time-traveling key/value database built on Git archit
 
 ## Installation
 
-Download the pre-built package from the [latest GitHub release](https://github.com/moclojer/chrondb/releases/tag/latest):
+Add `chrondb` from [crates.io](https://crates.io/crates/chrondb):
+
+```bash
+cargo add chrondb
+```
+
+Or add it directly to your `Cargo.toml`:
+
+```toml
+[dependencies]
+chrondb = "*"
+serde_json = "1"
+```
+
+### Native shared library
+
+The crate requires the `libchrondb` native library at runtime. Download it from the [latest GitHub release](https://github.com/moclojer/chrondb/releases/tag/latest):
 
 **macOS (Apple Silicon):**
 
 ```bash
-curl -L https://github.com/moclojer/chrondb/releases/download/latest/chrondb-rust-latest-macos-aarch64.tar.gz | tar xz
+curl -L https://github.com/moclojer/chrondb/releases/download/latest/libchrondb-latest-macos-aarch64.tar.gz | tar xz
 ```
 
 **Linux (x86_64):**
 
 ```bash
-curl -L https://github.com/moclojer/chrondb/releases/download/latest/chrondb-rust-latest-linux-x86_64.tar.gz | tar xz
-```
-
-The archive contains the Rust crate source and the native shared library. Add it as a dependency:
-
-```toml
-[dependencies]
-chrondb = { path = "chrondb-rust" }
-serde_json = "1"
+curl -L https://github.com/moclojer/chrondb/releases/download/latest/libchrondb-latest-linux-x86_64.tar.gz | tar xz
 ```
 
 ### Configure the runtime library path
