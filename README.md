@@ -17,6 +17,9 @@ ChronDB offers unique capabilities for your data:
   - 📡 **REST API** - HTTP interface for any language
   - 🔄 **Redis Protocol** - Connect using Redis clients
   - 🗄️ **PostgreSQL Protocol** - Connect with SQL clients
+- **Language Bindings** - Embed ChronDB directly in your application:
+  - 🐍 [**Python**](https://chrondb.moclojer.com/bindings/python) - `ctypes`-based client with context manager support
+  - 🦀 [**Rust**](https://chrondb.moclojer.com/bindings/rust) - Safe wrapper with `serde_json` integration
 - **ACID Transactions** - Guaranteed consistency and durability
 - **Schemaless Design** - Store any JSON-compatible data
 - **Git Foundation** - Leverage Git's powerful features:
@@ -106,6 +109,8 @@ Complete documentation is available at [chrondb.moclojer.com](https://chrondb.mo
 - [Core Concepts](https://chrondb.moclojer.com/data-model) - Understand ChronDB's data model
 - [Time Travel Tutorial](https://chrondb.moclojer.com/tutorials/time-travel-guide) - Learn to use versioning
 - [Branching Guide](https://chrondb.moclojer.com/tutorials/branching-guide) - Master isolated environments
+- [Python Binding](https://chrondb.moclojer.com/bindings/python) - Embed ChronDB in Python apps
+- [Rust Binding](https://chrondb.moclojer.com/bindings/rust) - Embed ChronDB in Rust apps
 
 ## 🛠️ Requirements
 
