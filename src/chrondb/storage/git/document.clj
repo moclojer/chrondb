@@ -22,7 +22,7 @@
              [clojure.data.json :as json]
              [clojure.string :as str])
    (:import [org.eclipse.jgit.api Git]
-            [org.eclipse.jgit.lib ObjectId Repository]
+            [org.eclipse.jgit.lib Repository]
             [org.eclipse.jgit.revwalk RevWalk]
             [org.eclipse.jgit.treewalk TreeWalk]
             [org.eclipse.jgit.treewalk.filter PathFilter]))

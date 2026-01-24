@@ -31,16 +31,16 @@
 (defn find-all-document-paths
   "Find all possible paths for a document by searching for its encoded ID.
    Falls back to constructing expected paths if the document was deleted from HEAD."
-  [^Repository repository id branch]
+  [repository id branch]
   (let [config-map (config/load-config)
         branch-ref (or branch (get-in config-map [:git :default-branch]))
         head-id (.resolve repository (str branch-ref "^{commit}"))
         [table-hint id-only] (path/extract-table-and-id id)
-        ^String encoded-id (path/encode-path (or id-only id))
+        encoded-id (path/encode-path (or id-only id))
         data-dir (get-in config-map [:storage :data-dir])
         tree-paths (when head-id
-                       (let [^TreeWalk tree-walk (TreeWalk. repository)
-                             ^RevWalk rev-walk (RevWalk. repository)
+                       (let [tree-walk (TreeWalk. repository)
+                             rev-walk (RevWalk. repository)
                              paths (atom [])]
                          (try
                            (.addTree tree-walk (.parseTree rev-walk head-id))
@@ -50,14 +50,14 @@
                            (log/log-info (str "Searching for all possible document paths containing: " encoded-id))
 
                            (while (.next tree-walk)
-                             (let [^String path (.getPathString tree-walk)]
-                               (when (.contains path encoded-id)
+                             (let [path (.getPathString tree-walk)]
+                               (when (.contains path (str encoded-id))
                                  (log/log-info (str "Found potential path for " id ": " path))
                                  (swap! paths conj path))
-                               (when (and table-hint id-only (.contains path ^String (str id-only)))
+                               (when (and table-hint id-only (.contains path id-only))
                                  (log/log-info (str "Found path with ID part: " path))
                                  (swap! paths conj path))
-                               (when (and table-hint id-only (.contains path ^String (str table-hint "_COLON_" id-only)))
+                               (when (and table-hint id-only (.contains path (str table-hint "_COLON_" id-only)))
                                  (log/log-info (str "Found path with table and ID: " path))
                                  (swap! paths conj path))))
 
