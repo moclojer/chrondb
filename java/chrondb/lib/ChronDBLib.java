@@ -20,34 +20,32 @@ public final class ChronDBLib {
 
     private static final ThreadLocal<String> lastError = new ThreadLocal<>();
 
-    private static volatile boolean initialized = false;
-    private static IFn libOpen;
-    private static IFn libClose;
-    private static IFn libPut;
-    private static IFn libGet;
-    private static IFn libDelete;
-    private static IFn libListByPrefix;
-    private static IFn libListByTable;
-    private static IFn libHistory;
-    private static IFn libQuery;
+    private static final IFn libOpen;
+    private static final IFn libClose;
+    private static final IFn libPut;
+    private static final IFn libGet;
+    private static final IFn libDelete;
+    private static final IFn libListByPrefix;
+    private static final IFn libListByTable;
+    private static final IFn libHistory;
+    private static final IFn libQuery;
 
-    private static synchronized void ensureInitialized() {
-        if (!initialized) {
-            IFn require = Clojure.var("clojure.core", "require");
-            require.invoke(Clojure.read("chrondb.lib.core"));
+    // Static initializer block: runs at build-time when the class is registered
+    // with --initialize-at-build-time. This loads the Clojure namespace once
+    // during native-image generation, avoiding runtime compilation of .clj sources.
+    static {
+        IFn require = Clojure.var("clojure.core", "require");
+        require.invoke(Clojure.read("chrondb.lib.core"));
 
-            libOpen = Clojure.var("chrondb.lib.core", "lib-open");
-            libClose = Clojure.var("chrondb.lib.core", "lib-close");
-            libPut = Clojure.var("chrondb.lib.core", "lib-put");
-            libGet = Clojure.var("chrondb.lib.core", "lib-get");
-            libDelete = Clojure.var("chrondb.lib.core", "lib-delete");
-            libListByPrefix = Clojure.var("chrondb.lib.core", "lib-list-by-prefix");
-            libListByTable = Clojure.var("chrondb.lib.core", "lib-list-by-table");
-            libHistory = Clojure.var("chrondb.lib.core", "lib-history");
-            libQuery = Clojure.var("chrondb.lib.core", "lib-query");
-
-            initialized = true;
-        }
+        libOpen = Clojure.var("chrondb.lib.core", "lib-open");
+        libClose = Clojure.var("chrondb.lib.core", "lib-close");
+        libPut = Clojure.var("chrondb.lib.core", "lib-put");
+        libGet = Clojure.var("chrondb.lib.core", "lib-get");
+        libDelete = Clojure.var("chrondb.lib.core", "lib-delete");
+        libListByPrefix = Clojure.var("chrondb.lib.core", "lib-list-by-prefix");
+        libListByTable = Clojure.var("chrondb.lib.core", "lib-list-by-table");
+        libHistory = Clojure.var("chrondb.lib.core", "lib-history");
+        libQuery = Clojure.var("chrondb.lib.core", "lib-query");
     }
 
     private static CCharPointer toCString(String s) {
@@ -69,7 +67,6 @@ public final class ChronDBLib {
     @CEntryPoint(name = "chrondb_open")
     public static int open(IsolateThread thread, CCharPointer dataPath, CCharPointer indexPath) {
         try {
-            ensureInitialized();
             String dp = toJavaString(dataPath);
             String ip = toJavaString(indexPath);
             Object result = libOpen.invoke(dp, ip);
@@ -87,7 +84,6 @@ public final class ChronDBLib {
     @CEntryPoint(name = "chrondb_close")
     public static int close(IsolateThread thread, int handle) {
         try {
-            ensureInitialized();
             Object result = libClose.invoke(handle);
             if (result instanceof Number) {
                 return ((Number) result).intValue();
@@ -105,7 +101,6 @@ public final class ChronDBLib {
     public static CCharPointer put(IsolateThread thread, int handle,
                                    CCharPointer id, CCharPointer jsonDoc, CCharPointer branch) {
         try {
-            ensureInitialized();
             String idStr = toJavaString(id);
             String jsonStr = toJavaString(jsonDoc);
             String branchStr = toJavaString(branch);
@@ -125,7 +120,6 @@ public final class ChronDBLib {
     public static CCharPointer get(IsolateThread thread, int handle,
                                    CCharPointer id, CCharPointer branch) {
         try {
-            ensureInitialized();
             String idStr = toJavaString(id);
             String branchStr = toJavaString(branch);
             Object result = libGet.invoke(handle, idStr, branchStr);
@@ -143,7 +137,6 @@ public final class ChronDBLib {
     public static int delete(IsolateThread thread, int handle,
                              CCharPointer id, CCharPointer branch) {
         try {
-            ensureInitialized();
             String idStr = toJavaString(id);
             String branchStr = toJavaString(branch);
             Object result = libDelete.invoke(handle, idStr, branchStr);
@@ -161,7 +154,6 @@ public final class ChronDBLib {
     public static CCharPointer listByPrefix(IsolateThread thread, int handle,
                                             CCharPointer prefix, CCharPointer branch) {
         try {
-            ensureInitialized();
             String prefixStr = toJavaString(prefix);
             String branchStr = toJavaString(branch);
             Object result = libListByPrefix.invoke(handle, prefixStr, branchStr);
@@ -179,7 +171,6 @@ public final class ChronDBLib {
     public static CCharPointer listByTable(IsolateThread thread, int handle,
                                            CCharPointer table, CCharPointer branch) {
         try {
-            ensureInitialized();
             String tableStr = toJavaString(table);
             String branchStr = toJavaString(branch);
             Object result = libListByTable.invoke(handle, tableStr, branchStr);
@@ -197,7 +188,6 @@ public final class ChronDBLib {
     public static CCharPointer history(IsolateThread thread, int handle,
                                        CCharPointer id, CCharPointer branch) {
         try {
-            ensureInitialized();
             String idStr = toJavaString(id);
             String branchStr = toJavaString(branch);
             Object result = libHistory.invoke(handle, idStr, branchStr);
@@ -217,7 +207,6 @@ public final class ChronDBLib {
     public static CCharPointer query(IsolateThread thread, int handle,
                                      CCharPointer queryJson, CCharPointer branch) {
         try {
-            ensureInitialized();
             String queryStr = toJavaString(queryJson);
             String branchStr = toJavaString(branch);
             Object result = libQuery.invoke(handle, queryStr, branchStr);

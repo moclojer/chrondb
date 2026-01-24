@@ -100,7 +100,8 @@
    "org.eclipse.jgit.util.RawParseUtils"
    "org.eclipse.jgit.lib.ObjectId"
    "org.eclipse.jgit.treewalk.CanonicalTreeParser"
-   "org.eclipse.jgit.lib.Constants"])
+   "org.eclipse.jgit.lib.Constants"
+   "chrondb.lib.ChronDBLib"])
 
 (def base-run-time-classes
   ["org.eclipse.jgit.util.FileUtils"
@@ -111,8 +112,10 @@
 
 (def jar-path "target/chrondb.jar")
 
-(defn- clojure-lang-classes
-  []
+(defn- jar-classes-by-prefix
+  "Scans the uberjar for .class files under the given path prefix.
+   Returns a sorted vector of fully-qualified class names."
+  [path-prefix pkg-prefix]
   (let [jar-file (io/file jar-path)]
     (if (and (.exists jar-file) (.isFile jar-file))
       (with-open [jar (JarFile. jar-file)]
@@ -120,15 +123,29 @@
              enumeration-seq
              (keep (fn [entry]
                      (let [name (.getName entry)]
-                       (when (and (string/starts-with? name "clojure/lang/")
+                       (when (and (string/starts-with? name path-prefix)
                                   (string/ends-with? name ".class"))
-                         (let [relative (subs name (count "clojure/lang/"))
+                         (let [relative (subs name (count path-prefix))
                                no-ext (string/replace relative #"\.class$" "")
-                               fqn   (str "clojure.lang." (string/replace no-ext #"/" "."))]
+                               fqn   (str pkg-prefix (string/replace no-ext #"/" "."))]
                            fqn)))))
              (into (sorted-set))
              vec))
       [])))
+
+(defn- clojure-lang-classes
+  []
+  (jar-classes-by-prefix "clojure/lang/" "clojure.lang."))
+
+(defn- chrondb-classes
+  "Returns all AOT-compiled chrondb classes from the uberjar."
+  []
+  (jar-classes-by-prefix "chrondb/" "chrondb."))
+
+(defn- clojure-data-classes
+  "Returns all clojure.data.* classes (e.g. clojure.data.json) from the uberjar."
+  []
+  (jar-classes-by-prefix "clojure/data/" "clojure.data."))
 
 (defn- clojure-initializers
   [classes]
@@ -218,7 +235,10 @@
         clj-initializers (clojure-initializers clj-classes)
         runtime-set (set clj-initializers)
         build-time-clj (remove runtime-set clj-classes)
-        build-time-classes (->> (concat base-build-time-classes build-time-clj)
+        chrondb-clj (chrondb-classes)
+        data-clj (clojure-data-classes)
+        build-time-classes (->> (concat base-build-time-classes build-time-clj
+                                        chrondb-clj data-clj)
                                 distinct
                                 vec)
         run-time-classes (->> (concat base-run-time-classes clj-initializers)
@@ -288,7 +308,6 @@
           resource-config {:resources {:includes [{:pattern "org/eclipse/jgit/internal/JGitText.*"}
                                                   {:pattern "org/eclipse/jgit/internal/JGitText_.*"}
                                                   {:pattern "clojure/.*"}
-                                                  {:pattern "chrondb/.*"}
                                                   {:pattern "META-INF/services/.*"}
                                                   {:pattern "META-INF/native-image/clojure/.*"}]}}]
       (spit (io/file native-config-dir "reflect-config.json") (json/write-str reflect-config))
