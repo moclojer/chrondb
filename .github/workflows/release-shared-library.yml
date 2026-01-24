@@ -182,6 +182,7 @@ jobs:
       - name: Prepare wheel
         env:
           VERSION: ${{ needs.build-shared-lib.outputs.version }}
+          RUN_NUMBER: ${{ github.run_number }}
         working-directory: bindings/python
         run: |
           EXT="${{ steps.platform.outputs.ext }}"
@@ -191,11 +192,10 @@ jobs:
 
           if [ "$VERSION" != "latest" ]; then
             sed -i.bak "s/version = \"0.1.0\"/version = \"${VERSION}\"/" pyproject.toml
-            rm -f pyproject.toml.bak
           else
-            sed -i.bak "s/version = \"0.1.0\"/version = \"0.0.0.dev0\"/" pyproject.toml
-            rm -f pyproject.toml.bak
+            sed -i.bak "s/version = \"0.1.0\"/version = \"0.0.0.dev${RUN_NUMBER}\"/" pyproject.toml
           fi
+          rm -f pyproject.toml.bak
 
       - name: Build wheel
         working-directory: bindings/python
@@ -204,27 +204,54 @@ jobs:
       - name: Retag wheel with platform
         env:
           VERSION: ${{ needs.build-shared-lib.outputs.version }}
+          RUN_NUMBER: ${{ github.run_number }}
         working-directory: bindings/python
         run: |
           WHEEL_TAG="${{ matrix.wheel_tag }}"
 
-          if [ "$VERSION" = "latest" ]; then
-            PY_VERSION="0.0.0.dev0"
-          else
-            PY_VERSION="$VERSION"
-          fi
-
-          FINAL_NAME="chrondb-${VERSION}-py3-none-${WHEEL_TAG}.whl"
-
           cd dist
           wheel tags --remove --platform-tag "${WHEEL_TAG}" *.whl
-          RETAGGED=$(ls *.whl)
-          mv "$RETAGGED" "$FINAL_NAME"
+
+          # For GitHub Release, also create a "latest" named copy
+          if [ "$VERSION" = "latest" ]; then
+            RETAGGED=$(ls *.whl)
+            cp "$RETAGGED" "chrondb-latest-py3-none-${WHEEL_TAG}.whl"
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
           name: chrondb-python-${{ steps.platform.outputs.name }}
           path: bindings/python/dist/chrondb-*.whl
+
+  publish-python-pypi:
+    needs: [build-shared-lib, package-python]
+    runs-on: ubuntu-22.04
+    name: "Publish Python package to PyPI"
+    environment: tests
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: chrondb-python-*
+          path: dist/
+          merge-multiple: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install twine
+        run: pip install twine
+
+      - name: Publish to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          # Remove "latest" named wheels (GitHub Release only, not valid for PyPI)
+          rm -f dist/chrondb-latest-*.whl
+          twine upload dist/*.whl
 
   publish-rust-crate:
     needs: [build-shared-lib, package-rust]
@@ -304,8 +331,12 @@ jobs:
           # Move Rust tarballs
           cp artifacts/chrondb-rust-*/*.tar.gz release-assets/ || true
 
-          # Move Python wheels
-          cp artifacts/chrondb-python-*/*.whl release-assets/ || true
+          # Move Python wheels (use "latest" named for pre-releases, versioned for stable)
+          if [ "$VERSION" = "latest" ]; then
+            cp artifacts/chrondb-python-*/chrondb-latest-*.whl release-assets/ || true
+          else
+            cp artifacts/chrondb-python-*/chrondb-${VERSION}-*.whl release-assets/ || true
+          fi
 
           echo "Release assets:"
           ls -la release-assets/

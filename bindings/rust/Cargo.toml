@@ -11,6 +11,9 @@ serde_json = "1"
 
 [build-dependencies]
 bindgen = "0.69"
+ureq = "2"
+flate2 = "1"
+tar = "0.4"
 
 [dev-dependencies]
 tempfile = "3"

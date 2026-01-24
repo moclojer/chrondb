@@ -30,18 +30,18 @@ def _find_library():
     else:
         lib_name = "libchrondb.so"
 
-    # Search in common locations
+    # Search in common locations (bundled lib first for pip installs)
     search_paths = [
+        # Bundled with the package (pip install)
+        os.path.join(os.path.dirname(__file__), "lib"),
         # Relative to this file (development)
         os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "target"),
-        # Relative to package install
-        os.path.join(os.path.dirname(__file__), "lib"),
         # System paths
         "/usr/local/lib",
         "/usr/lib",
     ]
 
-    # Also check CHRONDB_LIB_DIR
+    # CHRONDB_LIB_DIR takes priority over bundled
     lib_dir = os.environ.get("CHRONDB_LIB_DIR")
     if lib_dir:
         search_paths.insert(0, lib_dir)
