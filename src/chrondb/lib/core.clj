@@ -9,7 +9,7 @@
             [clojure.data.json :as json])
   (:import [java.util.concurrent.atomic AtomicInteger]))
 
-(defonce ^:private handle-counter (AtomicInteger. 0))
+(defonce ^:private ^AtomicInteger handle-counter (AtomicInteger. 0))
 (defonce ^:private handle-registry (atom {}))
 
 (defn lib-open
@@ -21,10 +21,10 @@
           idx (lucene/create-lucene-index index-path)]
       (when (and storage idx)
         (lucene/ensure-index-populated idx storage nil {:async? false})
-        (let [handle (.getAndIncrement handle-counter)]
+        (let [handle (.getAndIncrement ^AtomicInteger handle-counter)]
           (swap! handle-registry assoc handle {:storage storage :index idx})
           handle)))
-    (catch Exception _e
+    (catch Throwable _e
       -1)))
 
 (defn lib-close
@@ -39,7 +39,7 @@
         (when storage (storage/close storage))
         0)
       -1)
-    (catch Exception _e
+    (catch Throwable _e
       -1)))
 
 (defn lib-put
@@ -54,7 +54,7 @@
         (when (and index saved)
           (index/index-document index saved))
         (json/write-str saved)))
-    (catch Exception _e
+    (catch Throwable _e
       nil)))
 
 (defn lib-get
@@ -64,7 +64,7 @@
     (when-let [{:keys [storage]} (get @handle-registry handle)]
       (when-let [doc (storage/get-document storage id branch)]
         (json/write-str doc)))
-    (catch Exception _e
+    (catch Throwable _e
       nil)))
 
 (defn lib-delete
@@ -81,7 +81,7 @@
             0)
           1))
       -1)
-    (catch Exception _e
+    (catch Throwable _e
       -1)))
 
 (defn lib-list-by-prefix
@@ -91,7 +91,7 @@
     (when-let [{:keys [storage]} (get @handle-registry handle)]
       (let [docs (storage/get-documents-by-prefix storage prefix branch)]
         (json/write-str (vec docs))))
-    (catch Exception _e
+    (catch Throwable _e
       nil)))
 
 (defn lib-list-by-table
@@ -101,7 +101,7 @@
     (when-let [{:keys [storage]} (get @handle-registry handle)]
       (let [docs (storage/get-documents-by-table storage table branch)]
         (json/write-str (vec docs))))
-    (catch Exception _e
+    (catch Throwable _e
       nil)))
 
 (defn lib-history
@@ -111,7 +111,7 @@
     (when-let [{:keys [storage]} (get @handle-registry handle)]
       (let [history (storage/get-document-history storage id branch)]
         (json/write-str (vec history))))
-    (catch Exception _e
+    (catch Throwable _e
       nil)))
 
 (defn lib-query
@@ -128,5 +128,5 @@
                          :total (:total result)
                          :limit (:limit result)
                          :offset (:offset result)})))
-    (catch Exception _e
+    (catch Throwable _e
       nil)))

@@ -4,7 +4,8 @@
             [chrondb.util.logging :as log])
   (:import [java.nio.charset StandardCharsets]
            [org.eclipse.jgit.api Git]
-           [org.eclipse.jgit.lib ObjectId]
+           [org.eclipse.jgit.lib ObjectId Repository]
+           [org.eclipse.jgit.notes Note]
            [org.eclipse.jgit.revwalk RevWalk]))
 
 (def default-notes-ref "refs/notes/chrondb")
@@ -35,16 +36,16 @@
   (^clojure.lang.IPersistentMap [^Git git commit-id]
    (read-note git commit-id default-notes-ref))
   (^clojure.lang.IPersistentMap [^Git git commit-id notes-ref]
-   (let [object-id (->object-id commit-id)
-         repo (.getRepository git)]
-     (with-open [rev-walk (RevWalk. repo)]
+   (let [^ObjectId object-id (->object-id commit-id)
+         ^Repository repo (.getRepository git)]
+     (with-open [^RevWalk rev-walk (RevWalk. repo)]
        (let [rev-object (.parseAny rev-walk object-id)
              cmd (-> git
                      (.notesShow)
-                     (.setNotesRef notes-ref)
+                     (.setNotesRef ^String notes-ref)
                      (.setObjectId rev-object))]
-         (when-let [note (.call cmd)]
-           (let [loader (.open repo (.getData note))
+         (when-let [^Note note (.call cmd)]
+           (let [^org.eclipse.jgit.lib.ObjectLoader loader (.open repo (.getData note))
                  content (String. (.getBytes loader) StandardCharsets/UTF_8)]
              (try
                (json/read-str content :key-fn keyword)
@@ -58,22 +59,22 @@
    (add-git-note git commit-id payload {}))
   (^clojure.lang.IPersistentMap [^Git git commit-id payload {:keys [notes-ref]
                                                              :or {notes-ref default-notes-ref}}]
-   (let [object-id (->object-id commit-id)
-         repo (.getRepository git)
+   (let [^ObjectId object-id (->object-id commit-id)
+         ^Repository repo (.getRepository git)
          existing (read-note git object-id notes-ref)
          merged (merge-note existing payload)
-         message (json/write-str merged)]
-     (with-open [rev-walk (RevWalk. repo)]
+         ^String message (json/write-str merged)]
+     (with-open [^RevWalk rev-walk (RevWalk. repo)]
        (let [rev-object (.parseAny rev-walk object-id)]
          (when existing
            (-> git
                (.notesRemove)
-               (.setNotesRef notes-ref)
+               (.setNotesRef ^String notes-ref)
                (.setObjectId rev-object)
                (.call)))
          (-> git
              (.notesAdd)
-             (.setNotesRef notes-ref)
+             (.setNotesRef ^String notes-ref)
              (.setObjectId rev-object)
              (.setMessage message)
              (.call))

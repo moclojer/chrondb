@@ -8,6 +8,7 @@
             [chrondb.storage.git.commit :as commit]
             [chrondb.validation.schema :as schema])
   (:import [org.eclipse.jgit.api Git]
+           [org.eclipse.jgit.lib Repository]
            [org.eclipse.jgit.revwalk RevWalk]
            [org.eclipse.jgit.treewalk TreeWalk]
            [org.eclipse.jgit.treewalk.filter PathFilter PathSuffixFilter]))
@@ -99,19 +100,19 @@
   (let [config-map (config/load-config)
         branch-name (or branch (get-in config-map [:git :default-branch]))
         path (validation-schema-path namespace)
-        head-id (.resolve repository (str branch-name "^{commit}"))]
+        head-id (.resolve ^Repository repository (str branch-name "^{commit}"))]
 
     (when head-id
-      (let [tree-walk (TreeWalk. repository)
-            rev-walk (RevWalk. repository)]
+      (let [^TreeWalk tree-walk (TreeWalk. ^Repository repository)
+            ^RevWalk rev-walk (RevWalk. ^Repository repository)]
         (try
           (.addTree tree-walk (.parseTree rev-walk head-id))
           (.setRecursive tree-walk true)
-          (.setFilter tree-walk (PathFilter/create path))
+          (.setFilter tree-walk (PathFilter/create ^String path))
 
           (when (.next tree-walk)
             (let [object-id (.getObjectId tree-walk 0)
-                  object-loader (.open repository object-id)
+                  ^org.eclipse.jgit.lib.ObjectLoader object-loader (.open ^Repository repository object-id)
                   content (String. (.getBytes object-loader) "UTF-8")]
               (try
                 (json/read-str content :key-fn keyword)

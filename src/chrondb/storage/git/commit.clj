@@ -53,7 +53,7 @@
 
 (defn build-person-ident
   "Builds a PersonIdent object for Git commits."
-  [name email]
+  [^String name ^String email]
   (org.eclipse.jgit.lib.PersonIdent. name email (Date.) (TimeZone/getDefault)))
 
 (defn checkout-or-create-branch
@@ -74,7 +74,7 @@
           (reify org.eclipse.jgit.lib.Ref
             (getName [_] branch-name))
           ;; If the branch doesn't exist, create it
-          (let [ref-update (.updateRef repository (str "refs/heads/" branch-name))
+          (let [^org.eclipse.jgit.lib.RefUpdate ref-update (.updateRef repository (str "refs/heads/" branch-name))
                 head-id (.resolve repository Constants/HEAD)]
             (.setNewObjectId ref-update (or head-id (ObjectId/zeroId)))
             (.update ref-update)
@@ -101,33 +101,33 @@
 (defn create-temporary-index
   "Creates an in-memory index for the document change.
    Similar to the createTemporaryIndex method in the Java example."
-  [^Git git head-id path content]
+  [^Git git head-id path ^String content]
   (let [^Repository repository (.getRepository git)
-        in-core-index (DirCache/newInCore)
-        dc-builder (.builder in-core-index)
-        inserter (.newObjectInserter repository)]
+        ^DirCache in-core-index (DirCache/newInCore)
+        ^org.eclipse.jgit.dircache.DirCacheBuilder dc-builder (.builder in-core-index)
+        ^ObjectInserter inserter (.newObjectInserter repository)]
     (try
       (when content
-        (let [dc-entry (DirCacheEntry. path)
+        (let [^DirCacheEntry dc-entry (DirCacheEntry. ^String path)
               content-bytes (.getBytes content "UTF-8")
-              content-length (count content-bytes)
+              content-length (int (count content-bytes))
               input-stream (ByteArrayInputStream. content-bytes)]
           (.setFileMode dc-entry FileMode/REGULAR_FILE)
-          (.setObjectId dc-entry (.insert inserter Constants/OBJ_BLOB content-length input-stream))
+          (.setObjectId dc-entry (.insert inserter Constants/OBJ_BLOB (long content-length) input-stream))
           (.add dc-builder dc-entry)))
 
       (when head-id
         (let [^Repository repo (.getRepository git)
-              tree-walk (TreeWalk. repo)
+              ^TreeWalk tree-walk (TreeWalk. repo)
               h-idx (.addTree tree-walk (.parseTree (RevWalk. repo) head-id))]
           (.setRecursive tree-walk true)
 
           (while (.next tree-walk)
             (let [walk-path (.getPathString tree-walk)
-                  h-tree (.getTree tree-walk h-idx CanonicalTreeParser)]
+                  ^CanonicalTreeParser h-tree (.getTree tree-walk (int h-idx) CanonicalTreeParser)]
 
               (when-not (= walk-path path)
-                (let [dc-entry (DirCacheEntry. walk-path)]
+                (let [^DirCacheEntry dc-entry (DirCacheEntry. ^String walk-path)]
                   (.setObjectId dc-entry (.getEntryObjectId h-tree))
                   (.setFileMode dc-entry (.getEntryFileMode h-tree))
                   (.add dc-builder dc-entry)))))
@@ -154,12 +154,12 @@
      (try
        (let [^DirCache index (create-temporary-index git head-id path content)
              index-tree-id (.writeTree index object-inserter)
-             commit (doto (CommitBuilder.)
-                      (.setAuthor author)
-                      (.setCommitter author)
-                      (.setEncoding Constants/CHARACTER_ENCODING)
-                      (.setMessage message)
-                      (.setTreeId index-tree-id))]
+             ^CommitBuilder commit (doto (CommitBuilder.)
+                                    (.setAuthor author)
+                                    (.setCommitter author)
+                                    (.setEncoding Constants/CHARACTER_ENCODING)
+                                    (.setMessage ^String message)
+                                    (.setTreeId index-tree-id))]
 
          (when head-id
            (.setParentId commit head-id))
@@ -167,7 +167,7 @@
          (let [commit-id (.insert object-inserter commit)]
            (.flush object-inserter)
 
-           (let [commit-hash (.getName commit-id)
+           (let [commit-hash (.getName ^ObjectId commit-id)
                  note-overrides (merge {:commit-id commit-hash
                                         :commit-message message
                                         :branch branch-name}
@@ -180,10 +180,10 @@
                  (log/log-error "Failed to attach git note" e)
                  (throw e))))
 
-           (let [rev-walk (RevWalk. repo)]
+           (let [^RevWalk rev-walk (RevWalk. repo)]
              (try
-               (let [rev-commit (.parseCommit rev-walk commit-id)
-                     ref-update (.updateRef repo (str "refs/heads/" branch-name))]
+               (let [^org.eclipse.jgit.revwalk.RevCommit rev-commit (.parseCommit rev-walk commit-id)
+                     ^org.eclipse.jgit.lib.RefUpdate ref-update (.updateRef repo (str "refs/heads/" branch-name))]
 
                  (if (nil? head-id)
                    (.setExpectedOldObjectId ref-update (ObjectId/zeroId))
@@ -201,7 +201,7 @@
                  (.close rev-walk))))
 
            ;; Return the commit ID as a properly formatted string
-           (.getName commit-id)))
+           (.getName ^ObjectId commit-id)))
        (finally
          (.close object-inserter))))))
 

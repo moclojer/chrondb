@@ -23,24 +23,24 @@
              [clojure.data.json :as json])
    (:import [java.util Date]
             [org.eclipse.jgit.api Git]
-            [org.eclipse.jgit.lib ObjectId]
-            [org.eclipse.jgit.revwalk RevWalk]
+            [org.eclipse.jgit.lib ObjectId Repository]
+            [org.eclipse.jgit.revwalk RevWalk RevCommit]
             [org.eclipse.jgit.treewalk TreeWalk]
             [org.eclipse.jgit.treewalk.filter PathFilter]))
 
 (defn find-all-document-paths
   "Find all possible paths for a document by searching for its encoded ID.
    Falls back to constructing expected paths if the document was deleted from HEAD."
-  [repository id branch]
+  [^Repository repository id branch]
   (let [config-map (config/load-config)
         branch-ref (or branch (get-in config-map [:git :default-branch]))
         head-id (.resolve repository (str branch-ref "^{commit}"))
         [table-hint id-only] (path/extract-table-and-id id)
-        encoded-id (path/encode-path (or id-only id))
+        ^String encoded-id (path/encode-path (or id-only id))
         data-dir (get-in config-map [:storage :data-dir])
         tree-paths (when head-id
-                       (let [tree-walk (TreeWalk. repository)
-                             rev-walk (RevWalk. repository)
+                       (let [^TreeWalk tree-walk (TreeWalk. repository)
+                             ^RevWalk rev-walk (RevWalk. repository)
                              paths (atom [])]
                          (try
                            (.addTree tree-walk (.parseTree rev-walk head-id))
@@ -50,14 +50,14 @@
                            (log/log-info (str "Searching for all possible document paths containing: " encoded-id))
 
                            (while (.next tree-walk)
-                             (let [path (.getPathString tree-walk)]
-                               (when (.contains path (str encoded-id))
+                             (let [^String path (.getPathString tree-walk)]
+                               (when (.contains path encoded-id)
                                  (log/log-info (str "Found potential path for " id ": " path))
                                  (swap! paths conj path))
-                               (when (and table-hint id-only (.contains path id-only))
+                               (when (and table-hint id-only (.contains path ^String (str id-only)))
                                  (log/log-info (str "Found path with ID part: " path))
                                  (swap! paths conj path))
-                               (when (and table-hint id-only (.contains path (str table-hint "_COLON_" id-only)))
+                               (when (and table-hint id-only (.contains path ^String (str table-hint "_COLON_" id-only)))
                                  (log/log-info (str "Found path with table and ID: " path))
                                  (swap! paths conj path))))
 
@@ -78,13 +78,13 @@
 
 (defn get-document-history-for-path
   "Get document history for a specific path"
-  [repository path branch]
+  [^Repository repository ^String path branch]
   (let [config-map (config/load-config)
         branch-ref (or branch (get-in config-map [:git :default-branch]))]
 
     (when (and repository path)
       (let [git (Git/wrap repository)
-            rev-walk (RevWalk. repository)
+            ^RevWalk rev-walk (RevWalk. repository)
             log-command (-> git
                             (.log)
                             (.add (.resolve repository (str branch-ref "^{commit}")))
@@ -95,11 +95,11 @@
                 _ (log/log-info (str "Found " (count commits) " commits directly for " path))
                 results (atom [])]
 
-            (doseq [commit commits]
+            (doseq [^RevCommit commit commits]
               (let [commit-id (.getId commit)
-                    tree-walk (TreeWalk. repository)
+                    ^TreeWalk tree-walk (TreeWalk. repository)
                     tree-id (.getTree commit)
-                    commit-time (Date. (* 1000 (.getCommitTime commit)))
+                    commit-time (Date. (* 1000 (long (.getCommitTime commit))))
                     commit-message (.getFullMessage commit)
                     committer (.getCommitterIdent commit)
                     committer-name (.getName committer)
@@ -112,7 +112,7 @@
 
                 (when (.next tree-walk)
                   (let [object-id (.getObjectId tree-walk 0)
-                        object-loader (.open repository object-id)
+                        ^org.eclipse.jgit.lib.ObjectLoader object-loader (.open repository object-id)
                         content (String. (.getBytes object-loader) "UTF-8")]
 
                     ;; Parse document content carefully

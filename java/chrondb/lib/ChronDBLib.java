@@ -18,34 +18,36 @@ import clojure.lang.IFn;
  */
 public final class ChronDBLib {
 
-    private static final ThreadLocal<String> lastError = new ThreadLocal<>();
+    private static volatile String lastError = null;
 
-    private static final IFn libOpen;
-    private static final IFn libClose;
-    private static final IFn libPut;
-    private static final IFn libGet;
-    private static final IFn libDelete;
-    private static final IFn libListByPrefix;
-    private static final IFn libListByTable;
-    private static final IFn libHistory;
-    private static final IFn libQuery;
+    private static volatile boolean initialized = false;
+    private static IFn libOpen;
+    private static IFn libClose;
+    private static IFn libPut;
+    private static IFn libGet;
+    private static IFn libDelete;
+    private static IFn libListByPrefix;
+    private static IFn libListByTable;
+    private static IFn libHistory;
+    private static IFn libQuery;
 
-    // Static initializer block: runs at build-time when the class is registered
-    // with --initialize-at-build-time. This loads the Clojure namespace once
-    // during native-image generation, avoiding runtime compilation of .clj sources.
-    static {
-        IFn require = Clojure.var("clojure.core", "require");
-        require.invoke(Clojure.read("chrondb.lib.core"));
+    private static synchronized void ensureInitialized() {
+        if (!initialized) {
+            IFn require = Clojure.var("clojure.core", "require");
+            require.invoke(Clojure.read("chrondb.lib.core"));
 
-        libOpen = Clojure.var("chrondb.lib.core", "lib-open");
-        libClose = Clojure.var("chrondb.lib.core", "lib-close");
-        libPut = Clojure.var("chrondb.lib.core", "lib-put");
-        libGet = Clojure.var("chrondb.lib.core", "lib-get");
-        libDelete = Clojure.var("chrondb.lib.core", "lib-delete");
-        libListByPrefix = Clojure.var("chrondb.lib.core", "lib-list-by-prefix");
-        libListByTable = Clojure.var("chrondb.lib.core", "lib-list-by-table");
-        libHistory = Clojure.var("chrondb.lib.core", "lib-history");
-        libQuery = Clojure.var("chrondb.lib.core", "lib-query");
+            libOpen = Clojure.var("chrondb.lib.core", "lib-open");
+            libClose = Clojure.var("chrondb.lib.core", "lib-close");
+            libPut = Clojure.var("chrondb.lib.core", "lib-put");
+            libGet = Clojure.var("chrondb.lib.core", "lib-get");
+            libDelete = Clojure.var("chrondb.lib.core", "lib-delete");
+            libListByPrefix = Clojure.var("chrondb.lib.core", "lib-list-by-prefix");
+            libListByTable = Clojure.var("chrondb.lib.core", "lib-list-by-table");
+            libHistory = Clojure.var("chrondb.lib.core", "lib-history");
+            libQuery = Clojure.var("chrondb.lib.core", "lib-query");
+
+            initialized = true;
+        }
     }
 
     private static CCharPointer toCString(String s) {
@@ -67,16 +69,19 @@ public final class ChronDBLib {
     @CEntryPoint(name = "chrondb_open")
     public static int open(IsolateThread thread, CCharPointer dataPath, CCharPointer indexPath) {
         try {
+            ensureInitialized();
             String dp = toJavaString(dataPath);
             String ip = toJavaString(indexPath);
             Object result = libOpen.invoke(dp, ip);
             if (result instanceof Number) {
                 return ((Number) result).intValue();
             }
-            lastError.set("open returned non-numeric result");
+            lastError = ("open returned non-numeric result: " +
+                (result == null ? "null" : result.getClass().getName()));
             return -1;
         } catch (Exception e) {
-            lastError.set(e.getMessage());
+            String msg = e.getMessage();
+            lastError = (e.getClass().getName() + ": " + (msg != null ? msg : "no message"));
             return -1;
         }
     }
@@ -84,13 +89,14 @@ public final class ChronDBLib {
     @CEntryPoint(name = "chrondb_close")
     public static int close(IsolateThread thread, int handle) {
         try {
+            ensureInitialized();
             Object result = libClose.invoke(handle);
             if (result instanceof Number) {
                 return ((Number) result).intValue();
             }
             return -1;
         } catch (Exception e) {
-            lastError.set(e.getMessage());
+            lastError = (e.getMessage());
             return -1;
         }
     }
@@ -101,6 +107,7 @@ public final class ChronDBLib {
     public static CCharPointer put(IsolateThread thread, int handle,
                                    CCharPointer id, CCharPointer jsonDoc, CCharPointer branch) {
         try {
+            ensureInitialized();
             String idStr = toJavaString(id);
             String jsonStr = toJavaString(jsonDoc);
             String branchStr = toJavaString(branch);
@@ -108,10 +115,10 @@ public final class ChronDBLib {
             if (result instanceof String) {
                 return toCString((String) result);
             }
-            lastError.set("put returned null");
+            lastError = ("put returned null");
             return WordFactory.nullPointer();
         } catch (Exception e) {
-            lastError.set(e.getMessage());
+            lastError = (e.getMessage());
             return WordFactory.nullPointer();
         }
     }
@@ -120,6 +127,7 @@ public final class ChronDBLib {
     public static CCharPointer get(IsolateThread thread, int handle,
                                    CCharPointer id, CCharPointer branch) {
         try {
+            ensureInitialized();
             String idStr = toJavaString(id);
             String branchStr = toJavaString(branch);
             Object result = libGet.invoke(handle, idStr, branchStr);
@@ -128,7 +136,7 @@ public final class ChronDBLib {
             }
             return WordFactory.nullPointer();
         } catch (Exception e) {
-            lastError.set(e.getMessage());
+            lastError = (e.getMessage());
             return WordFactory.nullPointer();
         }
     }
@@ -137,6 +145,7 @@ public final class ChronDBLib {
     public static int delete(IsolateThread thread, int handle,
                              CCharPointer id, CCharPointer branch) {
         try {
+            ensureInitialized();
             String idStr = toJavaString(id);
             String branchStr = toJavaString(branch);
             Object result = libDelete.invoke(handle, idStr, branchStr);
@@ -145,7 +154,7 @@ public final class ChronDBLib {
             }
             return -1;
         } catch (Exception e) {
-            lastError.set(e.getMessage());
+            lastError = (e.getMessage());
             return -1;
         }
     }
@@ -154,6 +163,7 @@ public final class ChronDBLib {
     public static CCharPointer listByPrefix(IsolateThread thread, int handle,
                                             CCharPointer prefix, CCharPointer branch) {
         try {
+            ensureInitialized();
             String prefixStr = toJavaString(prefix);
             String branchStr = toJavaString(branch);
             Object result = libListByPrefix.invoke(handle, prefixStr, branchStr);
@@ -162,7 +172,7 @@ public final class ChronDBLib {
             }
             return WordFactory.nullPointer();
         } catch (Exception e) {
-            lastError.set(e.getMessage());
+            lastError = (e.getMessage());
             return WordFactory.nullPointer();
         }
     }
@@ -171,6 +181,7 @@ public final class ChronDBLib {
     public static CCharPointer listByTable(IsolateThread thread, int handle,
                                            CCharPointer table, CCharPointer branch) {
         try {
+            ensureInitialized();
             String tableStr = toJavaString(table);
             String branchStr = toJavaString(branch);
             Object result = libListByTable.invoke(handle, tableStr, branchStr);
@@ -179,7 +190,7 @@ public final class ChronDBLib {
             }
             return WordFactory.nullPointer();
         } catch (Exception e) {
-            lastError.set(e.getMessage());
+            lastError = (e.getMessage());
             return WordFactory.nullPointer();
         }
     }
@@ -188,6 +199,7 @@ public final class ChronDBLib {
     public static CCharPointer history(IsolateThread thread, int handle,
                                        CCharPointer id, CCharPointer branch) {
         try {
+            ensureInitialized();
             String idStr = toJavaString(id);
             String branchStr = toJavaString(branch);
             Object result = libHistory.invoke(handle, idStr, branchStr);
@@ -196,7 +208,7 @@ public final class ChronDBLib {
             }
             return WordFactory.nullPointer();
         } catch (Exception e) {
-            lastError.set(e.getMessage());
+            lastError = (e.getMessage());
             return WordFactory.nullPointer();
         }
     }
@@ -207,6 +219,7 @@ public final class ChronDBLib {
     public static CCharPointer query(IsolateThread thread, int handle,
                                      CCharPointer queryJson, CCharPointer branch) {
         try {
+            ensureInitialized();
             String queryStr = toJavaString(queryJson);
             String branchStr = toJavaString(branch);
             Object result = libQuery.invoke(handle, queryStr, branchStr);
@@ -215,7 +228,7 @@ public final class ChronDBLib {
             }
             return WordFactory.nullPointer();
         } catch (Exception e) {
-            lastError.set(e.getMessage());
+            lastError = (e.getMessage());
             return WordFactory.nullPointer();
         }
     }
@@ -234,9 +247,9 @@ public final class ChronDBLib {
 
     @CEntryPoint(name = "chrondb_last_error")
     public static CCharPointer getLastError(IsolateThread thread) {
-        String error = lastError.get();
+        String error = lastError;
         if (error != null) {
-            lastError.remove();
+            lastError = null;
             return toCString(error);
         }
         return WordFactory.nullPointer();

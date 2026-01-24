@@ -390,7 +390,7 @@
         (.commit writer)
         (reset! reader-atom (DirectoryReader/open writer))
         (reset! searcher-atom (IndexSearcher. @reader-atom)))
-      (catch Exception e
+      (catch Throwable e
         (log/log-error (str "Error indexing document" {:id (:id doc) :error (.getMessage e)})))))
 
   (delete-document [_ id]
@@ -525,6 +525,6 @@
           searcher (when reader (IndexSearcher. reader))]
       (log/log-info "LuceneIndex instance created with StandardAnalyzer and manual accent normalization.")
       (->LuceneIndex directory standard-analyzer standard-analyzer writer (atom reader) (atom searcher)))
-    (catch Exception e
+    (catch Throwable e
       (log/log-error (str "Failed to create LuceneIndex component in '" index-dir "': " (.getMessage e)))
       nil)))

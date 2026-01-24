@@ -101,14 +101,31 @@
    "org.eclipse.jgit.lib.ObjectId"
    "org.eclipse.jgit.treewalk.CanonicalTreeParser"
    "org.eclipse.jgit.lib.Constants"
-   "chrondb.lib.ChronDBLib"])
+   "com.fasterxml.jackson"
+   "org.apache.lucene.search.SortField"
+   "org.apache.lucene.analysis.TokenStream"
+   "org.apache.lucene.analysis.Analyzer"
+   "org.apache.lucene.analysis.tokenattributes.PackedTokenAttributeImpl"
+   "org.apache.lucene.analysis.tokenattributes.CharTermAttributeImpl"
+   "org.apache.lucene.analysis.tokenattributes.PositionIncrementAttributeImpl"
+   "org.apache.lucene.analysis.tokenattributes.OffsetAttributeImpl"
+   "org.apache.lucene.analysis.tokenattributes.TypeAttributeImpl"
+   "org.apache.lucene.analysis.tokenattributes.TermFrequencyAttributeImpl"
+   "org.apache.lucene.util.AttributeFactory"
+   "org.apache.lucene.util.AttributeFactory$StaticImplementationAttributeFactory"
+   "org.apache.lucene.util.AttributeSource"
+   "org.apache.lucene.util.AttributeSource$State"
+   "org.apache.lucene.util.AttributeImpl"
+   "org.apache.lucene.analysis.Tokenizer"
+   "org.apache.lucene.analysis.TokenFilter"
+   "org.apache.lucene.analysis.standard.StandardTokenizer"
+   "org.apache.lucene.analysis.standard.StandardTokenizerImpl"
+   "org.apache.lucene.analysis.LowerCaseFilter"])
 
 (def base-run-time-classes
   ["org.eclipse.jgit.util.FileUtils"
    "org.eclipse.jgit.internal.storage.file.FileReftableStack"
-   "org.eclipse.jgit.internal.storage.file.FileReftableDatabase"
-   "com.fasterxml.jackson.core.JsonFactory"
-   "com.fasterxml.jackson.core.io.SerializedString"])
+   "org.eclipse.jgit.internal.storage.file.FileReftableDatabase"])
 
 (def jar-path "target/chrondb.jar")
 
@@ -200,6 +217,310 @@
     :allDeclaredConstructors true
     :allPublicConstructors true
     :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.lib.Repository"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true
+    :allDeclaredFields true}
+   {:name "org.eclipse.jgit.lib.BaseRepositoryBuilder"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.internal.storage.file.FileRepository"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true
+    :allDeclaredFields true}
+   {:name "org.eclipse.jgit.storage.file.FileRepositoryBuilder"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.revwalk.RevWalk"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.treewalk.TreeWalk"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.lib.ObjectId"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.revwalk.RevCommit"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.revwalk.RevTree"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.lib.ObjectReader"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.lib.RefUpdate"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.dircache.DirCache"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.dircache.DirCacheEntry"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.dircache.DirCacheBuilder"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.lib.CommitBuilder"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.lib.FileMode"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true
+    :allDeclaredFields true}
+   {:name "org.eclipse.jgit.lib.ObjectInserter"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.lib.RefUpdate$Result"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true
+    :allDeclaredFields true}
+   {:name "org.eclipse.jgit.lib.ConfigConstants"
+    :allDeclaredConstructors true
+    :allDeclaredMethods true
+    :allDeclaredFields true}
+   {:name "org.eclipse.jgit.lib.StoredConfig"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.lib.Constants"
+    :allDeclaredConstructors true
+    :allDeclaredMethods true
+    :allDeclaredFields true}
+   {:name "org.eclipse.jgit.treewalk.CanonicalTreeParser"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.treewalk.filter.PathFilter"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.treewalk.filter.PathSuffixFilter"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.api.Git"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.api.InitCommand"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.revwalk.RevObject"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.lib.AnyObjectId"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.lib.ObjectLoader"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.lib.Ref"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.api.AddNoteCommand"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.api.RemoveNoteCommand"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.api.ShowNoteCommand"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.api.CheckoutCommand"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.api.LogCommand"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.eclipse.jgit.notes.Note"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.apache.lucene.document.Document"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.apache.lucene.document.StringField"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.apache.lucene.document.TextField"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.apache.lucene.document.Field$Store"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true
+    :allDeclaredFields true}
+   {:name "org.apache.lucene.document.Field"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.apache.lucene.document.LongPoint"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.apache.lucene.document.DoublePoint"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.apache.lucene.document.NumericDocValuesField"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.apache.lucene.document.DoubleDocValuesField"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.apache.lucene.analysis.tokenattributes.PackedTokenAttributeImpl"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.apache.lucene.analysis.tokenattributes.CharTermAttributeImpl"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.apache.lucene.analysis.tokenattributes.PositionIncrementAttributeImpl"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.apache.lucene.analysis.tokenattributes.OffsetAttributeImpl"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.apache.lucene.analysis.tokenattributes.TypeAttributeImpl"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.apache.lucene.analysis.tokenattributes.TermFrequencyAttributeImpl"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.apache.lucene.util.AttributeFactory"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.apache.lucene.util.AttributeSource"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.apache.lucene.analysis.TokenStream"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true
+    :allDeclaredFields true}
+   {:name "org.apache.lucene.analysis.standard.StandardTokenizer"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.apache.lucene.analysis.LowerCaseFilter"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.apache.lucene.index.IndexWriter"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.apache.lucene.index.IndexWriterConfig"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.apache.lucene.index.DirectoryReader"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
+    :allPublicMethods true}
+   {:name "org.apache.lucene.store.MMapDirectory"
+    :allDeclaredConstructors true
+    :allPublicConstructors true
+    :allDeclaredMethods true
     :allPublicMethods true}])
 
 (defn- macos-sdk-root
@@ -235,10 +556,7 @@
         clj-initializers (clojure-initializers clj-classes)
         runtime-set (set clj-initializers)
         build-time-clj (remove runtime-set clj-classes)
-        chrondb-clj (chrondb-classes)
-        data-clj (clojure-data-classes)
-        build-time-classes (->> (concat base-build-time-classes build-time-clj
-                                        chrondb-clj data-clj)
+        build-time-classes (->> (concat base-build-time-classes build-time-clj)
                                 distinct
                                 vec)
         run-time-classes (->> (concat base-run-time-classes clj-initializers)
@@ -299,8 +617,10 @@
                                       trace-object-args
                                       tail-args))))
     (.mkdirs report-dir)
-    (let [reflect-config (into base-reflect-config
-                               (for [cls clj-classes]
+    (let [chrondb-clj (chrondb-classes)
+          data-clj (clojure-data-classes)
+          reflect-config (into base-reflect-config
+                               (for [cls (concat clj-classes chrondb-clj data-clj)]
                                  {:name cls
                                   :allDeclaredConstructors true
                                   :allDeclaredMethods true
@@ -308,6 +628,7 @@
           resource-config {:resources {:includes [{:pattern "org/eclipse/jgit/internal/JGitText.*"}
                                                   {:pattern "org/eclipse/jgit/internal/JGitText_.*"}
                                                   {:pattern "clojure/.*"}
+                                                  {:pattern "chrondb/.*\\.class"}
                                                   {:pattern "META-INF/services/.*"}
                                                   {:pattern "META-INF/native-image/clojure/.*"}]}}]
       (spit (io/file native-config-dir "reflect-config.json") (json/write-str reflect-config))

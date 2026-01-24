@@ -22,25 +22,26 @@
              [clojure.data.json :as json]
              [clojure.string :as str])
    (:import [org.eclipse.jgit.api Git]
+            [org.eclipse.jgit.lib ObjectId Repository]
             [org.eclipse.jgit.revwalk RevWalk]
             [org.eclipse.jgit.treewalk TreeWalk]
             [org.eclipse.jgit.treewalk.filter PathFilter]))
 
 (defn is-document-path-match?
   "Check if a path matches a document ID"
-  [path id table]
-  (let [encoded-id (path/encode-path id)
-        encoded-table-id (when table (str table "_COLON_" id))
+  [^String path id table]
+  (let [^String encoded-id (path/encode-path id)
+        ^String encoded-table-id (when table (str table "_COLON_" id))
         segments (str/split path #"/")
-        file-name (last segments)
-        dir-name (if (> (count segments) 1) (nth segments (- (count segments) 2)) "")]
+        ^String file-name (last segments)
+        ^String dir-name (if (> (count segments) 1) (nth segments (- (count segments) 2)) "")]
     (or
      ;; Exact match for encoded ID
      (.contains path encoded-id)
      ;; Match for table-prefixed ID
-     (and encoded-table-id (.contains path encoded-table-id))
+     (and encoded-table-id (.contains path ^String encoded-table-id))
      ;; Match for table directory and ID
-     (and table (= table dir-name) (.contains file-name id))
+     (and table (= table dir-name) (.contains file-name ^String (str id)))
      ;; Match for path ending with ID.json
      (.endsWith path (str id ".json")))))
 
@@ -50,7 +51,7 @@
   (when repository
     (let [config-map (config/load-config)
           branch-name (or branch (get-in config-map [:git :default-branch]))
-          head-id (.resolve repository (str branch-name "^{commit}"))
+          head-id (.resolve ^Repository repository (str branch-name "^{commit}"))
           [table-hint id-only] (path/extract-table-and-id id)]
 
       (log/log-info (str "Finding all possible document paths for ID: " id
@@ -58,8 +59,8 @@
                          ", id-only: " id-only))
 
       (when head-id
-        (let [tree-walk (TreeWalk. repository)
-              rev-walk (RevWalk. repository)
+        (let [^TreeWalk tree-walk (TreeWalk. ^Repository repository)
+              ^RevWalk rev-walk (RevWalk. ^Repository repository)
               paths (atom [])]
           (try
             (.addTree tree-walk (.parseTree rev-walk head-id))
@@ -86,7 +87,7 @@
   (when repository
     (let [config-map (config/load-config)
           branch-name (or branch (get-in config-map [:git :default-branch]))
-          head-id (.resolve repository (str branch-name "^{commit}"))
+          head-id (.resolve ^Repository repository (str branch-name "^{commit}"))
           data-dir (get-in config-map [:storage :data-dir])
           ; Split logic - extract table if ID has table prefix (e.g., "user:1")
           [table-hint id-only] (path/extract-table-and-id id)]
@@ -101,14 +102,14 @@
             ;; If we have exact matching paths, prioritize the one with the correct table
             (if table-hint
               ;; Find a path that contains both the table and ID
-              (or (first (filter #(.contains % (str table-hint "_COLON_")) paths))
-                  (first (filter #(.contains % (str "/" table-hint "/")) paths))
+              (or (first (filter #(.contains ^String % (str table-hint "_COLON_")) paths))
+                  (first (filter #(.contains ^String % (str "/" table-hint "/")) paths))
                   (first paths))
               ;; Without table hint, just use first path
               (first paths))
             ;; Otherwise use the old logic for backward compatibility
-            (let [tree-walk (TreeWalk. repository)
-                  rev-walk (RevWalk. repository)]
+            (let [^TreeWalk tree-walk (TreeWalk. ^Repository repository)
+                  ^RevWalk rev-walk (RevWalk. ^Repository repository)]
               (try
                 (.addTree tree-walk (.parseTree rev-walk head-id))
                 (.setRecursive tree-walk true)
@@ -152,19 +153,19 @@
         branch-name (or branch (get-in config-map [:git :default-branch]))
         ; Only use ID, path will be found by get-document-path
         doc-path (get-document-path repository id branch-name)
-        head-id (.resolve repository (str branch-name "^{commit}"))]
+        head-id (.resolve ^Repository repository (str branch-name "^{commit}"))]
 
     (when doc-path
-      (let [tree-walk (TreeWalk. repository)
-            rev-walk (RevWalk. repository)]
+      (let [^TreeWalk tree-walk (TreeWalk. ^Repository repository)
+            ^RevWalk rev-walk (RevWalk. ^Repository repository)]
         (try
           (.addTree tree-walk (.parseTree rev-walk head-id))
           (.setRecursive tree-walk true)
-          (.setFilter tree-walk (PathFilter/create doc-path))
+          (.setFilter tree-walk (PathFilter/create ^String doc-path))
 
           (when (.next tree-walk)
             (let [object-id (.getObjectId tree-walk 0)
-                  object-loader (.open repository object-id)
+                  ^org.eclipse.jgit.lib.ObjectLoader object-loader (.open ^Repository repository object-id)
                   content (String. (.getBytes object-loader) "UTF-8")]
               (try
                 (json/read-str content :key-fn keyword)
@@ -217,14 +218,14 @@
 
   (let [config-map (config/load-config)
         branch-name (or branch (get-in config-map [:git :default-branch]))
-        head-id (.resolve repository (str branch-name "^{commit}"))
+        head-id (.resolve ^Repository repository (str branch-name "^{commit}"))
         encoded-prefix (when (seq prefix) (path/encode-path prefix))]
 
     (log/log-info (str "Searching documents with prefix: '" prefix "' (encoded: '" encoded-prefix "') in branch: " branch-name))
 
     (if head-id
-      (let [tree-walk (TreeWalk. repository)
-            rev-walk (RevWalk. repository)]
+      (let [^TreeWalk tree-walk (TreeWalk. ^Repository repository)
+            ^RevWalk rev-walk (RevWalk. ^Repository repository)]
         (try
           (.addTree tree-walk (.parseTree rev-walk head-id))
           (.setRecursive tree-walk true)
@@ -237,12 +238,12 @@
               (let [path (.getPathString tree-walk)
                     _ (log/log-info (str "Found file: " path))
                     object-id (.getObjectId tree-walk 0)
-                    object-loader (.open repository object-id)
+                    ^org.eclipse.jgit.lib.ObjectLoader object-loader (.open ^Repository repository object-id)
                     content (String. (.getBytes object-loader) "UTF-8")
                     doc (json/read-str content :key-fn keyword)]
                 (if (or (empty? encoded-prefix)
                         ;; If we have a prefix, check if the path contains it
-                        (.contains path encoded-prefix))
+                        (.contains ^String path ^String encoded-prefix))
                   (do
                     (log/log-info (str "Document matched prefix: " (:id doc)))
                     (recur (conj results doc)))
@@ -265,14 +266,14 @@
 
   (let [config-map (config/load-config)
         branch-name (or branch (get-in config-map [:git :default-branch]))
-        head-id (.resolve repository (str branch-name "^{commit}"))
+        head-id (.resolve ^Repository repository (str branch-name "^{commit}"))
         encoded-table (path/encode-path table-name)]
 
     (log/log-info (str "Searching for documents in table: " table-name " (encoded as: " encoded-table ") in branch: " branch-name))
 
     (if head-id
-      (let [tree-walk (TreeWalk. repository)
-            rev-walk (RevWalk. repository)]
+      (let [^TreeWalk tree-walk (TreeWalk. ^Repository repository)
+            ^RevWalk rev-walk (RevWalk. ^Repository repository)]
         (try
           (.addTree tree-walk (.parseTree rev-walk head-id))
           (.setRecursive tree-walk true)
@@ -282,14 +283,21 @@
 
           (loop [results []]
             (if (.next tree-walk)
-              (let [path (.getPathString tree-walk)
+              (let [^String path (.getPathString tree-walk)
                     _ (log/log-info (str "Found file: " path))
                     object-id (.getObjectId tree-walk 0)
-                    object-loader (.open repository object-id)
+                    ^org.eclipse.jgit.lib.ObjectLoader object-loader (.open ^Repository repository object-id)
                     content (String. (.getBytes object-loader) "UTF-8")
-                    doc (json/read-str content :key-fn keyword)]
-                ;; Check if document belongs to the correct table
-                (if (= (:_table doc) table-name)
+                    doc (json/read-str content :key-fn keyword)
+                    ^String doc-id (or (:id doc) "")
+                    ^String table-prefix (str table-name ":")]
+                ;; Check if document belongs to the correct table:
+                ;; 1. explicit _table field matches
+                ;; 2. document ID starts with "table:"
+                ;; 3. path is within the table directory
+                (if (or (= (:_table doc) table-name)
+                        (.startsWith doc-id table-prefix)
+                        (.contains path (str "/" table-name "/")))
                   (do
                     (log/log-info (str "Document belongs to table " table-name ": " (:id doc)))
                     (recur (conj results doc)))
@@ -320,16 +328,16 @@
             doc-path (if table-name
                        (path/get-file-path _data-dir id table-name)
                        (path/get-file-path _data-dir id))
-            git (Git/wrap repository)
-            head-id (.resolve repository (str branch-name "^{commit}"))]
+            git (Git/wrap ^Repository repository)
+            head-id (.resolve ^Repository repository (str branch-name "^{commit}"))]
 
         (when head-id
-          (let [tree-walk (TreeWalk. repository)
-                rev-walk (RevWalk. repository)]
+          (let [^TreeWalk tree-walk (TreeWalk. ^Repository repository)
+                ^RevWalk rev-walk (RevWalk. ^Repository repository)]
             (try
               (.addTree tree-walk (.parseTree rev-walk head-id))
               (.setRecursive tree-walk true)
-              (.setFilter tree-walk (PathFilter/create doc-path))
+              (.setFilter tree-walk (PathFilter/create ^String doc-path))
 
               (if (.next tree-walk)
                 (do
