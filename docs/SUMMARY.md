@@ -32,6 +32,11 @@
 * [Examples Overview](examples)
 * [Clojure Examples](examples-clojure)
 
+## Language Bindings
+
+* [Python](bindings/python)
+* [Rust](bindings/rust)
+
 ## Operations
 
 * [Configuration](configuration)

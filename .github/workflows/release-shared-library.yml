@@ -226,6 +226,37 @@ jobs:
           name: chrondb-python-${{ steps.platform.outputs.name }}
           path: bindings/python/dist/chrondb-*.whl
 
+  publish-rust-crate:
+    needs: [build-shared-lib, package-rust]
+    runs-on: ubuntu-22.04
+    name: "Publish Rust crate to crates.io"
+    environment: tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Update crate version
+        working-directory: bindings/rust
+        env:
+          VERSION: ${{ needs.build-shared-lib.outputs.version }}
+          PRERELEASE: ${{ needs.build-shared-lib.outputs.prerelease }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          if [ "$PRERELEASE" = "true" ]; then
+            CRATE_VERSION="0.0.0-dev.${RUN_NUMBER}"
+          else
+            CRATE_VERSION="${VERSION}"
+          fi
+          sed -i "s/^version = \"0.1.0\"/version = \"${CRATE_VERSION}\"/" Cargo.toml
+          echo "Publishing version: ${CRATE_VERSION}"
+
+      - name: Publish to crates.io
+        working-directory: bindings/rust
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --allow-dirty
+
   create-release:
     needs: [build-shared-lib, package-rust, package-python]
     runs-on: ubuntu-22.04

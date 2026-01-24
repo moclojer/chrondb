@@ -5,34 +5,54 @@ Rust client for ChronDB, a time-traveling key/value database built on Git archit
 ## Requirements
 
 - Rust 1.56+ (2021 edition)
-- ChronDB shared library (`libchrondb.so` / `libchrondb.dylib`)
 - `libclang` (for bindgen to generate FFI bindings)
-- Java 11+ and GraalVM (for building the shared library from source)
 
 ## Installation
 
-### Add to Cargo.toml
+Download the pre-built package from the [latest GitHub release](https://github.com/moclojer/chrondb/releases/tag/latest):
+
+**macOS (Apple Silicon):**
+
+```bash
+curl -L https://github.com/moclojer/chrondb/releases/download/latest/chrondb-rust-latest-macos-aarch64.tar.gz | tar xz
+```
+
+**Linux (x86_64):**
+
+```bash
+curl -L https://github.com/moclojer/chrondb/releases/download/latest/chrondb-rust-latest-linux-x86_64.tar.gz | tar xz
+```
+
+The archive contains the Rust crate source and the native shared library. Add it as a dependency:
 
 ```toml
 [dependencies]
-chrondb = { path = "path/to/chrondb/bindings/rust" }
+chrondb = { path = "chrondb-rust" }
 serde_json = "1"
 ```
 
-### Configure the library path
+### Configure the runtime library path
 
-Set `CHRONDB_LIB_DIR` to the directory containing `libchrondb.so`/`.dylib` and the header files:
+The shared library must be discoverable at runtime:
+
+**Linux:**
 
 ```bash
-export CHRONDB_LIB_DIR=/path/to/chrondb/target
+export LD_LIBRARY_PATH=/path/to/chrondb-rust/lib:$LD_LIBRARY_PATH
 ```
 
-If not set, the build script defaults to `../../target` (relative to the crate root).
-
-At runtime, ensure the library is discoverable via `LD_LIBRARY_PATH` (Linux) or `DYLD_LIBRARY_PATH` (macOS):
+**macOS:**
 
 ```bash
-export LD_LIBRARY_PATH=/path/to/chrondb/target:$LD_LIBRARY_PATH
+export DYLD_LIBRARY_PATH=/path/to/chrondb-rust/lib:$DYLD_LIBRARY_PATH
+```
+
+### Library path (advanced)
+
+To override the library location at build time, set `CHRONDB_LIB_DIR`:
+
+```bash
+export CHRONDB_LIB_DIR=/path/to/dir/with/libchrondb
 ```
 
 ## Quick Start

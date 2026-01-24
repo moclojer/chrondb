@@ -5,41 +5,36 @@ Python client for ChronDB, a time-traveling key/value database built on Git arch
 ## Requirements
 
 - Python 3.8+
-- ChronDB shared library (`libchrondb.so` / `libchrondb.dylib` / `chrondb.dll`)
-- Java 11+ and GraalVM (for building the shared library from source)
 
 ## Installation
 
-### 1. Build the shared library
+Install directly from the [latest GitHub release](https://github.com/moclojer/chrondb/releases/tag/latest):
+
+**macOS (Apple Silicon):**
 
 ```bash
-cd chrondb/
-clojure -M:shared
+pip install https://github.com/moclojer/chrondb/releases/download/latest/chrondb-latest-py3-none-macosx_14_0_arm64.whl
 ```
 
-This produces the native library in `target/` (e.g., `target/libchrondb.so`).
-
-### 2. Install the Python package
+**Linux (x86_64):**
 
 ```bash
-cd bindings/python/
-pip install .
+pip install https://github.com/moclojer/chrondb/releases/download/latest/chrondb-latest-py3-none-manylinux_2_35_x86_64.whl
 ```
 
-### 3. Configure the library path
+The wheel already includes the native shared library — no extra configuration needed.
 
-The binding searches for the shared library in this order:
+### Library path (advanced)
 
-1. `CHRONDB_LIB_PATH` environment variable (full path to the library file)
-2. `CHRONDB_LIB_DIR` environment variable (directory containing the library)
-3. Relative to the package: `../../target/`
-4. Package `lib/` subdirectory
-5. System paths: `/usr/local/lib`, `/usr/lib`
+If you need to override the bundled library (e.g., using a custom build), the binding searches in this order:
+
+1. `CHRONDB_LIB_PATH` — full path to the library file
+2. `CHRONDB_LIB_DIR` — directory containing the library
+3. Bundled `lib/` inside the package
+4. System paths: `/usr/local/lib`, `/usr/lib`
 
 ```bash
 export CHRONDB_LIB_PATH=/path/to/libchrondb.so
-# or
-export CHRONDB_LIB_DIR=/path/to/dir/
 ```
 
 ## Quick Start
