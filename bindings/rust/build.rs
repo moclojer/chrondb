@@ -2,6 +2,20 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
+/// Standard location for ChronDB shared library: ~/.chrondb/lib/
+fn chrondb_home_lib_dir() -> Option<PathBuf> {
+    dirs::home_dir().map(|h| h.join(".chrondb").join("lib"))
+}
+
+fn get_lib_name(target_os: &str) -> &'static str {
+    match target_os {
+        "macos" => "libchrondb.dylib",
+        "linux" => "libchrondb.so",
+        "windows" => "chrondb.dll",
+        _ => "libchrondb.so",
+    }
+}
+
 fn download_library(lib_dir: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     let target_os = env::var("CARGO_CFG_TARGET_OS")?;
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH")?;
@@ -40,6 +54,7 @@ fn download_library(lib_dir: &PathBuf) -> Result<(), Box<dyn std::error::Error>>
     );
 
     eprintln!("cargo:warning=Downloading ChronDB library from {}", url);
+    eprintln!("cargo:warning=Installing to {}", lib_dir.display());
 
     let response = ureq::get(&url).call()?;
     let mut reader = response.into_reader();
@@ -47,14 +62,18 @@ fn download_library(lib_dir: &PathBuf) -> Result<(), Box<dyn std::error::Error>>
     let decoder = flate2::read::GzDecoder::new(&mut reader);
     let mut archive = tar::Archive::new(decoder);
 
-    fs::create_dir_all(lib_dir)?;
-    archive.unpack(lib_dir)?;
+    // Extract to a temp dir first, then move files
+    let temp_dir = lib_dir.join(".tmp-extract");
+    fs::create_dir_all(&temp_dir)?;
+    archive.unpack(&temp_dir)?;
 
     // Find the extracted directory and flatten lib/ and include/ into lib_dir
-    let entries: Vec<_> = fs::read_dir(lib_dir)?
+    let entries: Vec<_> = fs::read_dir(&temp_dir)?
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
         .collect();
+
+    fs::create_dir_all(lib_dir)?;
 
     if let Some(extracted) = entries.first() {
         let extracted_path = extracted.path();
@@ -65,7 +84,7 @@ fn download_library(lib_dir: &PathBuf) -> Result<(), Box<dyn std::error::Error>>
             for entry in fs::read_dir(&lib_subdir)? {
                 let entry = entry?;
                 let dest = lib_dir.join(entry.file_name());
-                fs::rename(entry.path(), dest)?;
+                fs::copy(entry.path(), &dest)?;
             }
         }
 
@@ -75,60 +94,94 @@ fn download_library(lib_dir: &PathBuf) -> Result<(), Box<dyn std::error::Error>>
             for entry in fs::read_dir(&include_subdir)? {
                 let entry = entry?;
                 let dest = lib_dir.join(entry.file_name());
-                fs::rename(entry.path(), dest)?;
+                fs::copy(entry.path(), &dest)?;
             }
         }
-
-        // Clean up extracted directory
-        fs::remove_dir_all(&extracted_path).ok();
     }
+
+    // Clean up temp dir
+    fs::remove_dir_all(&temp_dir).ok();
 
     Ok(())
 }
 
 fn main() {
-    let lib_dir = match env::var("CHRONDB_LIB_DIR") {
-        Ok(dir) => PathBuf::from(dir),
-        Err(_) => {
-            // No explicit path: download from GitHub Releases
-            let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-            let download_dir = out_dir.join("chrondb-lib");
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let lib_name = get_lib_name(&target_os);
 
-            // Check if already downloaded (avoid re-downloading on rebuild)
-            let header_check = download_dir.join("libchrondb.h");
-            if !header_check.exists() {
-                if let Err(e) = download_library(&download_dir) {
-                    eprintln!("cargo:warning=Failed to download ChronDB library: {}", e);
-                    eprintln!("cargo:warning=Set CHRONDB_LIB_DIR to the path containing the library.");
-                    // Fall through to stub bindings
-                    generate_stub_bindings();
-                    return;
-                }
+    // Priority order:
+    // 1. CHRONDB_LIB_DIR env var (explicit override)
+    // 2. ~/.chrondb/lib/ (standard location)
+    // 3. Download to ~/.chrondb/lib/
+
+    let lib_dir = if let Ok(dir) = env::var("CHRONDB_LIB_DIR") {
+        // Explicit override
+        PathBuf::from(dir)
+    } else if let Some(home_lib) = chrondb_home_lib_dir() {
+        // Check if library exists in standard location
+        if home_lib.join(lib_name).exists() && home_lib.join("libchrondb.h").exists() {
+            eprintln!("cargo:warning=Using ChronDB library from {}", home_lib.display());
+            home_lib
+        } else {
+            // Download to standard location
+            if let Err(e) = download_library(&home_lib) {
+                eprintln!("cargo:warning=Failed to download ChronDB library: {}", e);
+                eprintln!("cargo:warning=Set CHRONDB_LIB_DIR to the path containing the library.");
+                generate_stub_bindings();
+                return;
             }
-
-            download_dir
+            home_lib
         }
+    } else {
+        // Fallback: can't determine home dir, use OUT_DIR
+        eprintln!("cargo:warning=Cannot determine home directory, using OUT_DIR");
+        let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+        let download_dir = out_dir.join("chrondb-lib");
+
+        let header_check = download_dir.join("libchrondb.h");
+        if !header_check.exists() {
+            if let Err(e) = download_library(&download_dir) {
+                eprintln!("cargo:warning=Failed to download ChronDB library: {}", e);
+                generate_stub_bindings();
+                return;
+            }
+        }
+        download_dir
     };
+
+    // Verify library exists
+    if !lib_dir.join(lib_name).exists() {
+        eprintln!("cargo:warning=Library {} not found in {}", lib_name, lib_dir.display());
+        generate_stub_bindings();
+        return;
+    }
 
     // Tell cargo to look for the shared library
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
     println!("cargo:rustc-link-lib=dylib=chrondb");
 
     // Set rpath so the binary finds the library at runtime
-    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     match target_os.as_str() {
         "macos" => {
             // Relative: finds lib next to the binary (for distribution)
             println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path");
             println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path/../lib");
-            // Absolute: finds lib in build dir (for development)
+            // Standard location: ~/.chrondb/lib/
+            if let Some(home_lib) = chrondb_home_lib_dir() {
+                println!("cargo:rustc-link-arg=-Wl,-rpath,{}", home_lib.display());
+            }
+            // Absolute: build dir (fallback)
             println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib_dir.display());
         }
         "linux" => {
             // Relative: finds lib next to the binary (for distribution)
             println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN");
             println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/../lib");
-            // Absolute: finds lib in build dir (for development)
+            // Standard location: ~/.chrondb/lib/
+            if let Some(home_lib) = chrondb_home_lib_dir() {
+                println!("cargo:rustc-link-arg=-Wl,-rpath,{}", home_lib.display());
+            }
+            // Absolute: build dir (fallback)
             println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib_dir.display());
         }
         _ => {}
@@ -171,12 +224,7 @@ fn main() {
 }
 
 fn copy_lib_to_target_dir(lib_dir: &PathBuf, target_os: &str) {
-    let lib_name = match target_os {
-        "macos" => "libchrondb.dylib",
-        "linux" => "libchrondb.so",
-        "windows" => "chrondb.dll",
-        _ => return,
-    };
+    let lib_name = get_lib_name(target_os);
 
     let src = lib_dir.join(lib_name);
     if !src.exists() {
