@@ -6,11 +6,18 @@
             [chrondb.storage.protocol :as storage]
             [chrondb.index.lucene :as lucene]
             [chrondb.index.protocol :as index]
+            [chrondb.util.logging :as log]
             [clojure.data.json :as json])
   (:import [java.util.concurrent.atomic AtomicInteger]))
 
 (defonce ^:private ^AtomicInteger handle-counter (AtomicInteger. 0))
 (defonce ^:private handle-registry (atom {}))
+
+;; Disable logging by default for library usage.
+;; Enable with CHRONDB_DB_LOGS=1 for debugging.
+(defonce ^:private _init-logging
+  (let [logs-enabled? (= "1" (System/getenv "CHRONDB_DB_LOGS"))]
+    (log/init! {:min-level (if logs-enabled? :info :off)})))
 
 (defn lib-open
   "Opens a ChronDB instance with the given data and index paths.
