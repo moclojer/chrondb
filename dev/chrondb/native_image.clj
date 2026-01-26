@@ -125,7 +125,9 @@
 (def base-run-time-classes
   ["org.eclipse.jgit.util.FileUtils"
    "org.eclipse.jgit.internal.storage.file.FileReftableStack"
-   "org.eclipse.jgit.internal.storage.file.FileReftableDatabase"])
+   "org.eclipse.jgit.internal.storage.file.FileReftableDatabase"
+   ;; clojure.data.json uses (set! *warn-on-reflection* true) which fails at build-time
+   "clojure.data.json"])
 
 (def jar-path "target/chrondb.jar")
 
