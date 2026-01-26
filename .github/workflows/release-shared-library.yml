@@ -130,7 +130,6 @@ jobs:
           cp -r bindings/rust/src/* "${PKG_DIR}/src/"
           cp bindings/rust/Cargo.toml "${PKG_DIR}/"
           cp bindings/rust/build.rs "${PKG_DIR}/"
-          cp bindings/rust/wrapper.h "${PKG_DIR}/"
 
           tar -czf "chrondb-rust-${VERSION}-${PLATFORM}.tar.gz" "${PKG_DIR}"
 
