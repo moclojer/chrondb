@@ -154,11 +154,14 @@ fn find_library_path() -> Option<PathBuf> {
         }
     }
 
-    // Priority 2: ~/.chrondb/lib/
-    if let Some(lib_dir) = setup::get_library_dir() {
-        let path = lib_dir.join(lib_name);
-        if path.exists() {
-            return Some(path);
+    // Priority 2: ~/.chrondb/lib/ (explicit check, independent of env var)
+    // This ensures we find the library even if CHRONDB_LIB_DIR points to
+    // an empty/non-existent directory but ensure_library_installed()
+    // downloaded to the home directory.
+    if let Some(home) = dirs::home_dir() {
+        let home_lib_path = home.join(".chrondb").join("lib").join(lib_name);
+        if home_lib_path.exists() {
+            return Some(home_lib_path);
         }
     }
 
@@ -326,7 +329,7 @@ mod tests {
     }
 
     #[test]
-    fn test_find_library_path_returns_none_when_not_found() {
+    fn test_find_library_path_checks_home_after_env_var() {
         let temp_dir = TempDir::new().unwrap();
         let path = temp_dir.path().to_path_buf();
 
@@ -334,8 +337,15 @@ mod tests {
         env::set_var("CHRONDB_LIB_DIR", path.to_str().unwrap());
 
         let result = find_library_path();
-        // Should return None since no library file exists in the directory
-        assert!(result.is_none());
+        // Result depends on whether ~/.chrondb/lib/ has the library
+        // If it does, find_library_path should find it (this is the fix!)
+        // If not, returns None
+        if let Some(found_path) = &result {
+            // Should NOT be from the empty temp dir
+            assert!(!found_path.starts_with(&path));
+            // Should be from home dir
+            assert!(found_path.to_string_lossy().contains(".chrondb"));
+        }
 
         env::remove_var("CHRONDB_LIB_DIR");
     }
