@@ -3,6 +3,8 @@ use std::fmt;
 /// Errors returned by ChronDB operations.
 #[derive(Debug)]
 pub enum ChronDBError {
+    /// Failed to setup/download native library
+    SetupFailed(String),
     /// Failed to create GraalVM isolate
     IsolateCreationFailed,
     /// Failed to open database
@@ -20,6 +22,7 @@ pub enum ChronDBError {
 impl fmt::Display for ChronDBError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            ChronDBError::SetupFailed(msg) => write!(f, "library setup failed: {}", msg),
             ChronDBError::IsolateCreationFailed => write!(f, "failed to create GraalVM isolate"),
             ChronDBError::OpenFailed(msg) => write!(f, "failed to open database: {}", msg),
             ChronDBError::CloseFailed => write!(f, "failed to close database"),
