@@ -36,147 +36,147 @@
 (use-fixtures :each temp-dirs-fixture)
 
 (deftest test-lib-open-close
-  (testing "lib-open deve retornar handle valido e lib-close deve fechar"
+  (testing "lib-open should return valid handle and lib-close should close it"
     (let [handle (lib/lib-open *test-data-dir* *test-index-dir*)]
-      (is (some? handle) "lib-open deve retornar handle")
-      (is (>= handle 0) "handle deve ser >= 0")
+      (is (some? handle) "lib-open should return a handle")
+      (is (>= handle 0) "handle should be >= 0")
       (let [close-result (lib/lib-close handle)]
-        (is (= 0 close-result) "lib-close deve retornar 0 em sucesso")))))
+        (is (= 0 close-result) "lib-close should return 0 on success")))))
 
 (deftest test-lib-put-operation
-  (testing "lib-put deve salvar documento sem StackOverflowError"
+  (testing "lib-put should save document without StackOverflowError"
     (let [handle (lib/lib-open *test-data-dir* *test-index-dir*)]
-      (is (some? handle) "lib-open deve retornar handle valido")
-      (is (>= handle 0) "handle deve ser >= 0")
+      (is (some? handle) "lib-open should return valid handle")
+      (is (>= handle 0) "handle should be >= 0")
       (try
         (let [doc-id "user:1"
               doc-json "{\"name\": \"Test User\", \"email\": \"test@example.com\"}"
               result (lib/lib-put handle doc-id doc-json nil)]
-          (is (some? result) "lib-put deve retornar documento salvo")
-          (is (string? result) "resultado deve ser string JSON")
-          (is (.contains result "Test User") "resultado deve conter dados salvos")
-          (is (.contains result "user:1") "resultado deve conter o id")
+          (is (some? result) "lib-put should return saved document")
+          (is (string? result) "result should be JSON string")
+          (is (.contains result "Test User") "result should contain saved data")
+          (is (.contains result "user:1") "result should contain the id")
 
-          ;; Verificar que o documento pode ser recuperado
+          ;; Verify document can be retrieved
           (let [retrieved (lib/lib-get handle doc-id nil)]
-            (is (some? retrieved) "lib-get deve retornar documento")
-            (is (.contains retrieved "Test User") "documento deve conter dados salvos")))
+            (is (some? retrieved) "lib-get should return document")
+            (is (.contains retrieved "Test User") "document should contain saved data")))
         (finally
           (lib/lib-close handle))))))
 
 (deftest test-lib-put-multiple-documents
-  (testing "lib-put deve funcionar com multiplos documentos"
+  (testing "lib-put should work with multiple documents"
     (let [handle (lib/lib-open *test-data-dir* *test-index-dir*)]
-      (is (>= handle 0) "handle deve ser valido")
+      (is (>= handle 0) "handle should be valid")
       (try
         (doseq [i (range 10)]
           (let [doc-id (str "item:" i)
                 doc-json (format "{\"index\": %d, \"value\": \"test-%d\"}" i i)
                 result (lib/lib-put handle doc-id doc-json nil)]
-            (is (some? result) (str "lib-put deve funcionar para doc " i))))
+            (is (some? result) (str "lib-put should work for doc " i))))
 
-        ;; Verificar que todos foram salvos
+        ;; Verify all documents were saved
         (doseq [i (range 10)]
           (let [doc-id (str "item:" i)
                 retrieved (lib/lib-get handle doc-id nil)]
-            (is (some? retrieved) (str "lib-get deve retornar doc " i))
-            (is (.contains retrieved (str "\"index\":" i)) (str "doc " i " deve conter dados corretos"))))
+            (is (some? retrieved) (str "lib-get should return doc " i))
+            (is (.contains retrieved (str "\"index\":" i)) (str "doc " i " should contain correct data"))))
         (finally
           (lib/lib-close handle))))))
 
 (deftest test-lib-put-and-delete
-  (testing "lib-put seguido de lib-delete deve funcionar"
+  (testing "lib-put followed by lib-delete should work"
     (let [handle (lib/lib-open *test-data-dir* *test-index-dir*)]
       (try
         (let [doc-id "temp:1"
               doc-json "{\"temp\": true}"
               _ (lib/lib-put handle doc-id doc-json nil)
               delete-result (lib/lib-delete handle doc-id nil)]
-          (is (= 0 delete-result) "delete deve retornar 0")
+          (is (= 0 delete-result) "delete should return 0")
 
-          ;; Verificar que foi deletado
+          ;; Verify document was deleted
           (let [retrieved (lib/lib-get handle doc-id nil)]
-            (is (nil? retrieved) "documento deletado nao deve ser encontrado")))
+            (is (nil? retrieved) "deleted document should not be found")))
         (finally
           (lib/lib-close handle))))))
 
 (deftest test-lib-list-by-prefix
-  (testing "lib-list-by-prefix deve retornar documentos com prefixo"
+  (testing "lib-list-by-prefix should return documents with prefix"
     (let [handle (lib/lib-open *test-data-dir* *test-index-dir*)]
       (try
-        ;; Criar alguns documentos
+        ;; Create some documents
         (lib/lib-put handle "product:1" "{\"name\": \"Product 1\"}" nil)
         (lib/lib-put handle "product:2" "{\"name\": \"Product 2\"}" nil)
         (lib/lib-put handle "category:1" "{\"name\": \"Category 1\"}" nil)
 
-        ;; Listar por prefixo
+        ;; List by prefix
         (let [result (lib/lib-list-by-prefix handle "product:" nil)]
-          (is (some? result) "resultado deve existir")
-          (is (.contains result "Product 1") "deve conter Product 1")
-          (is (.contains result "Product 2") "deve conter Product 2")
-          (is (not (.contains result "Category 1")) "nao deve conter Category 1"))
+          (is (some? result) "result should exist")
+          (is (.contains result "Product 1") "should contain Product 1")
+          (is (.contains result "Product 2") "should contain Product 2")
+          (is (not (.contains result "Category 1")) "should not contain Category 1"))
         (finally
           (lib/lib-close handle))))))
 
 (deftest test-lib-history
-  (testing "lib-history deve retornar historico de modificacoes"
+  (testing "lib-history should return modification history"
     (let [handle (lib/lib-open *test-data-dir* *test-index-dir*)]
       (try
-        ;; Criar e atualizar documento
+        ;; Create and update document
         (lib/lib-put handle "doc:1" "{\"version\": 1}" nil)
         (lib/lib-put handle "doc:1" "{\"version\": 2}" nil)
 
-        ;; Verificar historico
+        ;; Verify history
         (let [history (lib/lib-history handle "doc:1" nil)]
-          (is (some? history) "historico deve existir")
-          (is (string? history) "historico deve ser string JSON"))
+          (is (some? history) "history should exist")
+          (is (string? history) "history should be JSON string"))
         (finally
           (lib/lib-close handle))))))
 
 (deftest test-lib-open-returns-number-on-failure
-  (testing "lib-open deve retornar -1 (nao nil) quando falha"
-    ;; Usar path invalido que causa falha
+  (testing "lib-open should return -1 (not nil) on failure"
+    ;; Use invalid path that causes failure
     (let [result (lib/lib-open nil nil)]
-      (is (number? result) "resultado deve ser numero, nao nil")
-      (is (= -1 result) "resultado deve ser -1 em caso de erro"))))
+      (is (number? result) "result should be number, not nil")
+      (is (= -1 result) "result should be -1 on error"))))
 
 (deftest test-lib-open-invalid-paths
-  (testing "lib-open com paths vazios deve retornar -1"
+  (testing "lib-open with empty paths should return -1"
     (let [result (lib/lib-open "" "")]
-      (is (number? result) "resultado deve ser numero")
-      (is (= -1 result) "paths vazios devem retornar -1"))))
+      (is (number? result) "result should be number")
+      (is (= -1 result) "empty paths should return -1"))))
 
 (deftest test-lib-open-cleans-stale-locks
-  (testing "lib-open deve limpar arquivos .lock orfaos e abrir normalmente"
-    ;; Primeiro, criar um banco de dados valido
+  (testing "lib-open should clean orphan .lock files and open normally"
+    ;; First, create a valid database
     (let [handle (lib/lib-open *test-data-dir* *test-index-dir*)]
-      (is (>= handle 0) "primeiro open deve funcionar")
-      ;; Salvar um documento para garantir que o repo esta funcional
+      (is (>= handle 0) "first open should succeed")
+      ;; Save a document to ensure repo is functional
       (lib/lib-put handle "test:1" "{\"test\": true}" nil)
       (lib/lib-close handle))
 
-    ;; Simular crash criando lock file orfao
+    ;; Simulate crash by creating orphan lock files
     (let [stale-lock (io/file *test-data-dir* "refs" "heads" "main.lock")
           lucene-lock (io/file *test-index-dir* "write.lock")]
-      ;; Criar locks orfaos
+      ;; Create orphan locks
       (.mkdirs (.getParentFile stale-lock))
       (spit stale-lock "stale lock content")
       (spit lucene-lock "stale lucene lock")
-      ;; Definir tempo de modificacao para mais de 60 segundos atras
+      ;; Set modification time to more than 60 seconds ago
       (.setLastModified stale-lock (- (System/currentTimeMillis) 120000))
       (.setLastModified lucene-lock (- (System/currentTimeMillis) 120000))
 
-      (is (.exists stale-lock) "git lock file deve existir antes do reopen")
-      (is (.exists lucene-lock) "lucene lock file deve existir antes do reopen")
+      (is (.exists stale-lock) "git lock file should exist before reopen")
+      (is (.exists lucene-lock) "lucene lock file should exist before reopen")
 
-      ;; Reabrir deve limpar os locks orfaos e funcionar
-      ;; Sem a limpeza, isso falharia com OpenFailed("")
+      ;; Reopen should clean orphan locks and succeed
+      ;; Without cleanup, this would fail with OpenFailed("")
       (let [handle (lib/lib-open *test-data-dir* *test-index-dir*)]
-        (is (>= handle 0) "lib-open deve funcionar apos limpar locks orfaos")
+        (is (>= handle 0) "lib-open should succeed after cleaning orphan locks")
         (when (>= handle 0)
-          ;; Verificar que ainda consegue acessar dados
+          ;; Verify data is still accessible
           (let [doc (lib/lib-get handle "test:1" nil)]
-            (is (some? doc) "documento deve estar acessivel apos reopen"))
-          ;; Git lock deve ter sido removido (nao e recriado ao abrir repo bare)
-          (is (not (.exists stale-lock)) "git lock orfao deve ter sido removido")
+            (is (some? doc) "document should be accessible after reopen"))
+          ;; Git lock should have been removed (not recreated when opening bare repo)
+          (is (not (.exists stale-lock)) "orphan git lock should have been removed")
           (lib/lib-close handle))))))
