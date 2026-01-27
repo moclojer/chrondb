@@ -26,6 +26,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::ptr;
 
+
 use ffi::graal_isolate_t;
 use ffi::graal_isolatethread_t;
 
@@ -48,6 +49,9 @@ impl ChronDB {
     ///
     /// If the native library is not installed, this function will automatically
     /// download and install it to `~/.chrondb/lib/`.
+    ///
+    /// **Important**: This operation requires a large stack. Run your program with:
+    /// `RUST_MIN_STACK=33554432 cargo run` or configure thread stack size.
     ///
     /// # Arguments
     /// * `data_path` - Path for the Git repository (data storage)

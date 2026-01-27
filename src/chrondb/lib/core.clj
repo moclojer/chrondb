@@ -26,11 +26,13 @@
   (try
     (let [storage (git/create-git-storage data-path)
           idx (lucene/create-lucene-index index-path)]
-      (when (and storage idx)
-        (lucene/ensure-index-populated idx storage nil {:async? false})
-        (let [handle (.getAndIncrement ^AtomicInteger handle-counter)]
-          (swap! handle-registry assoc handle {:storage storage :index idx})
-          handle)))
+      (if (and storage idx)
+        (do
+          (lucene/ensure-index-populated idx storage nil {:async? false})
+          (let [handle (.getAndIncrement ^AtomicInteger handle-counter)]
+            (swap! handle-registry assoc handle {:storage storage :index idx})
+            handle))
+        -1))
     (catch Throwable _e
       -1)))
 
