@@ -10,6 +10,7 @@
             [chrondb.index.lucene-nrt :as lucene-nrt]
             [chrondb.observability.health :as health]
             [chrondb.util.logging :as log]
+            [chrondb.util.locks :as locks]
             [clojure.java.io :as io]
             [clojure.string :as str]))
 
@@ -27,17 +28,17 @@
   []
   (let [data-dir "data"
         index-dir (str data-dir "/index")
-        wal-dir (str data-dir "/wal")
-        lock-file (io/file (str index-dir "/write.lock"))]
+        wal-dir (str data-dir "/wal")]
     (when-not (.exists (io/file data-dir))
       (.mkdirs (io/file data-dir)))
     (when-not (.exists (io/file index-dir))
       (.mkdirs (io/file index-dir)))
     (when-not (.exists (io/file wal-dir))
       (.mkdirs (io/file wal-dir)))
-    (when (.exists lock-file)
-      (println "Removing stale Lucene lock file")
-      (.delete lock-file))))
+    ;; Clean stale locks from Git and Lucene directories
+    ;; Use :force? true on server startup since no other process should be running
+    (locks/clean-stale-locks data-dir {:force? true :verbose? true})
+    (locks/clean-lucene-lock index-dir {:force? true :verbose? true})))
 
 (defn parse-kv-args
   [args]

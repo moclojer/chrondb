@@ -145,3 +145,38 @@
     (let [result (lib/lib-open "" "")]
       (is (number? result) "resultado deve ser numero")
       (is (= -1 result) "paths vazios devem retornar -1"))))
+
+(deftest test-lib-open-cleans-stale-locks
+  (testing "lib-open deve limpar arquivos .lock orfaos e abrir normalmente"
+    ;; Primeiro, criar um banco de dados valido
+    (let [handle (lib/lib-open *test-data-dir* *test-index-dir*)]
+      (is (>= handle 0) "primeiro open deve funcionar")
+      ;; Salvar um documento para garantir que o repo esta funcional
+      (lib/lib-put handle "test:1" "{\"test\": true}" nil)
+      (lib/lib-close handle))
+
+    ;; Simular crash criando lock file orfao
+    (let [stale-lock (io/file *test-data-dir* "refs" "heads" "main.lock")
+          lucene-lock (io/file *test-index-dir* "write.lock")]
+      ;; Criar locks orfaos
+      (.mkdirs (.getParentFile stale-lock))
+      (spit stale-lock "stale lock content")
+      (spit lucene-lock "stale lucene lock")
+      ;; Definir tempo de modificacao para mais de 60 segundos atras
+      (.setLastModified stale-lock (- (System/currentTimeMillis) 120000))
+      (.setLastModified lucene-lock (- (System/currentTimeMillis) 120000))
+
+      (is (.exists stale-lock) "git lock file deve existir antes do reopen")
+      (is (.exists lucene-lock) "lucene lock file deve existir antes do reopen")
+
+      ;; Reabrir deve limpar os locks orfaos e funcionar
+      ;; Sem a limpeza, isso falharia com OpenFailed("")
+      (let [handle (lib/lib-open *test-data-dir* *test-index-dir*)]
+        (is (>= handle 0) "lib-open deve funcionar apos limpar locks orfaos")
+        (when (>= handle 0)
+          ;; Verificar que ainda consegue acessar dados
+          (let [doc (lib/lib-get handle "test:1" nil)]
+            (is (some? doc) "documento deve estar acessivel apos reopen"))
+          ;; Git lock deve ter sido removido (nao e recriado ao abrir repo bare)
+          (is (not (.exists stale-lock)) "git lock orfao deve ter sido removido")
+          (lib/lib-close handle))))))

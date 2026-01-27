@@ -7,6 +7,7 @@
             [chrondb.index.lucene :as lucene]
             [chrondb.index.protocol :as index]
             [chrondb.util.logging :as log]
+            [chrondb.util.locks :as locks]
             [clojure.data.json :as json])
   (:import [java.util.concurrent.atomic AtomicInteger]))
 
@@ -21,9 +22,14 @@
 
 (defn lib-open
   "Opens a ChronDB instance with the given data and index paths.
+   Cleans up any stale lock files before opening to handle orphan locks
+   left by crashed processes.
    Returns a handle (>= 0) on success, or -1 on error."
   [data-path index-path]
   (try
+    ;; Clean stale locks from both Git and Lucene directories
+    (locks/clean-stale-locks data-path)
+    (locks/clean-stale-locks index-path)
     (let [storage (git/create-git-storage data-path)
           idx (lucene/create-lucene-index index-path)]
       (if (and storage idx)
