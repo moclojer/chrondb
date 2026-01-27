@@ -570,6 +570,7 @@
                       "-jar" jar-path
                       "-H:Class=chrondb.core"]
         tail-args (concat ["--enable-all-security-services"
+                           "-R:StackSize=67108864"
                            build-time-arg]
                           run-time-args
                           [(str "-H:ConfigurationFileDirectories=" (.getPath native-config-dir))
@@ -621,8 +622,10 @@
     (.mkdirs report-dir)
     (let [chrondb-clj (chrondb-classes)
           data-clj (clojure-data-classes)
+          ;; Filter out clojure.data.json__init to avoid initialization issues
+          filtered-data-clj (remove #(string/ends-with? % "__init") data-clj)
           reflect-config (into base-reflect-config
-                               (for [cls (concat clj-classes chrondb-clj data-clj)]
+                               (for [cls (concat clj-classes chrondb-clj filtered-data-clj)]
                                  {:name cls
                                   :allDeclaredConstructors true
                                   :allDeclaredMethods true
