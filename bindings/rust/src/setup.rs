@@ -91,8 +91,8 @@ fn download_library() -> std::result::Result<(), String> {
     let platform = get_platform()
         .ok_or_else(|| "No pre-built library available for this platform".to_string())?;
 
-    let lib_dir = chrondb_home_lib_dir()
-        .ok_or_else(|| "Cannot determine home directory".to_string())?;
+    let lib_dir =
+        chrondb_home_lib_dir().ok_or_else(|| "Cannot determine home directory".to_string())?;
 
     let version = env!("CARGO_PKG_VERSION");
     let (release_tag, version_label) = if version.contains("-dev") {
@@ -120,8 +120,7 @@ fn download_library() -> std::result::Result<(), String> {
 
     // Extract to a temp dir first, then move files
     let temp_dir = lib_dir.join(".tmp-extract-runtime");
-    fs::create_dir_all(&temp_dir)
-        .map_err(|e| format!("Failed to create temp directory: {}", e))?;
+    fs::create_dir_all(&temp_dir).map_err(|e| format!("Failed to create temp directory: {}", e))?;
 
     archive
         .unpack(&temp_dir)
@@ -134,8 +133,7 @@ fn download_library() -> std::result::Result<(), String> {
         .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
         .collect();
 
-    fs::create_dir_all(&lib_dir)
-        .map_err(|e| format!("Failed to create lib directory: {}", e))?;
+    fs::create_dir_all(&lib_dir).map_err(|e| format!("Failed to create lib directory: {}", e))?;
 
     if let Some(extracted) = entries.first() {
         let extracted_path = extracted.path();
@@ -253,9 +251,7 @@ mod tests {
     #[test]
     fn test_get_lib_name() {
         let name = get_lib_name();
-        assert!(
-            name == "libchrondb.dylib" || name == "libchrondb.so" || name == "chrondb.dll"
-        );
+        assert!(name == "libchrondb.dylib" || name == "libchrondb.so" || name == "chrondb.dll");
     }
 
     #[test]
@@ -405,11 +401,20 @@ mod tests {
 
     #[test]
     fn test_build_download_url_contains_platform() {
-        let platforms = ["linux-x86_64", "linux-aarch64", "macos-x86_64", "macos-aarch64"];
+        let platforms = [
+            "linux-x86_64",
+            "linux-aarch64",
+            "macos-x86_64",
+            "macos-aarch64",
+        ];
 
         for platform in platforms {
             let url = build_download_url("1.0.0", platform);
-            assert!(url.contains(platform), "URL should contain platform: {}", platform);
+            assert!(
+                url.contains(platform),
+                "URL should contain platform: {}",
+                platform
+            );
         }
     }
 }

@@ -26,7 +26,6 @@ use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::ptr;
 
-
 use ffi::graal_isolate_t;
 use ffi::graal_isolatethread_t;
 
@@ -283,7 +282,9 @@ impl ChronDB {
         if ptr.is_null() {
             None
         } else {
-            let s = unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned();
+            let s = unsafe { CStr::from_ptr(ptr) }
+                .to_string_lossy()
+                .into_owned();
             unsafe { (lib.chrondb_free_string)(thread, ptr) };
             Some(s)
         }
@@ -296,9 +297,11 @@ impl ChronDB {
 
     fn optional_cstring(s: Option<&str>) -> Result<Option<CString>> {
         match s {
-            Some(v) => Ok(Some(
-                CString::new(v).map_err(|e| ChronDBError::OperationFailed(e.to_string()))?,
-            )),
+            Some(v) => {
+                Ok(Some(CString::new(v).map_err(|e| {
+                    ChronDBError::OperationFailed(e.to_string())
+                })?))
+            }
             None => Ok(None),
         }
     }
@@ -318,7 +321,9 @@ impl ChronDB {
         if ptr.is_null() {
             return Err(self.last_error_or(lib, "null result"));
         }
-        let s = unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned();
+        let s = unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned();
         unsafe { (lib.chrondb_free_string)(self.thread, ptr) };
         let val: serde_json::Value = serde_json::from_str(&s)?;
         Ok(val)
