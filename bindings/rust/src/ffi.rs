@@ -279,6 +279,7 @@ fn try_find_library_path() -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::env;
     use std::fs::File;
     use tempfile::TempDir;
@@ -309,6 +310,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_find_library_path_with_env_var() {
         let temp_dir = TempDir::new().unwrap();
         let path = temp_dir.path().to_path_buf();
@@ -329,6 +331,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_find_library_path_checks_home_after_env_var() {
         let temp_dir = TempDir::new().unwrap();
         let path = temp_dir.path().to_path_buf();
@@ -351,6 +354,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_find_library_path_priority_env_over_home() {
         let temp_dir = TempDir::new().unwrap();
         let env_path = temp_dir.path().to_path_buf();
@@ -385,6 +389,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_find_library_path_empty_dir_returns_none() {
         // Save original env var
         let saved = env::var("CHRONDB_LIB_DIR").ok();
@@ -414,6 +419,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_chrondb_lib_load_fails_with_invalid_library() {
         // Save original env var to restore later
         let saved = env::var("CHRONDB_LIB_DIR").ok();

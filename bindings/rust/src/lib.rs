@@ -348,6 +348,7 @@ impl Drop for ChronDB {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::env;
     use tempfile::TempDir;
 
@@ -407,6 +408,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_open_with_env_var_fallback_to_home() {
         // Set env var to empty directory - should still find lib in ~/.chrondb/lib/
         let temp_dir = TempDir::new().unwrap();

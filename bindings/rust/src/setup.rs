@@ -246,6 +246,7 @@ fn build_download_url(version: &str, platform: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::fs::File;
     use tempfile::TempDir;
 
@@ -296,6 +297,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_library_dir_with_env_var() {
         let test_dir = "/tmp/test-chrondb-lib";
         env::set_var("CHRONDB_LIB_DIR", test_dir);
@@ -308,6 +310,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_get_library_dir_without_env_var() {
         // Save and clear env var
         let saved = env::var("CHRONDB_LIB_DIR").ok();
@@ -354,6 +357,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_library_exists_with_env_var() {
         let temp_dir = TempDir::new().unwrap();
         let path = temp_dir.path().to_path_buf();
