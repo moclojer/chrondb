@@ -546,9 +546,14 @@
         native-config-dir (ensure-dir! (io/file target-dir "native-config"))
         report-dir (ensure-dir! (io/file "report"))
         sdk-root (or (System/getenv "SDKROOT") (macos-sdk-root))
+        ;; Stack size of 64MB (67108864 bytes) for FFI compatibility
+        ;; This is required because Lucene and JGit use deep call stacks
+        stack-size-arg (when (not= (System/getProperty "os.name") "Mac OS X")
+                         ["-H:CCompilerOption=-Wl,-z,stack-size=67108864"])
         linker-args (concat (when sdk-root
                               [(str "-H:NativeLinkerOption=-L" (io/file sdk-root "usr/lib"))])
-                            ["-H:NativeLinkerOption=-lz"])
+                            ["-H:NativeLinkerOption=-lz"]
+                            stack-size-arg)
         base-args ["-Dorg.slf4j.simpleLogger.defaultLogLevel=info"
                    "-Dorg.slf4j.simpleLogger.log.org.eclipse.jetty.server=warn"
                    "--features=clj_easy.graal_build_time.InitClojureClasses"]

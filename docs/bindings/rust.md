@@ -7,6 +7,38 @@ Rust client for ChronDB, a time-traveling key/value database built on Git archit
 - Rust 1.56+ (2021 edition)
 - `libclang` (for bindgen to generate FFI bindings)
 
+## Stack Size Requirements
+
+ChronDB uses GraalVM native-image with Apache Lucene and JGit, which require deep call stacks. All FFI calls to the library need a large thread stack (~64MB).
+
+**Running applications:**
+
+```bash
+RUST_MIN_STACK=67108864 cargo run
+```
+
+**Running tests:**
+
+```bash
+RUST_MIN_STACK=67108864 cargo test
+```
+
+**In CI environments (GitHub Actions, etc.):**
+
+```yaml
+env:
+  RUST_MIN_STACK: "67108864"
+```
+
+**Note:** `RUST_MIN_STACK` only affects new threads spawned by Rust. For the main thread, you may need to set system-level stack limits:
+
+```bash
+# Linux
+ulimit -s unlimited
+
+# Or use a wrapper that spawns in a thread with large stack
+```
+
 ## Installation
 
 Add `chrondb` from [crates.io](https://crates.io/crates/chrondb):
