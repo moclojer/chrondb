@@ -15,8 +15,9 @@
   (let [dir-file (io/file dir)]
     (when (.exists dir-file)
       (->> (file-seq dir-file)
-           (filter #(and (.isFile %)
-                         (.endsWith (.getName %) ".lock")))))))
+           (filter (fn [^java.io.File f]
+                     (and (.isFile f)
+                          (.endsWith (.getName f) ".lock"))))))))
 
 (defn stale-lock?
   "Returns true if the lock file is older than the stale timeout.
