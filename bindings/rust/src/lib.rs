@@ -108,9 +108,11 @@ impl FfiWorkerState {
 
     fn optional_cstring(s: Option<&str>) -> Result<Option<CString>> {
         match s {
-            Some(v) => Ok(Some(
-                CString::new(v).map_err(|e| ChronDBError::OperationFailed(e.to_string()))?,
-            )),
+            Some(v) => {
+                Ok(Some(CString::new(v).map_err(|e| {
+                    ChronDBError::OperationFailed(e.to_string())
+                })?))
+            }
             None => Ok(None),
         }
     }
@@ -779,5 +781,78 @@ mod tests {
     fn test_ffi_thread_stack_size() {
         // Verify the constant is set to 64MB
         assert_eq!(FFI_THREAD_STACK_SIZE, 64 * 1024 * 1024);
+    }
+
+    /// Test that data persists across sessions (simulates CI scenario from spuff).
+    /// This is a regression test for issue #91 where lib-open always called
+    /// create-git-storage instead of open-git-storage, causing data loss.
+    #[test]
+    #[serial]
+    fn test_data_persists_across_sessions() {
+        // Skip if library not available
+        if ensure_library_installed().is_err() {
+            eprintln!("Skipping test: library not installed");
+            return;
+        }
+
+        let temp = TempDir::new().expect("Failed to create temp dir");
+        let data_path = temp.path().join("data");
+        let index_path = temp.path().join("index");
+
+        let data_str = data_path.to_str().unwrap();
+        let index_str = index_path.to_str().unwrap();
+
+        // === First "process" - create and save ===
+        {
+            let db = match ChronDB::open(data_str, index_str) {
+                Ok(db) => db,
+                Err(e) => {
+                    eprintln!("Skipping test: could not open database: {}", e);
+                    return;
+                }
+            };
+
+            let doc = serde_json::json!({"name": "test", "value": 42});
+            db.put("persist:test1", &doc, None)
+                .expect("Put should succeed");
+
+            // Verify data exists in this session
+            let retrieved = db.get("persist:test1", None).expect("Get should succeed");
+            assert_eq!(retrieved["name"], "test", "Document should exist after put");
+            assert_eq!(retrieved["value"], 42, "Document values should match");
+
+            // db drops here, simulating process exit
+        }
+
+        // === Second "process" - reopen and verify ===
+        {
+            let db = ChronDB::open(data_str, index_str)
+                .expect("Second open should succeed (not recreate!)");
+
+            let retrieved = db.get("persist:test1", None);
+            assert!(
+                retrieved.is_ok(),
+                "Get should succeed after reopen, got: {:?}",
+                retrieved
+            );
+
+            let doc = retrieved.unwrap();
+            assert_eq!(doc["name"], "test", "Document content should be intact");
+            assert_eq!(doc["value"], 42, "Document values should be intact");
+        }
+
+        // === Third "process" - verify data still persists ===
+        {
+            let db = ChronDB::open(data_str, index_str).expect("Third open should succeed");
+
+            let retrieved = db
+                .get("persist:test1", None)
+                .expect("Document should still persist after multiple reopens");
+
+            assert_eq!(
+                retrieved["name"], "test",
+                "Data should survive multiple reopens"
+            );
+        }
     }
 }
