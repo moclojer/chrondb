@@ -7,37 +7,16 @@ Rust client for ChronDB, a time-traveling key/value database built on Git archit
 - Rust 1.56+ (2021 edition)
 - `libclang` (for bindgen to generate FFI bindings)
 
-## Stack Size Requirements
+## Stack Size (Handled Automatically)
 
-ChronDB uses GraalVM native-image with Apache Lucene and JGit, which require deep call stacks. All FFI calls to the library need a large thread stack (~64MB).
+ChronDB uses GraalVM native-image with Apache Lucene and JGit, which require deep call stacks (~64MB).
 
-**Running applications:**
+**This is handled automatically.** The Rust binding spawns a dedicated worker thread with a 64MB stack for all FFI operations. You do not need to configure `RUST_MIN_STACK`, `ulimit`, or any other stack settings.
 
-```bash
-RUST_MIN_STACK=67108864 cargo run
-```
-
-**Running tests:**
-
-```bash
-RUST_MIN_STACK=67108864 cargo test
-```
-
-**In CI environments (GitHub Actions, etc.):**
-
-```yaml
-env:
-  RUST_MIN_STACK: "67108864"
-```
-
-**Note:** `RUST_MIN_STACK` only affects new threads spawned by Rust. For the main thread, you may need to set system-level stack limits:
-
-```bash
-# Linux
-ulimit -s unlimited
-
-# Or use a wrapper that spawns in a thread with large stack
-```
+The worker thread architecture also provides:
+- Consistent stack size across all platforms
+- No special CI configuration required
+- Thread-safe operation via message passing
 
 ## Installation
 
