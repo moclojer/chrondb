@@ -26,21 +26,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## Stack Size Requirements
+## Stack Size (Handled Automatically)
 
 ChronDB uses GraalVM native-image with Lucene and JGit, which require a large thread stack (~64MB).
 
-**For applications:**
-```bash
-RUST_MIN_STACK=67108864 cargo run
-```
-
-**For tests:**
-```bash
-RUST_MIN_STACK=67108864 cargo test
-```
-
-**For production deployments**, ensure the main thread has sufficient stack. On Linux, you can also use `ulimit -s unlimited` before running your application.
+**This is handled automatically** - the Rust binding spawns a dedicated worker thread with a 64MB stack for all FFI operations. You do not need to configure `RUST_MIN_STACK` or other stack settings.
 
 ## Documentation
 
