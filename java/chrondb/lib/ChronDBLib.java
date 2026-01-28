@@ -74,7 +74,13 @@ public final class ChronDBLib {
             String ip = toJavaString(indexPath);
             Object result = libOpen.invoke(dp, ip);
             if (result instanceof Number) {
-                return ((Number) result).intValue();
+                int handle = ((Number) result).intValue();
+                if (handle < 0) {
+                    // Clojure returned -1 (error) - provide a meaningful error message
+                    lastError = "Failed to open database at " + dp + " (index: " + ip + "). " +
+                        "Check that the paths are valid and writable.";
+                }
+                return handle;
             }
             lastError = ("open returned non-numeric result: " +
                 (result == null ? "null" : result.getClass().getName()));

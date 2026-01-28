@@ -43,22 +43,24 @@
   ([path]
    (clean-stale-locks path {}))
   ([path opts]
-   (let [dir (io/file path)
-         force? (:force? opts false)
-         verbose? (:verbose? opts false)
-         removed (atom 0)]
-     (when (.exists dir)
-       (doseq [lock-file (find-lock-files dir)]
-         (when (or force? (stale-lock? lock-file))
-           (try
-             (when verbose?
-               (println "Removing stale lock file:" (.getPath lock-file)))
-             (.delete lock-file)
-             (swap! removed inc)
-             (catch Exception _e
-               ;; Ignore deletion failures - file might be in use
-               nil)))))
-     @removed)))
+   (if (nil? path)
+     0
+     (let [dir (io/file path)
+           force? (:force? opts false)
+           verbose? (:verbose? opts false)
+           removed (atom 0)]
+       (when (.exists dir)
+         (doseq [lock-file (find-lock-files dir)]
+           (when (or force? (stale-lock? lock-file))
+             (try
+               (when verbose?
+                 (println "Removing stale lock file:" (.getPath lock-file)))
+               (.delete lock-file)
+               (swap! removed inc)
+               (catch Exception _e
+                 ;; Ignore deletion failures - file might be in use
+                 nil)))))
+       @removed))))
 
 (defn clean-lucene-lock
   "Convenience function to clean the Lucene write.lock file.
