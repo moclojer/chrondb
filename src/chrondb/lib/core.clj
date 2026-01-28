@@ -8,7 +8,8 @@
             [chrondb.index.protocol :as index]
             [chrondb.util.logging :as log]
             [chrondb.util.locks :as locks]
-            [clojure.data.json :as json])
+            [clojure.data.json :as json]
+            [clojure.java.io :as io])
   (:import [java.util.concurrent.atomic AtomicInteger]))
 
 (defonce ^:private ^AtomicInteger handle-counter (AtomicInteger. 0))
@@ -20,8 +21,20 @@
   (let [logs-enabled? (= "1" (System/getenv "CHRONDB_DB_LOGS"))]
     (log/init! {:min-level (if logs-enabled? :info :off)})))
 
+(defn- git-repo-exists?
+  "Checks if a bare Git repository already exists at the given path.
+   A bare Git repo is identified by the presence of the HEAD file directly
+   in the data directory (not in .git subdirectory)."
+  [data-path]
+  (let [git-dir (io/file data-path)]
+    (and (.exists git-dir)
+         (.isDirectory git-dir)
+         (.exists (io/file data-path "HEAD")))))
+
 (defn lib-open
   "Opens a ChronDB instance with the given data and index paths.
+   If a Git repository already exists at data-path, it will be opened
+   (preserving existing data). Otherwise, a new repository is created.
    Cleans up any stale lock files before opening to handle orphan locks
    left by crashed processes.
    Returns a handle (>= 0) on success, or -1 on error."
@@ -30,7 +43,11 @@
     ;; Clean stale locks from both Git and Lucene directories
     (locks/clean-stale-locks data-path)
     (locks/clean-stale-locks index-path)
-    (let [storage (git/create-git-storage data-path)
+    (let [;; Use open if repository exists, otherwise create new
+          repo-exists? (git-repo-exists? data-path)
+          storage (if repo-exists?
+                    (git/open-git-storage data-path)
+                    (git/create-git-storage data-path))
           idx (lucene/create-lucene-index index-path)]
       (if (and storage idx)
         (do
@@ -39,7 +56,10 @@
             (swap! handle-registry assoc handle {:storage storage :index idx})
             handle))
         -1))
-    (catch Throwable _e
+    (catch Throwable e
+      (log/log-error (str "lib-open failed: " (.getMessage e)
+                          " | data-path=" data-path
+                          " | index-path=" index-path))
       -1)))
 
 (defn lib-close

@@ -146,6 +146,31 @@
       (is (number? result) "result should be number")
       (is (= -1 result) "empty paths should return -1"))))
 
+(deftest test-lib-reopen-preserves-data
+  (testing "Data should persist when reopening database"
+    ;; First session - create and save
+    (let [handle1 (lib/lib-open *test-data-dir* *test-index-dir*)]
+      (is (>= handle1 0) "First open should succeed")
+      (let [result (lib/lib-put handle1 "persist:1" "{\"key\": \"value\", \"num\": 42}" nil)]
+        (is (some? result) "Put should succeed"))
+      (lib/lib-close handle1))
+
+    ;; Second session - reopen and verify
+    (let [handle2 (lib/lib-open *test-data-dir* *test-index-dir*)]
+      (is (>= handle2 0) "Second open should succeed (not recreate!)")
+      (let [doc (lib/lib-get handle2 "persist:1" nil)]
+        (is (some? doc) "Document should persist after reopen")
+        (is (.contains doc "value") "Document content should be intact")
+        (is (.contains doc "42") "Document values should be intact"))
+      (lib/lib-close handle2))
+
+    ;; Third session - verify data still persists
+    (let [handle3 (lib/lib-open *test-data-dir* *test-index-dir*)]
+      (is (>= handle3 0) "Third open should succeed")
+      (let [doc (lib/lib-get handle3 "persist:1" nil)]
+        (is (some? doc) "Document should still persist after multiple reopens"))
+      (lib/lib-close handle3))))
+
 (deftest test-lib-open-cleans-stale-locks
   (testing "lib-open should clean orphan .lock files and open normally"
     ;; First, create a valid database
