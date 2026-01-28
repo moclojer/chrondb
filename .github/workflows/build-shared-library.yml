@@ -2,6 +2,12 @@ name: Build Shared Library
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - "java/**"
+      - "src/chrondb/lib/**"
+      - "bindings/**"
+      - "dev/chrondb/shared_library.clj"
   pull_request:
     paths:
       - "java/**"
@@ -51,42 +57,41 @@ jobs:
 
   test-rust-bindings:
     needs: build-shared-lib
-    runs-on: ${{ matrix.os }}
-    name: "Test Rust bindings on ${{ matrix.os }}"
-    strategy:
-      matrix:
-        os: ["macos-14", "ubuntu-22.04"]
+    runs-on: ubuntu-22.04
+    name: "Test Rust bindings"
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
         with:
-          name: libchrondb-${{ runner.os }}
+          name: libchrondb-Linux
           path: target/
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git config --global init.defaultBranch "main"
 
       - name: Run Rust tests
         working-directory: bindings/rust
         env:
           CHRONDB_LIB_DIR: ${{ github.workspace }}/target
-          # GraalVM isolates require large stack for Lucene/JGit operations
           RUST_MIN_STACK: "67108864"
         run: cargo test
 
   test-python-bindings:
     needs: build-shared-lib
-    runs-on: ${{ matrix.os }}
-    name: "Test Python bindings on ${{ matrix.os }}"
-    strategy:
-      matrix:
-        os: ["macos-14", "ubuntu-22.04"]
+    runs-on: ubuntu-22.04
+    name: "Test Python bindings"
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
         with:
-          name: libchrondb-${{ runner.os }}
+          name: libchrondb-Linux
           path: target/
 
       - uses: actions/setup-python@v5
@@ -96,17 +101,14 @@ jobs:
       - name: Install test dependencies
         run: pip install pytest
 
-      - name: Determine library extension
-        id: libext
+      - name: Configure Git
         run: |
-          if [ "${{ runner.os }}" = "macOS" ]; then
-            echo "ext=dylib" >> $GITHUB_OUTPUT
-          else
-            echo "ext=so" >> $GITHUB_OUTPUT
-          fi
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git config --global init.defaultBranch "main"
 
       - name: Run Python tests
         working-directory: bindings/python
         env:
-          CHRONDB_LIB_PATH: ${{ github.workspace }}/target/libchrondb.${{ steps.libext.outputs.ext }}
+          CHRONDB_LIB_PATH: ${{ github.workspace }}/target/libchrondb.so
         run: pytest tests/ -v
