@@ -706,8 +706,13 @@ mod tests {
         // But we verify that IF it fails, it's with an expected error type
         if let Err(err) = result {
             match err {
-                ChronDBError::SetupFailed(_) | ChronDBError::IsolateCreationFailed => {
-                    // Expected error types when library is not found or fails to load
+                ChronDBError::SetupFailed(_)
+                | ChronDBError::IsolateCreationFailed
+                | ChronDBError::OpenFailed(_) => {
+                    // Expected error types:
+                    // - SetupFailed: library not found
+                    // - IsolateCreationFailed: GraalVM isolate couldn't be created
+                    // - OpenFailed: library found but database open failed (e.g., path issues)
                 }
                 other => panic!("Unexpected error type: {}", other),
             }
@@ -822,6 +827,13 @@ mod tests {
             assert_eq!(retrieved["value"], 42, "Document values should match");
 
             // db drops here, simulating process exit
+        }
+
+        // Remove stale Lucene lock (cleanup code uses lsof which doesn't work
+        // when the same process creates multiple GraalVM isolates)
+        let lock_file = std::path::Path::new(index_str).join("write.lock");
+        if lock_file.exists() {
+            let _ = std::fs::remove_file(&lock_file);
         }
 
         // === Second "process" - reopen and verify ===
