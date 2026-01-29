@@ -1,8 +1,10 @@
 """High-level Python client for ChronDB."""
 
 import json
+import os
+import threading
 from ctypes import c_void_p, pointer
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from chrondb._ffi import load_library
 
@@ -17,6 +19,124 @@ class DocumentNotFoundError(ChronDBError):
     pass
 
 
+# Global registry for shared isolates per path pair.
+# This ensures multiple ChronDB instances for the same paths share
+# the same GraalVM isolate, avoiding file lock conflicts.
+_isolate_registry: Dict[Tuple[str, str], "_SharedIsolate"] = {}
+_registry_lock = threading.Lock()
+
+
+class _SharedIsolate:
+    """Shared isolate that can be used by multiple ChronDB instances."""
+
+    def __init__(self, lib, data_path: str, index_path: str):
+        self._lib = lib
+        self.data_path = data_path
+        self.index_path = index_path
+        self._ref_count = 1
+        self._lock = threading.Lock()
+
+        # Create isolate
+        self._isolate = c_void_p()
+        self._thread = c_void_p()
+
+        ret = lib.graal_create_isolate(
+            None, pointer(self._isolate), pointer(self._thread)
+        )
+        if ret != 0:
+            raise ChronDBError("Failed to create GraalVM isolate")
+
+        # Open database
+        self._handle = lib.chrondb_open(
+            self._thread,
+            data_path.encode("utf-8"),
+            index_path.encode("utf-8"),
+        )
+        if self._handle < 0:
+            err = self._get_last_error()
+            lib.graal_tear_down_isolate(self._thread)
+            raise ChronDBError(f"Failed to open database: {err}")
+
+    def _get_last_error(self) -> str:
+        """Get the last error message from the native library."""
+        err = self._lib.chrondb_last_error(self._thread)
+        if err is None:
+            return "unknown error"
+        return err.decode("utf-8")
+
+    def add_ref(self):
+        """Increment reference count."""
+        with self._lock:
+            self._ref_count += 1
+
+    def release(self) -> bool:
+        """Decrement reference count. Returns True if isolate was closed."""
+        with self._lock:
+            self._ref_count -= 1
+            if self._ref_count <= 0:
+                self._close()
+                return True
+            return False
+
+    def _close(self):
+        """Close the isolate and release resources."""
+        if self._handle >= 0:
+            self._lib.chrondb_close(self._thread, self._handle)
+            self._handle = -1
+        if self._thread:
+            self._lib.graal_tear_down_isolate(self._thread)
+            self._thread = c_void_p()
+            self._isolate = c_void_p()
+
+    @property
+    def lib(self):
+        return self._lib
+
+    @property
+    def thread(self):
+        return self._thread
+
+    @property
+    def handle(self):
+        return self._handle
+
+
+def _normalize_path(path: str) -> str:
+    """Normalize path for consistent registry keys."""
+    try:
+        return os.path.realpath(path)
+    except OSError:
+        return path
+
+
+def _get_or_create_isolate(data_path: str, index_path: str) -> _SharedIsolate:
+    """Get existing isolate for path pair, or create new one."""
+    key = (_normalize_path(data_path), _normalize_path(index_path))
+
+    with _registry_lock:
+        if key in _isolate_registry:
+            isolate = _isolate_registry[key]
+            isolate.add_ref()
+            return isolate
+
+        # Create new isolate
+        lib = load_library()
+        isolate = _SharedIsolate(lib, data_path, index_path)
+        _isolate_registry[key] = isolate
+        return isolate
+
+
+def _release_isolate(data_path: str, index_path: str):
+    """Release reference to isolate. Closes if no more references."""
+    key = (_normalize_path(data_path), _normalize_path(index_path))
+
+    with _registry_lock:
+        if key in _isolate_registry:
+            isolate = _isolate_registry[key]
+            if isolate.release():
+                del _isolate_registry[key]
+
+
 class ChronDB:
     """A connection to a ChronDB database instance.
 
@@ -25,6 +145,9 @@ class ChronDB:
         with ChronDB("/tmp/data", "/tmp/index") as db:
             db.put("user:1", {"name": "Alice"})
             doc = db.get("user:1")
+
+    Multiple instances opening the same paths share a single GraalVM isolate,
+    ensuring thread-safe concurrent access without file lock conflicts.
     """
 
     def __init__(self, data_path: str, index_path: str):
@@ -37,25 +160,22 @@ class ChronDB:
         Raises:
             ChronDBError: If the database cannot be opened.
         """
-        self._lib = load_library()
-        self._isolate = c_void_p()
-        self._thread = c_void_p()
+        self._data_path = data_path
+        self._index_path = index_path
+        self._shared = _get_or_create_isolate(data_path, index_path)
+        self._closed = False
 
-        ret = self._lib.graal_create_isolate(
-            None, pointer(self._isolate), pointer(self._thread)
-        )
-        if ret != 0:
-            raise ChronDBError("Failed to create GraalVM isolate")
+    @property
+    def _lib(self):
+        return self._shared.lib
 
-        self._handle = self._lib.chrondb_open(
-            self._thread,
-            data_path.encode("utf-8"),
-            index_path.encode("utf-8"),
-        )
-        if self._handle < 0:
-            err = self._get_last_error()
-            self._lib.graal_tear_down_isolate(self._thread)
-            raise ChronDBError(f"Failed to open database: {err}")
+    @property
+    def _thread(self):
+        return self._shared.thread
+
+    @property
+    def _handle(self):
+        return self._shared.handle
 
     def __enter__(self):
         return self
@@ -65,14 +185,14 @@ class ChronDB:
         return False
 
     def close(self):
-        """Close the database connection and release resources."""
-        if self._handle >= 0:
-            self._lib.chrondb_close(self._thread, self._handle)
-            self._handle = -1
-        if self._thread:
-            self._lib.graal_tear_down_isolate(self._thread)
-            self._thread = c_void_p()
-            self._isolate = c_void_p()
+        """Close the database connection and release resources.
+
+        The underlying GraalVM isolate is only closed when all ChronDB
+        instances using the same paths have been closed.
+        """
+        if not self._closed:
+            self._closed = True
+            _release_isolate(self._data_path, self._index_path)
 
     def put(self, id: str, doc: Dict[str, Any], branch: Optional[str] = None) -> Dict[str, Any]:
         """Save a document.

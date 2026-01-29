@@ -14,6 +14,13 @@
 //! let doc = db.get("user:1", None).unwrap();
 //! println!("{}", doc);
 //! ```
+//!
+//! # Concurrency
+//!
+//! Multiple `ChronDB` instances can safely open the same database paths.
+//! Instances sharing the same (data_path, index_path) pair will share
+//! a single GraalVM isolate and worker thread, ensuring thread-safe
+//! concurrent access without file lock conflicts.
 
 mod error;
 mod ffi;
@@ -22,10 +29,13 @@ mod setup;
 pub use error::{ChronDBError, Result};
 pub use setup::{ensure_library_installed, get_library_dir};
 
+use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
+use std::path::PathBuf;
 use std::ptr;
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex, Weak};
 use std::thread::{self, JoinHandle};
 
 use ffi::graal_isolate_t;
@@ -34,6 +44,16 @@ use ffi::graal_isolatethread_t;
 /// Stack size for the FFI worker thread (64 MB).
 /// GraalVM native-image with Lucene/JGit requires large stack for deep call chains.
 const FFI_THREAD_STACK_SIZE: usize = 64 * 1024 * 1024;
+
+/// Global registry for shared workers per path pair.
+/// This ensures multiple ChronDB instances for the same paths share
+/// the same GraalVM isolate, avoiding file lock conflicts.
+static WORKER_REGISTRY: std::sync::OnceLock<Mutex<HashMap<(PathBuf, PathBuf), Weak<SharedWorker>>>> =
+    std::sync::OnceLock::new();
+
+fn get_worker_registry() -> &'static Mutex<HashMap<(PathBuf, PathBuf), Weak<SharedWorker>>> {
+    WORKER_REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 /// Commands sent to the FFI worker thread.
 enum FfiCommand {
@@ -85,6 +105,15 @@ struct FfiWorkerState {
     isolate: *mut graal_isolate_t,
     thread: *mut graal_isolatethread_t,
     handle: i32,
+}
+
+/// Shared worker that can be used by multiple ChronDB instances.
+/// When all ChronDB instances are dropped, the worker shuts down.
+struct SharedWorker {
+    sender: Sender<FfiCommand>,
+    worker: Mutex<Option<JoinHandle<()>>>,
+    data_path: PathBuf,
+    index_path: PathBuf,
 }
 
 impl FfiWorkerState {
@@ -293,20 +322,45 @@ impl FfiWorkerState {
     }
 }
 
+impl Drop for SharedWorker {
+    fn drop(&mut self) {
+        // Remove from registry
+        if let Ok(mut registry) = get_worker_registry().lock() {
+            let key = (self.data_path.clone(), self.index_path.clone());
+            registry.remove(&key);
+        }
+
+        // Send shutdown command to worker
+        let _ = self.sender.send(FfiCommand::Shutdown);
+
+        // Wait for worker to finish
+        if let Ok(mut worker_guard) = self.worker.lock() {
+            if let Some(worker) = worker_guard.take() {
+                let _ = worker.join();
+            }
+        }
+    }
+}
+
 /// A connection to a ChronDB database instance.
 ///
 /// All FFI calls are executed in a dedicated thread with a large stack (64MB)
 /// to accommodate GraalVM's stack requirements for Lucene and JGit operations.
 ///
-/// The database is automatically closed when this struct is dropped.
+/// Multiple `ChronDB` instances opening the same paths share a single worker
+/// thread and GraalVM isolate. This ensures thread-safe concurrent access
+/// without file lock conflicts.
+///
+/// The underlying resources are only released when all `ChronDB` instances
+/// for a given path pair are dropped.
 pub struct ChronDB {
-    sender: Sender<FfiCommand>,
-    worker: Option<JoinHandle<()>>,
+    shared: Arc<SharedWorker>,
 }
 
 // ChronDB is safe to send across threads because communication
 // happens via channels and the FFI worker manages the isolate.
 unsafe impl Send for ChronDB {}
+unsafe impl Sync for ChronDB {}
 
 impl ChronDB {
     /// Opens a ChronDB database at the given paths.
@@ -314,14 +368,57 @@ impl ChronDB {
     /// If the native library is not installed, this function will automatically
     /// download and install it to `~/.chrondb/lib/`.
     ///
+    /// Multiple calls to `open` with the same paths will share a single
+    /// GraalVM isolate and worker thread, ensuring safe concurrent access.
+    ///
     /// # Arguments
     /// * `data_path` - Path for the Git repository (data storage)
     /// * `index_path` - Path for the Lucene index
     pub fn open(data_path: &str, index_path: &str) -> Result<Self> {
+        // Normalize paths for consistent registry keys
+        let data_path_buf = std::fs::canonicalize(data_path)
+            .unwrap_or_else(|_| PathBuf::from(data_path));
+        let index_path_buf = std::fs::canonicalize(index_path)
+            .unwrap_or_else(|_| PathBuf::from(index_path));
+        let key = (data_path_buf.clone(), index_path_buf.clone());
+
+        // Check if we already have a worker for this path pair
+        {
+            let registry = get_worker_registry()
+                .lock()
+                .map_err(|_| ChronDBError::IsolateCreationFailed)?;
+
+            if let Some(weak) = registry.get(&key) {
+                if let Some(shared) = weak.upgrade() {
+                    // Reuse existing worker
+                    return Ok(ChronDB { shared });
+                }
+            }
+        }
+
+        // Create new worker
+        let shared = Self::create_new_worker(data_path, index_path, key.clone())?;
+
+        // Register the new worker
+        {
+            let mut registry = get_worker_registry()
+                .lock()
+                .map_err(|_| ChronDBError::IsolateCreationFailed)?;
+            registry.insert(key, Arc::downgrade(&shared));
+        }
+
+        Ok(ChronDB { shared })
+    }
+
+    fn create_new_worker(
+        data_path: &str,
+        index_path: &str,
+        key: (PathBuf, PathBuf),
+    ) -> Result<Arc<SharedWorker>> {
         let (tx, rx): (Sender<FfiCommand>, Receiver<FfiCommand>) = mpsc::channel();
 
-        let data_path = data_path.to_string();
-        let index_path = index_path.to_string();
+        let data_path_str = data_path.to_string();
+        let index_path_str = index_path.to_string();
 
         // Channel to receive initialization result from worker
         let (init_tx, init_rx) = mpsc::channel::<Result<()>>();
@@ -331,7 +428,7 @@ impl ChronDB {
             .stack_size(FFI_THREAD_STACK_SIZE)
             .spawn(move || {
                 // Initialize in the worker thread (which has large stack)
-                let init_result = Self::init_worker(&data_path, &index_path);
+                let init_result = Self::init_worker(&data_path_str, &index_path_str);
 
                 match init_result {
                     Ok(mut state) => {
@@ -351,10 +448,12 @@ impl ChronDB {
             .recv()
             .map_err(|_| ChronDBError::IsolateCreationFailed)??;
 
-        Ok(ChronDB {
+        Ok(Arc::new(SharedWorker {
             sender: tx,
-            worker: Some(worker),
-        })
+            worker: Mutex::new(Some(worker)),
+            data_path: key.0,
+            index_path: key.1,
+        }))
     }
 
     fn init_worker(data_path: &str, index_path: &str) -> Result<FfiWorkerState> {
@@ -472,7 +571,8 @@ impl ChronDB {
         let json_str = serde_json::to_string(doc)?;
         let (reply_tx, reply_rx) = mpsc::channel();
 
-        self.sender
+        self.shared
+            .sender
             .send(FfiCommand::Put {
                 id: id.to_string(),
                 doc: json_str,
@@ -492,7 +592,8 @@ impl ChronDB {
     pub fn get(&self, id: &str, branch: Option<&str>) -> Result<serde_json::Value> {
         let (reply_tx, reply_rx) = mpsc::channel();
 
-        self.sender
+        self.shared
+            .sender
             .send(FfiCommand::Get {
                 id: id.to_string(),
                 branch: branch.map(|s| s.to_string()),
@@ -511,7 +612,8 @@ impl ChronDB {
     pub fn delete(&self, id: &str, branch: Option<&str>) -> Result<()> {
         let (reply_tx, reply_rx) = mpsc::channel();
 
-        self.sender
+        self.shared
+            .sender
             .send(FfiCommand::Delete {
                 id: id.to_string(),
                 branch: branch.map(|s| s.to_string()),
@@ -528,7 +630,8 @@ impl ChronDB {
     pub fn list_by_prefix(&self, prefix: &str, branch: Option<&str>) -> Result<serde_json::Value> {
         let (reply_tx, reply_rx) = mpsc::channel();
 
-        self.sender
+        self.shared
+            .sender
             .send(FfiCommand::ListByPrefix {
                 prefix: prefix.to_string(),
                 branch: branch.map(|s| s.to_string()),
@@ -545,7 +648,8 @@ impl ChronDB {
     pub fn list_by_table(&self, table: &str, branch: Option<&str>) -> Result<serde_json::Value> {
         let (reply_tx, reply_rx) = mpsc::channel();
 
-        self.sender
+        self.shared
+            .sender
             .send(FfiCommand::ListByTable {
                 table: table.to_string(),
                 branch: branch.map(|s| s.to_string()),
@@ -562,7 +666,8 @@ impl ChronDB {
     pub fn history(&self, id: &str, branch: Option<&str>) -> Result<serde_json::Value> {
         let (reply_tx, reply_rx) = mpsc::channel();
 
-        self.sender
+        self.shared
+            .sender
             .send(FfiCommand::History {
                 id: id.to_string(),
                 branch: branch.map(|s| s.to_string()),
@@ -586,7 +691,8 @@ impl ChronDB {
         let query_str = serde_json::to_string(query)?;
         let (reply_tx, reply_rx) = mpsc::channel();
 
-        self.sender
+        self.shared
+            .sender
             .send(FfiCommand::Query {
                 query: query_str,
                 branch: branch.map(|s| s.to_string()),
@@ -604,6 +710,7 @@ impl ChronDB {
         let (reply_tx, reply_rx) = mpsc::channel();
 
         if self
+            .shared
             .sender
             .send(FfiCommand::LastError { reply: reply_tx })
             .is_err()
@@ -615,17 +722,9 @@ impl ChronDB {
     }
 }
 
-impl Drop for ChronDB {
-    fn drop(&mut self) {
-        // Send shutdown command to worker
-        let _ = self.sender.send(FfiCommand::Shutdown);
-
-        // Wait for worker to finish
-        if let Some(worker) = self.worker.take() {
-            let _ = worker.join();
-        }
-    }
-}
+// Drop is handled automatically via Arc<SharedWorker>
+// When all ChronDB instances for a path pair are dropped,
+// SharedWorker::drop() is called, which shuts down the worker thread.
 
 #[cfg(test)]
 mod tests {
