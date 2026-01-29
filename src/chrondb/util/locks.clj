@@ -2,21 +2,13 @@
   "Utility functions for handling stale lock files.
    Both Git and Lucene use file-based locking that can leave orphan locks
    when a process crashes or is killed unexpectedly."
-  (:require [clojure.java.io :as io]
-            [clojure.string :as str])
-  (:import [java.lang ProcessHandle]
-           [java.io RandomAccessFile]
-           [java.nio.channels FileLock OverlappingFileLockException]))
+  (:require [clojure.java.io :as io])
+  (:import [java.io RandomAccessFile]
+           [java.nio.channels OverlappingFileLockException]))
 
 ;; Stale lock timeout in milliseconds (60 seconds)
 ;; Locks older than this are considered orphaned from crashed processes
 (def ^:private stale-lock-timeout-ms 60000)
-
-;; Known lock file patterns that ChronDB/JGit/Lucene create
-(def ^:private known-lock-patterns
-  [#".*\.lock$"           ; Generic .lock files
-   #".*/refs/heads/.*"    ; JGit branch refs (may have .lock suffix during update)
-   #"write\.lock$"])      ; Lucene write lock
 
 (defn find-lock-files
   "Recursively finds all .lock files in a directory.

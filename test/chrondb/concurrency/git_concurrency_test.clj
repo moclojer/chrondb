@@ -9,7 +9,7 @@
             [chrondb.concurrency.occ :as occ]
             [chrondb.util.locks :as locks]
             [clojure.java.io :as io])
-  (:import [java.util.concurrent CountDownLatch CyclicBarrier TimeUnit Executors]
+  (:import [java.util.concurrent CountDownLatch CyclicBarrier TimeUnit]
            [java.io File]
            [java.nio.file Files]
            [java.nio.file.attribute FileAttribute]))
