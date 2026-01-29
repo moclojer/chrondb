@@ -205,3 +205,77 @@
           ;; Git lock should have been removed (not recreated when opening bare repo)
           (is (not (.exists stale-lock)) "orphan git lock should have been removed")
           (lib/lib-close handle))))))
+
+(deftest test-concurrent-handles-same-path
+  (testing "Multiple lib-open calls to same path should share storage/index"
+    ;; Open three handles to the same path
+    (let [handle1 (lib/lib-open *test-data-dir* *test-index-dir*)
+          handle2 (lib/lib-open *test-data-dir* *test-index-dir*)
+          handle3 (lib/lib-open *test-data-dir* *test-index-dir*)]
+      (try
+        (is (>= handle1 0) "First handle should be valid")
+        (is (>= handle2 0) "Second handle should be valid")
+        (is (>= handle3 0) "Third handle should be valid")
+        (is (not= handle1 handle2) "Handles should be different")
+        (is (not= handle2 handle3) "Handles should be different")
+
+        ;; Write with handle1
+        (let [result (lib/lib-put handle1 "concurrent:1" "{\"from\": \"handle1\"}" nil)]
+          (is (some? result) "Put from handle1 should succeed"))
+
+        ;; Read with handle2 should see the document
+        (let [doc (lib/lib-get handle2 "concurrent:1" nil)]
+          (is (some? doc) "Handle2 should see document written by handle1")
+          (is (.contains doc "handle1") "Document should contain correct data"))
+
+        ;; Write with handle2
+        (let [result (lib/lib-put handle2 "concurrent:2" "{\"from\": \"handle2\"}" nil)]
+          (is (some? result) "Put from handle2 should succeed"))
+
+        ;; Read with handle3 should see both documents
+        (let [doc1 (lib/lib-get handle3 "concurrent:1" nil)
+              doc2 (lib/lib-get handle3 "concurrent:2" nil)]
+          (is (some? doc1) "Handle3 should see document from handle1")
+          (is (some? doc2) "Handle3 should see document from handle2"))
+
+        (finally
+          ;; Close all handles
+          (lib/lib-close handle1)
+          (lib/lib-close handle2)
+          (lib/lib-close handle3))))))
+
+(deftest test-concurrent-handles-ref-counting
+  (testing "Storage/index should only close when all handles are closed"
+    (let [handle1 (lib/lib-open *test-data-dir* *test-index-dir*)
+          handle2 (lib/lib-open *test-data-dir* *test-index-dir*)]
+      (is (>= handle1 0) "First handle should be valid")
+      (is (>= handle2 0) "Second handle should be valid")
+
+      ;; Write with handle1
+      (lib/lib-put handle1 "refcount:1" "{\"value\": 42}" nil)
+
+      ;; Close handle1
+      (is (= 0 (lib/lib-close handle1)) "Close handle1 should succeed")
+
+      ;; handle2 should still work (storage not closed yet due to ref-counting)
+      (let [doc (lib/lib-get handle2 "refcount:1" nil)]
+        (is (some? doc) "Handle2 should still work after handle1 is closed")
+        (is (.contains doc "42") "Document should have correct value"))
+
+      ;; Write new document with handle2
+      (let [result (lib/lib-put handle2 "refcount:2" "{\"value\": 100}" nil)]
+        (is (some? result) "Handle2 should still be able to write"))
+
+      ;; Close handle2
+      (is (= 0 (lib/lib-close handle2)) "Close handle2 should succeed")
+
+      ;; Reopen should see all data (storage was properly closed)
+      (let [handle3 (lib/lib-open *test-data-dir* *test-index-dir*)]
+        (try
+          (is (>= handle3 0) "Reopen should succeed")
+          (let [doc1 (lib/lib-get handle3 "refcount:1" nil)
+                doc2 (lib/lib-get handle3 "refcount:2" nil)]
+            (is (some? doc1) "Document 1 should persist")
+            (is (some? doc2) "Document 2 should persist"))
+          (finally
+            (lib/lib-close handle3)))))))

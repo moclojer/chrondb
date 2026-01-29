@@ -1,7 +1,12 @@
 (ns chrondb.lib.core
   "Bridge layer for the ChronDB shared library.
    Manages a registry of open database handles and exposes operations
-   that can be called from the C entry points."
+   that can be called from the C entry points.
+
+   Concurrency model:
+   - Each unique (data-path, index-path) pair is opened only once (singleton)
+   - Multiple handles can reference the same storage/index instance
+   - Operations are thread-safe via JGit's internal locking"
   (:require [chrondb.storage.git.core :as git]
             [chrondb.storage.protocol :as storage]
             [chrondb.index.lucene :as lucene]
@@ -14,6 +19,11 @@
 
 (defonce ^:private ^AtomicInteger handle-counter (AtomicInteger. 0))
 (defonce ^:private handle-registry (atom {}))
+
+;; Singleton registry for storage/index instances per path pair
+;; Key: [data-path index-path], Value: {:storage s :index i :ref-count n}
+(defonce ^:private instance-registry (atom {}))
+(defonce ^:private instance-lock (Object.))
 
 ;; Disable logging by default for library usage.
 ;; Enable with CHRONDB_DB_LOGS=1 for debugging.
@@ -31,30 +41,92 @@
          (.isDirectory git-dir)
          (.exists (io/file data-path "HEAD")))))
 
+(defn- normalize-path
+  "Normalizes a path to its canonical form for consistent registry keys."
+  [path]
+  (when path
+    (try
+      (.getCanonicalPath (io/file path))
+      (catch Exception _
+        path))))
+
+(defn- get-or-create-instance!
+  "Gets an existing instance for the path pair, or creates a new one.
+   Increments ref-count when returning existing instance.
+   Thread-safe via locking."
+  [data-path index-path]
+  (locking instance-lock
+    (let [key [(normalize-path data-path) (normalize-path index-path)]
+          existing (get @instance-registry key)]
+      (if existing
+        ;; Existing instance: increment ref-count and return
+        (do
+          (swap! instance-registry update-in [key :ref-count] inc)
+          {:storage (:storage existing)
+           :index (:index existing)
+           :reused true})
+        ;; New instance: create storage and index
+        (do
+          ;; Clean stale locks only when creating new instance
+          (locks/clean-stale-locks data-path)
+          (locks/clean-stale-locks index-path)
+          (let [repo-exists? (git-repo-exists? data-path)
+                storage (if repo-exists?
+                          (git/open-git-storage data-path)
+                          (git/create-git-storage data-path))
+                idx (lucene/create-lucene-index index-path)]
+            (when (and storage idx)
+              (lucene/ensure-index-populated idx storage nil {:async? false})
+              (swap! instance-registry assoc key
+                     {:storage storage :index idx :ref-count 1}))
+            {:storage storage :index idx :reused false}))))))
+
+(defn- release-instance!
+  "Decrements ref-count for a path pair. Closes resources when count reaches 0.
+   Thread-safe via locking."
+  [data-path index-path]
+  (locking instance-lock
+    (let [key [(normalize-path data-path) (normalize-path index-path)]
+          existing (get @instance-registry key)]
+      (when existing
+        (let [new-count (dec (:ref-count existing))]
+          (if (<= new-count 0)
+            ;; Last reference: close resources and remove from registry
+            (do
+              (swap! instance-registry dissoc key)
+              (when (:index existing)
+                (try (index/close (:index existing)) (catch Exception _ nil)))
+              (when (:storage existing)
+                (try (storage/close (:storage existing)) (catch Exception _ nil)))
+              true)
+            ;; Still has references: just decrement count
+            (do
+              (swap! instance-registry update-in [key :ref-count] dec)
+              false)))))))
+
 (defn lib-open
   "Opens a ChronDB instance with the given data and index paths.
    If a Git repository already exists at data-path, it will be opened
    (preserving existing data). Otherwise, a new repository is created.
+
+   Concurrency: Multiple calls with the same paths share the same underlying
+   storage/index instance (singleton per path pair). This allows multiple
+   handles to safely access the same database concurrently.
+
    Cleans up any stale lock files before opening to handle orphan locks
    left by crashed processes.
    Returns a handle (>= 0) on success, or -1 on error."
   [data-path index-path]
   (try
-    ;; Clean stale locks from both Git and Lucene directories
-    (locks/clean-stale-locks data-path)
-    (locks/clean-stale-locks index-path)
-    (let [;; Use open if repository exists, otherwise create new
-          repo-exists? (git-repo-exists? data-path)
-          storage (if repo-exists?
-                    (git/open-git-storage data-path)
-                    (git/create-git-storage data-path))
-          idx (lucene/create-lucene-index index-path)]
-      (if (and storage idx)
-        (do
-          (lucene/ensure-index-populated idx storage nil {:async? false})
-          (let [handle (.getAndIncrement ^AtomicInteger handle-counter)]
-            (swap! handle-registry assoc handle {:storage storage :index idx})
-            handle))
+    (let [{:keys [storage index]} (get-or-create-instance! data-path index-path)]
+      (if (and storage index)
+        (let [handle (.getAndIncrement ^AtomicInteger handle-counter)]
+          (swap! handle-registry assoc handle
+                 {:storage storage
+                  :index index
+                  :data-path data-path
+                  :index-path index-path})
+          handle)
         -1))
     (catch Throwable e
       (log/log-error (str "lib-open failed: " (.getMessage e)
@@ -64,14 +136,15 @@
 
 (defn lib-close
   "Closes the ChronDB instance associated with the given handle.
+   The underlying storage/index is only closed when all handles referencing
+   the same path pair are closed (ref-counting).
    Returns 0 on success, -1 on error."
   [handle]
   (try
-    (if-let [{:keys [storage index]} (get @handle-registry handle)]
+    (if-let [{:keys [data-path index-path]} (get @handle-registry handle)]
       (do
         (swap! handle-registry dissoc handle)
-        (when index (index/close index))
-        (when storage (storage/close storage))
+        (release-instance! data-path index-path)
         0)
       -1)
     (catch Throwable _e
