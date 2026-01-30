@@ -62,7 +62,7 @@ Submit a pull request with your improvements.
 
 ## Building the Documentation
 
-The documentation is built using [GitBook](https://www.gitbook.com/) and is available online at [chrondb.moclojer.com](https://chrondb.moclojer.com/).
+The documentation is built using [GitBook](https://www.gitbook.com/) and is available online at [chrondb.avelino.run](https://chrondb.avelino.run/).
 
 When adding links between pages, remember:
 
@@ -75,6 +75,6 @@ This ensures compatibility with GitBook's rendering system.
 
 ## Community Resources
 
-- **Documentation**: [chrondb.moclojer.com](https://chrondb.moclojer.com/)
+- **Documentation**: [chrondb.avelino.run](https://chrondb.avelino.run/)
 - **Discord Community**: [Join our Discord](https://discord.com/channels/1099017682487087116/1353399752636497992)
-- **Discussion Forum**: [GitHub Discussions](https://github.com/moclojer/chrondb/discussions)
+- **Discussion Forum**: [GitHub Discussions](https://github.com/avelino/chrondb/discussions)

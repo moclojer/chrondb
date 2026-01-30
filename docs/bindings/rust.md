@@ -36,18 +36,18 @@ serde_json = "1"
 
 ### Native shared library
 
-The crate requires the `libchrondb` native library at runtime. Download it from the [latest GitHub release](https://github.com/moclojer/chrondb/releases/tag/latest):
+The crate requires the `libchrondb` native library at runtime. Download it from the [latest GitHub release](https://github.com/avelino/chrondb/releases/tag/latest):
 
 **macOS (Apple Silicon):**
 
 ```bash
-curl -L https://github.com/moclojer/chrondb/releases/download/latest/libchrondb-latest-macos-aarch64.tar.gz | tar xz
+curl -L https://github.com/avelino/chrondb/releases/download/latest/libchrondb-latest-macos-aarch64.tar.gz | tar xz
 ```
 
 **Linux (x86_64):**
 
 ```bash
-curl -L https://github.com/moclojer/chrondb/releases/download/latest/libchrondb-latest-linux-x86_64.tar.gz | tar xz
+curl -L https://github.com/avelino/chrondb/releases/download/latest/libchrondb-latest-linux-x86_64.tar.gz | tar xz
 ```
 
 ### Configure the runtime library path

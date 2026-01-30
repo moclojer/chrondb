@@ -102,7 +102,7 @@ fn download_library() -> std::result::Result<(), String> {
     };
 
     let url = format!(
-        "https://github.com/moclojer/chrondb/releases/download/{}/libchrondb-{}-{}.tar.gz",
+        "https://github.com/avelino/chrondb/releases/download/{}/libchrondb-{}-{}.tar.gz",
         release_tag, version_label, platform
     );
 
@@ -236,7 +236,7 @@ fn build_download_url(version: &str, platform: &str) -> String {
     };
 
     format!(
-        "https://github.com/moclojer/chrondb/releases/download/{}/libchrondb-{}-{}.tar.gz",
+        "https://github.com/avelino/chrondb/releases/download/{}/libchrondb-{}-{}.tar.gz",
         release_tag, version_label, platform
     )
 }
@@ -386,7 +386,7 @@ mod tests {
         let url = build_download_url("0.1.0", "linux-x86_64");
         assert_eq!(
             url,
-            "https://github.com/moclojer/chrondb/releases/download/v0.1.0/libchrondb-0.1.0-linux-x86_64.tar.gz"
+            "https://github.com/avelino/chrondb/releases/download/v0.1.0/libchrondb-0.1.0-linux-x86_64.tar.gz"
         );
     }
 
@@ -395,7 +395,7 @@ mod tests {
         let url = build_download_url("0.1.0-dev", "macos-aarch64");
         assert_eq!(
             url,
-            "https://github.com/moclojer/chrondb/releases/download/latest/libchrondb-latest-macos-aarch64.tar.gz"
+            "https://github.com/avelino/chrondb/releases/download/latest/libchrondb-latest-macos-aarch64.tar.gz"
         );
     }
 

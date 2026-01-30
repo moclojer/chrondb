@@ -40,15 +40,15 @@
    :target     "target"
    :src-dirs   (:paths basis)
    :pom-data   [[:description "ChronDB - Chronological key/value database"]
-                [:url "https://github.com/moclojer/chrondb"]
+                [:url "https://github.com/avelino/chrondb"]
                 [:licenses
                  [:license
                   [:name "GNU AGPLv3"]
                   [:url "https://www.gnu.org/licenses/agpl-3.0.en.html"]]]
                 [:scm
-                 [:url "https://github.com/moclojer/chrondb"]
-                 [:connection "scm:git:https://github.com/moclojer/chrondb.git"]
-                 [:developerConnection "scm:git:ssh:git@github.com:moclojer/chrondb.git"]
+                 [:url "https://github.com/avelino/chrondb"]
+                 [:connection "scm:git:https://github.com/avelino/chrondb.git"]
+                 [:developerConnection "scm:git:ssh:git@github.com:avelino/chrondb.git"]
                  [:tag "HEAD"]]]
    :exclude    ["docs/*" "META-INF/*" "test/*" "target/*"]})
 

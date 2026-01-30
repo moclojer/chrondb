@@ -16,7 +16,7 @@ This guide covers operational aspects of ChronDB, including installation, execut
 1. Download the latest JAR file from the releases page:
 
    ```sh
-   curl -LO https://github.com/moclojer/chrondb/releases/latest/download/chrondb.jar
+   curl -LO https://github.com/avelino/chrondb/releases/latest/download/chrondb.jar
    ```
 
 2. Run the JAR:
@@ -30,7 +30,7 @@ This guide covers operational aspects of ChronDB, including installation, execut
 1. Clone the repository:
 
    ```sh
-   git clone https://github.com/moclojer/chrondb.git
+   git clone https://github.com/avelino/chrondb.git
    cd chrondb
    ```
 

@@ -83,6 +83,6 @@ New to ChronDB? Here's how to get started:
 
 ## Community Resources
 
-- **Official Documentation**: [chrondb.moclojer.com](https://chrondb.moclojer.com/)
+- **Official Documentation**: [chrondb.avelino.run](https://chrondb.avelino.run/)
 - **Join our Community**: [Discord](https://discord.com/channels/1099017682487087116/1353399752636497992)
-- **Discussions & Ideas**: [GitHub Discussions](https://github.com/moclojer/chrondb/discussions)
+- **Discussions & Ideas**: [GitHub Discussions](https://github.com/avelino/chrondb/discussions)

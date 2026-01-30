@@ -153,25 +153,25 @@ Pre-built binaries are available as GitHub Releases. Each push to `main` updates
 
 ```bash
 # Latest stable release (Linux x86_64)
-pip install https://github.com/moclojer/chrondb/releases/download/v0.1.0/chrondb-0.1.0-py3-none-manylinux_2_35_x86_64.whl
+pip install https://github.com/avelino/chrondb/releases/download/v0.1.0/chrondb-0.1.0-py3-none-manylinux_2_35_x86_64.whl
 
 # Latest stable release (macOS ARM64)
-pip install https://github.com/moclojer/chrondb/releases/download/v0.1.0/chrondb-0.1.0-py3-none-macosx_14_0_arm64.whl
+pip install https://github.com/avelino/chrondb/releases/download/v0.1.0/chrondb-0.1.0-py3-none-macosx_14_0_arm64.whl
 
 # Rolling release from main (Linux)
-pip install https://github.com/moclojer/chrondb/releases/download/latest/chrondb-latest-py3-none-manylinux_2_35_x86_64.whl
+pip install https://github.com/avelino/chrondb/releases/download/latest/chrondb-latest-py3-none-manylinux_2_35_x86_64.whl
 ```
 
 ### Rust
 
 ```bash
 # Download and extract (latest or specific version)
-curl -L https://github.com/moclojer/chrondb/releases/download/latest/chrondb-rust-latest-linux-x86_64.tar.gz | tar xz
+curl -L https://github.com/avelino/chrondb/releases/download/latest/chrondb-rust-latest-linux-x86_64.tar.gz | tar xz
 cd chrondb-rust-latest-linux-x86_64
 CHRONDB_LIB_DIR=./lib cargo build
 
 # macOS ARM64
-curl -L https://github.com/moclojer/chrondb/releases/download/latest/chrondb-rust-latest-macos-aarch64.tar.gz | tar xz
+curl -L https://github.com/avelino/chrondb/releases/download/latest/chrondb-rust-latest-macos-aarch64.tar.gz | tar xz
 cd chrondb-rust-latest-macos-aarch64
 CHRONDB_LIB_DIR=./lib cargo build
 ```
@@ -180,10 +180,10 @@ CHRONDB_LIB_DIR=./lib cargo build
 
 ```bash
 # Linux x86_64
-curl -L https://github.com/moclojer/chrondb/releases/download/latest/libchrondb-latest-linux-x86_64.tar.gz | tar xz
+curl -L https://github.com/avelino/chrondb/releases/download/latest/libchrondb-latest-linux-x86_64.tar.gz | tar xz
 
 # macOS ARM64
-curl -L https://github.com/moclojer/chrondb/releases/download/latest/libchrondb-latest-macos-aarch64.tar.gz | tar xz
+curl -L https://github.com/avelino/chrondb/releases/download/latest/libchrondb-latest-macos-aarch64.tar.gz | tar xz
 
 # Link against lib/libchrondb.{so,dylib}, include headers from include/
 ```

@@ -8,18 +8,18 @@ Python client for ChronDB, a time-traveling key/value database built on Git arch
 
 ## Installation
 
-Install directly from the [latest GitHub release](https://github.com/moclojer/chrondb/releases/tag/latest):
+Install directly from the [latest GitHub release](https://github.com/avelino/chrondb/releases/tag/latest):
 
 **macOS (Apple Silicon):**
 
 ```bash
-pip install https://github.com/moclojer/chrondb/releases/download/latest/chrondb-latest-py3-none-macosx_14_0_arm64.whl
+pip install https://github.com/avelino/chrondb/releases/download/latest/chrondb-latest-py3-none-macosx_14_0_arm64.whl
 ```
 
 **Linux (x86_64):**
 
 ```bash
-pip install https://github.com/moclojer/chrondb/releases/download/latest/chrondb-latest-py3-none-manylinux_2_35_x86_64.whl
+pip install https://github.com/avelino/chrondb/releases/download/latest/chrondb-latest-py3-none-manylinux_2_35_x86_64.whl
 ```
 
 The wheel already includes the native shared library — no extra configuration needed.

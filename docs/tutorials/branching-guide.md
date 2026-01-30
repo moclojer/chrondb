@@ -76,7 +76,7 @@ Ensure you have ChronDB running:
 docker run -d --name chrondb \
   -p 3000:3000 -p 6379:6379 -p 5432:5432 \
   -v chrondb-data:/data \
-  moclojer/chrondb:latest
+  avelino/chrondb:latest
 ```
 
 ## Exercise 1: Creating a Development Branch
@@ -370,6 +370,6 @@ Branching in ChronDB offers powerful capabilities for development workflows, tes
 
 ## Community Resources
 
-- **Documentation**: [chrondb.moclojer.com](https://chrondb.moclojer.com/)
+- **Documentation**: [chrondb.avelino.run](https://chrondb.avelino.run/)
 - **Questions & Help**: [Discord Community](https://discord.com/channels/1099017682487087116/1353399752636497992)
-- **Share Your Experience**: [GitHub Discussions](https://github.com/moclojer/chrondb/discussions)
+- **Share Your Experience**: [GitHub Discussions](https://github.com/avelino/chrondb/discussions)

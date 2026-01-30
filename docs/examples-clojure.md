@@ -9,14 +9,14 @@ First, add ChronDB as a dependency in your project:
 ### deps.edn
 
 ```clojure
-{:deps {com.github.moclojer/chrondb {:git/tag "v0.1.0"
+{:deps {com.github.avelino/chrondb {:git/tag "v0.1.0"
                                      :git/sha "..."}}}
 ```
 
 ### Leiningen (project.clj)
 
 ```clojure
-:dependencies [[com.github.moclojer/chrondb "0.1.0"]]
+:dependencies [[com.github.avelino/chrondb "0.1.0"]]
 ```
 
 ## Basic Usage

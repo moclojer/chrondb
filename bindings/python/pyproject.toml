@@ -11,7 +11,7 @@ requires-python = ">=3.8"
 readme = "README.md"
 
 [project.urls]
-Repository = "https://github.com/moclojer/chrondb"
+Repository = "https://github.com/avelino/chrondb"
 
 [tool.setuptools.package-data]
 chrondb = ["lib/*"]

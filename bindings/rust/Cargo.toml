@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Rust bindings for ChronDB - a time-traveling key/value database"
 license = "AGPL-3.0"
-repository = "https://github.com/moclojer/chrondb"
+repository = "https://github.com/avelino/chrondb"
 readme = "README.md"
 
 [dependencies]

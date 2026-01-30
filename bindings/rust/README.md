@@ -1,6 +1,6 @@
 # ChronDB
 
-Rust bindings for [ChronDB](https://github.com/moclojer/chrondb) — a time-traveling key/value database built on Git.
+Rust bindings for [ChronDB](https://github.com/avelino/chrondb) — a time-traveling key/value database built on Git.
 
 ## Install
 
@@ -34,9 +34,9 @@ ChronDB uses GraalVM native-image with Lucene and JGit, which require a large th
 
 ## Documentation
 
-- [Rust Bindings](https://github.com/moclojer/chrondb/tree/main/bindings/rust)
-- [Full Documentation](https://github.com/moclojer/chrondb/tree/main/docs/bindings)
-- [All Language Bindings](https://github.com/moclojer/chrondb/tree/main/bindings)
+- [Rust Bindings](https://github.com/avelino/chrondb/tree/main/bindings/rust)
+- [Full Documentation](https://github.com/avelino/chrondb/tree/main/docs/bindings)
+- [All Language Bindings](https://github.com/avelino/chrondb/tree/main/bindings)
 
 ## License
 
