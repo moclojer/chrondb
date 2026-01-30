@@ -2,9 +2,9 @@
 
 _Chronological **key/value** Database built on Git architecture with complete version history._
 
-[![GitHub License](https://img.shields.io/github/license/moclojer/chrondb)](https://github.com/moclojer/chrondb/blob/main/LICENSE)
+[![GitHub License](https://img.shields.io/github/license/avelino/chrondb)](https://github.com/avelino/chrondb/blob/main/LICENSE)
 [![Discord](https://img.shields.io/discord/1099017682487087116?label=discord)](https://discord.gg/w3Rnafyc)
-[![Documentation](https://img.shields.io/badge/docs-chrondb.moclojer.com-blue)](https://chrondb.moclojer.com/)
+[![Documentation](https://img.shields.io/badge/docs-chrondb.avelino.run-blue)](https://chrondb.avelino.run/)
 
 ## ✨ Features
 
@@ -18,8 +18,8 @@ ChronDB offers unique capabilities for your data:
   - 🔄 **Redis Protocol** - Connect using Redis clients
   - 🗄️ **PostgreSQL Protocol** - Connect with SQL clients
 - **Language Bindings** - Embed ChronDB directly in your application:
-  - 🐍 [**Python**](https://chrondb.moclojer.com/bindings/python) - `ctypes`-based client with context manager support
-  - 🦀 [**Rust**](https://chrondb.moclojer.com/bindings/rust) - Safe wrapper with `serde_json` integration
+  - 🐍 [**Python**](https://chrondb.avelino.run/bindings/python) - `ctypes`-based client with context manager support
+  - 🦀 [**Rust**](https://chrondb.avelino.run/bindings/rust) - Safe wrapper with `serde_json` integration
 - **ACID Transactions** - Guaranteed consistency and durability
 - **Schemaless Design** - Store any JSON-compatible data
 - **Git Foundation** - Leverage Git's powerful features:
@@ -42,7 +42,7 @@ docker run -d --name chrondb \
   -p 6379:6379 \  # Redis protocol
   -p 5432:5432 \  # PostgreSQL protocol
   -v chrondb-data:/data \
-  moclojer/chrondb:latest
+  avelino/chrondb:latest
 ```
 
 ### Using Clojure
@@ -50,7 +50,7 @@ docker run -d --name chrondb \
 In your `deps.edn`:
 
 ```clojure
-{:deps {com.github.moclojer/chrondb {:git/tag "v0.1.0"
+{:deps {com.github.avelino/chrondb {:git/tag "v0.1.0"
                                      :git/sha "..."}}}
 ```
 
@@ -79,7 +79,7 @@ Then in your code:
 
 ```bash
 # Clone the repository
-git clone https://github.com/moclojer/chrondb.git
+git clone https://github.com/avelino/chrondb.git
 cd chrondb
 
 # Run with default settings (REST on 3000, Redis on 6379, PostgreSQL on 5432)
@@ -103,14 +103,14 @@ This approach gives you all the power of Git for your database operations.
 
 ## 📚 Documentation
 
-Complete documentation is available at [chrondb.moclojer.com](https://chrondb.moclojer.com/)
+Complete documentation is available at [chrondb.avelino.run](https://chrondb.avelino.run/)
 
-- [Quick Start Guide](https://chrondb.moclojer.com/quickstart) - Up and running in minutes
-- [Core Concepts](https://chrondb.moclojer.com/data-model) - Understand ChronDB's data model
-- [Time Travel Tutorial](https://chrondb.moclojer.com/tutorials/time-travel-guide) - Learn to use versioning
-- [Branching Guide](https://chrondb.moclojer.com/tutorials/branching-guide) - Master isolated environments
-- [Python Binding](https://chrondb.moclojer.com/bindings/python) - Embed ChronDB in Python apps
-- [Rust Binding](https://chrondb.moclojer.com/bindings/rust) - Embed ChronDB in Rust apps
+- [Quick Start Guide](https://chrondb.avelino.run/quickstart) - Up and running in minutes
+- [Core Concepts](https://chrondb.avelino.run/data-model) - Understand ChronDB's data model
+- [Time Travel Tutorial](https://chrondb.avelino.run/tutorials/time-travel-guide) - Learn to use versioning
+- [Branching Guide](https://chrondb.avelino.run/tutorials/branching-guide) - Master isolated environments
+- [Python Binding](https://chrondb.avelino.run/bindings/python) - Embed ChronDB in Python apps
+- [Rust Binding](https://chrondb.avelino.run/bindings/rust) - Embed ChronDB in Rust apps
 
 ## 🛠️ Requirements
 
@@ -119,8 +119,8 @@ Complete documentation is available at [chrondb.moclojer.com](https://chrondb.mo
 
 ## 💬 Community
 
-- [GitHub Discussions](https://github.com/moclojer/chrondb/discussions) - Share ideas and use cases
-- [GitHub Issues](https://github.com/moclojer/chrondb/issues) - Report bugs and request features
+- [GitHub Discussions](https://github.com/avelino/chrondb/discussions) - Share ideas and use cases
+- [GitHub Issues](https://github.com/avelino/chrondb/issues) - Report bugs and request features
 - [Reddit](https://www.reddit.com/r/chrondb/)
 
 ## 🤝 Contributing

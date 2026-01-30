@@ -1,6 +1,6 @@
 # ChronDB
 
-Python bindings for [ChronDB](https://github.com/moclojer/chrondb) — a time-traveling key/value database built on Git.
+Python bindings for [ChronDB](https://github.com/avelino/chrondb) — a time-traveling key/value database built on Git.
 
 ## Install
 
@@ -22,9 +22,9 @@ with ChronDB("/tmp/data", "/tmp/index") as db:
 
 ## Documentation
 
-- [Python Bindings](https://github.com/moclojer/chrondb/tree/main/bindings/python)
-- [Full Documentation](https://github.com/moclojer/chrondb/tree/main/docs/bindings)
-- [All Language Bindings](https://github.com/moclojer/chrondb/tree/main/bindings)
+- [Python Bindings](https://github.com/avelino/chrondb/tree/main/bindings/python)
+- [Full Documentation](https://github.com/avelino/chrondb/tree/main/docs/bindings)
+- [All Language Bindings](https://github.com/avelino/chrondb/tree/main/bindings)
 
 ## License
 

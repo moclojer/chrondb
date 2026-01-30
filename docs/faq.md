@@ -186,10 +186,10 @@ When merging branches, conflicts may occur if the same document has been modifie
 
 Several support options are available:
 
-- [GitHub Issues](https://github.com/moclojer/chrondb/issues) for bug reports and feature requests
+- [GitHub Issues](https://github.com/avelino/chrondb/issues) for bug reports and feature requests
 - [Discord Community](https://discord.com/channels/1099017682487087116/1353399752636497992) for discussions and questions
-- [Official Documentation](https://chrondb.moclojer.com/) for guides and reference
-- [GitHub Discussions](https://github.com/moclojer/chrondb/discussions) for longer form conversations and ideas
+- [Official Documentation](https://chrondb.avelino.run/) for guides and reference
+- [GitHub Discussions](https://github.com/avelino/chrondb/discussions) for longer form conversations and ideas
 - [Stack Overflow](https://stackoverflow.com/questions/tagged/chrondb) with the `chrondb` tag
 
 ### How can I contribute to ChronDB?

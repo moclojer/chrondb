@@ -48,7 +48,7 @@ fn download_library(lib_dir: &PathBuf) -> Result<(), Box<dyn std::error::Error>>
     };
 
     let url = format!(
-        "https://github.com/moclojer/chrondb/releases/download/{}/libchrondb-{}-{}.tar.gz",
+        "https://github.com/avelino/chrondb/releases/download/{}/libchrondb-{}-{}.tar.gz",
         release_tag, version_label, platform
     );
 

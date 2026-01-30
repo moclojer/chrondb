@@ -15,14 +15,14 @@ docker run -d --name chrondb \
   -p 6379:6379 \  # Redis protocol
   -p 5432:5432 \  # PostgreSQL protocol
   -v chrondb-data:/data \
-  moclojer/chrondb:latest
+  avelino/chrondb:latest
 ```
 
 ### 🧪 Using JAR File
 
 ```bash
 # Download the latest release
-curl -L -o chrondb.jar https://github.com/moclojer/chrondb/releases/latest/download/chrondb.jar
+curl -L -o chrondb.jar https://github.com/avelino/chrondb/releases/latest/download/chrondb.jar
 
 # Run ChronDB
 java -jar chrondb.jar
@@ -32,7 +32,7 @@ java -jar chrondb.jar
 
 ```bash
 # Clone the repository
-git clone https://github.com/moclojer/chrondb.git
+git clone https://github.com/avelino/chrondb.git
 cd chrondb
 
 # Start the server
@@ -127,7 +127,7 @@ For Clojure applications, add ChronDB as a dependency:
 
 ```clojure
 ;; In deps.edn
-{:deps {com.github.moclojer/chrondb {:git/tag "v0.1.0"
+{:deps {com.github.avelino/chrondb {:git/tag "v0.1.0"
                                      :git/sha "..."}}}
 ```
 
@@ -261,7 +261,7 @@ Congratulations! You've taken your first steps with ChronDB. Here's where to go 
 Need help? Check our [FAQ](faq) or join our community:
 
 - [Discord Community](https://discord.com/channels/1099017682487087116/1353399752636497992)
-- [GitHub Discussions](https://github.com/moclojer/chrondb/discussions)
-- [Official Documentation](https://chrondb.moclojer.com/)
+- [GitHub Discussions](https://github.com/avelino/chrondb/discussions)
+- [Official Documentation](https://chrondb.avelino.run/)
 
 **Happy time traveling with ChronDB!**
